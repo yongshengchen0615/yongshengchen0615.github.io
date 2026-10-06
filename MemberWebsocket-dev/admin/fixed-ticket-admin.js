@@ -52,6 +52,10 @@
         <label class="fixed-ticket-notify"><input id="fixedTicketNotifyLine" type="checkbox" checked> 發放後傳送 LINE 通知</label>
       </div>
       <div class="form-grid fixed-ticket-schedule-grid">
+        <label>LINE 通知時間（台北時間）
+          <input id="fixedTicketNotifyTime" type="time" step="60">
+          <small>留空沿用發放後通知。指定時間已過則立即通知；停用會取消待發通知，重新開啟只恢復仍有效且未發送的通知。</small>
+        </label>
         <label>發放週期
           <select id="fixedTicketScheduleType">
             <option value="birthday_month">會員生日當月 1 號</option>
@@ -281,6 +285,8 @@
     if (expiryMode) expiryMode.value = 'month_end';
     if (expiryDate) expiryDate.value = '';
     if (expiryDays) expiryDays.value = '7';
+    document.getElementById('fixedTicketNotifyLine').checked = true;
+    document.getElementById('fixedTicketNotifyTime').value = '';
     updateFixedUI();
     renderFixedList();
   }
@@ -320,6 +326,7 @@
     document.getElementById('fixedTicketExpiryDate').value = String(template.expiryDate || '');
     document.getElementById('fixedTicketExpiryDays').value = String(Number(template.expiryDays || 7));
     document.getElementById('fixedTicketNotifyLine').checked = Boolean(template.notifyLine);
+    document.getElementById('fixedTicketNotifyTime').value = String(template.notifyTime || '');
 
     document.getElementById('eventTicketEditorKicker').textContent = 'Edit fixed ticket';
     document.getElementById('eventTicketEditorTitle').textContent = String(template.title || '編輯固定票券');
@@ -440,6 +447,7 @@
       requiresLocation: document.getElementById('eventTicketRequiresLocation').checked,
       redemptionLocations: window.TicketLocationEditors?.event?.get() || [],
       notifyLine: document.getElementById('fixedTicketNotifyLine').checked,
+      notifyTime: document.getElementById('fixedTicketNotifyTime').value || null,
     };
   }
 

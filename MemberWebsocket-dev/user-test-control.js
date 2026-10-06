@@ -3580,12 +3580,14 @@
     const panel = document.getElementById('bookingAccessiblePanel');
     if (!toggle || !panel) return fail('無障礙模式入口未載入。', { entrance:true }, { entrance:false });
     const original = toggle.getAttribute('aria-pressed') === 'true';
+    const preferenceKey = window.BookingAccessibility?.getPreferenceKey?.() || '';
     let preference;
-    try { preference = localStorage.getItem('booking-accessible-mode'); } catch (_) {}
+    try { preference = preferenceKey ? localStorage.getItem(preferenceKey) : undefined; } catch (_) {}
     const actual = { enabled:false, ticketCountMatched:false, statusLoaded:false, restored:false };
     try {
       if (!original) toggle.click();
       actual.enabled = toggle.getAttribute('aria-pressed') === 'true' && !panel.classList.contains('hidden');
+      try { actual.preferenceSaved = Boolean(preferenceKey) && localStorage.getItem(preferenceKey) === 'accessible'; } catch (_) { actual.preferenceSaved = true; }
       await syncBookingBenefitsForE2E();
       await window.BookingReceipts?.refresh?.();
       const items = window.BookingBenefits?.getItems?.() || [];
@@ -3601,7 +3603,7 @@
     } finally {
       if ((toggle.getAttribute('aria-pressed') === 'true') !== original) toggle.click();
       actual.restored = (toggle.getAttribute('aria-pressed') === 'true') === original;
-      try { if (preference === null) localStorage.removeItem('booking-accessible-mode'); else if (preference !== undefined) localStorage.setItem('booking-accessible-mode', preference); } catch (_) {}
+      try { if (preferenceKey && preference === null) localStorage.removeItem(preferenceKey); else if (preferenceKey && preference !== undefined) localStorage.setItem(preferenceKey, preference); } catch (_) {}
     }
     return Object.values(actual).every(Boolean)
       ? pass('無障礙模式可切換、顯示可用票券與真實登記狀態，完成後還原偏好。', { allChecks:true, physicalCamera:'device acceptance' }, actual)

@@ -142,12 +142,12 @@ async function normalizeGroup(supabase: ReturnType<typeof db>, body: Json) {
     throw new ApiError(400, "INVALID_PARTY_SIZE", "預約人數超出目前允許範圍。");
   }
   const primaryId = optionalUuid(settings.primary_technician_id, "主要技師");
-  if (!primaryId) throw new ApiError(409, "BOOKING_PRIMARY_TECHNICIAN_MISSING", "管理端尚未設定主要技師。");
+  if (settings.require_primary_technician !== false && !primaryId) throw new ApiError(409, "BOOKING_PRIMARY_TECHNICIAN_MISSING", "管理端尚未設定主要技師。");
 
   const techResult = await supabase.from("booking_technicians").select("id,is_active").eq("is_active", true);
   if (techResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取技師設定。");
   const activeTechnicians = new Set((techResult.data || []).map((row: any) => String(row.id)));
-  if (!activeTechnicians.has(primaryId)) throw new ApiError(409, "BOOKING_PRIMARY_TECHNICIAN_DISABLED", "主要技師目前未開放預約。");
+  if (settings.require_primary_technician !== false && !activeTechnicians.has(primaryId)) throw new ApiError(409, "BOOKING_PRIMARY_TECHNICIAN_DISABLED", "主要技師目前未開放預約。");
 
   const serviceIds = new Set<string>();
   const selectedTechnicians = new Set<string>();
@@ -178,7 +178,7 @@ async function normalizeGroup(supabase: ReturnType<typeof db>, body: Json) {
     }
     normalized.push({ technicianId: technicianId || null, items });
   }
-  if (!primarySelected) throw new ApiError(400, "BOOKING_PRIMARY_TECHNICIAN_REQUIRED", "每筆預約至少要有一位選擇主要技師。");
+  if (settings.require_primary_technician !== false && !primarySelected) throw new ApiError(400, "BOOKING_PRIMARY_TECHNICIAN_REQUIRED", "每筆預約至少要有一位選擇主要技師。");
 
   const servicesResult = await supabase.from("booking_services").select("id,is_active,duration_minutes,price_amount,requires_companion_service").in("id", [...serviceIds, STORE_SERVICE_ID]);
   if (servicesResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取預約項目。");
@@ -222,7 +222,7 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
   const dateWindow = { earliestBookingDate: earliestDate, latestBookingDate: latestDate || null };
   if (bookingDate < earliestDate || (latestDate && bookingDate > latestDate)) {
     return {
-      settings: { maxPartySize: Number(group.settings.max_party_size || 1), primaryTechnicianId: group.primaryId, maxAdvanceDays },
+      settings: { maxPartySize: Number(group.settings.max_party_size || 1), requirePrimaryTechnician: group.settings.require_primary_technician !== false, primaryTechnicianId: group.primaryId, maxAdvanceDays },
       totalDurationMinutes: group.totalDurationMinutes,
       totalAmount: group.totalAmount,
       ...dateWindow,
@@ -231,7 +231,7 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
   }
   if (await isActiveBookingHoliday(supabase, bookingDate)) {
     return {
-      settings: { maxPartySize: Number(group.settings.max_party_size || 1), primaryTechnicianId: group.primaryId, maxAdvanceDays },
+      settings: { maxPartySize: Number(group.settings.max_party_size || 1), requirePrimaryTechnician: group.settings.require_primary_technician !== false, primaryTechnicianId: group.primaryId, maxAdvanceDays },
       totalDurationMinutes: group.totalDurationMinutes,
       totalAmount: group.totalAmount,
       ...dateWindow,
@@ -248,12 +248,13 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
     if (!bookingResult.data || !["pending", "confirmed"].includes(bookingResult.data.status)) throw new ApiError(409, "BOOKING_NOT_EDITABLE", "找不到可修改的預約。");
   }
 
-  const primaryRows = await supabase.from("bookings")
+  const legacyTechnicianIds = [...new Set([...group.assignments.map((a:any)=>String(a.technicianId)),...(group.settings.require_primary_technician !== false && group.primaryId ? [group.primaryId] : [])])];
+  const primaryRows = legacyTechnicianIds.length ? await supabase.from("bookings")
     .select("id,start_at,end_at")
     .gte("booking_date", addDays(bookingDate, -1)).lte("booking_date", addDays(bookingDate, 1))
-    .eq("technician_id", group.primaryId)
+    .in("technician_id", legacyTechnicianIds)
     .eq("party_size", 1)
-    .in("status", ["pending", "confirmed"]);
+    .in("status", ["pending", "confirmed"]) : {data:[],error:null};
   if (primaryRows.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取主要技師時段。");
   const primaryOccupied = (primaryRows.data || [])
     .filter((row: any) => String(row.id) !== excludedBookingId)
@@ -296,7 +297,7 @@ async function slots(supabase: ReturnType<typeof db>, member: any, body: Json) {
   }
 
   return {
-    settings: { maxPartySize: Number(group.settings.max_party_size || 1), primaryTechnicianId: group.primaryId, maxAdvanceDays },
+    settings: { maxPartySize: Number(group.settings.max_party_size || 1), requirePrimaryTechnician: group.settings.require_primary_technician !== false, primaryTechnicianId: group.primaryId, maxAdvanceDays },
     totalDurationMinutes: group.totalDurationMinutes,
     totalAmount: group.totalAmount,
     ...dateWindow,

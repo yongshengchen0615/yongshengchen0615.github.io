@@ -6629,10 +6629,18 @@
         const id = mode === 'days_after_issue' ? 'fixedTicketExpiryDays' : mode === 'fixed_date' ? 'fixedTicketExpiryDate' : '';
         checks.push({mode,expiryControl:!id || Boolean(document.getElementById(id) && !document.getElementById(id).disabled)});
       }
+      const notify = document.getElementById('fixedTicketNotifyLine');
+      const time = document.getElementById('fixedTicketNotifyTime');
+      const savedNotify = notify?.checked, savedTime = time?.value;
+      if (notify && time) {
+        notify.click(); setField('fixedTicketNotifyTime','09:30');
+        checks.push({notificationControls:notify.checked !== savedNotify && time.value === '09:30'});
+        notify.click(); setField('fixedTicketNotifyTime',savedTime || '');
+      } else checks.push({notificationControls:false});
     } finally { modal?.querySelector('.editor-modal-close, .close-button')?.click(); }
     const scheduleOk = checks.slice(0,4).every(item => item.monthVisible === (item.mode === 'yearly') &&
       item.dayVisible === ['yearly','monthly'].includes(item.mode) && item.weekdayVisible === (item.mode === 'weekly'));
-    return scheduleOk && checks.slice(4).every(item => item.expiryControl)
+    return scheduleOk && checks.slice(4,8).every(item => item.expiryControl) && checks[8]?.notificationControls
       ? pass('固定票券四種週期與四種效期控制可操作；未儲存或發放。', { scheduleModes:4,expiryModes:4 }, {checks})
       : fail('固定票券週期或效期控制異常。', { scheduleModes:4,expiryModes:4 }, {checks});
   }
@@ -7143,6 +7151,10 @@
       checks.push(Boolean(modal && !modal.classList.contains('hidden')));
       document.getElementById('bookingAdminTechnicianModalCancel')?.click();
       checks.push(Boolean(modal?.classList.contains('hidden')));
+      const required = document.getElementById('bookingAdminRequirePrimaryTechnician');
+      const previous = required?.checked;
+      required?.click();checks.push(Boolean(required && required.checked !== previous));
+      required?.click();checks.push(Boolean(required && required.checked === previous));
     } finally { (original ? active : disabled)?.click(); }
     return checks.every(Boolean)
       ? pass('技師列表可切換，新增視窗可以取消而不建立資料。', {allChecks:true}, {checks})

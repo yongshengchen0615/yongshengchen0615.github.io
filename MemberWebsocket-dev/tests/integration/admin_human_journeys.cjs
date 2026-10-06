@@ -77,6 +77,7 @@ function expectation(value,negate=false,poll=false,context=""){
     toBeVisible:()=>check(v=>truth(visible(v.nodes()[0]),'Visibility')),
     toBeHidden:()=>check(v=>truth(!visible(v.nodes()[0]),'Hidden')),
     toBeDisabled:()=>check(v=>truth(disabled(v.one()),'Disabled')),
+    toBeChecked:()=>check(v=>truth(v.one().checked,'Checked')),
     toBeEnabled:()=>check(v=>truth(!disabled(v.one()),'Enabled')),
     toHaveCount:n=>check(v=>truth(v.nodes().length===n,`Count ${v.nodes().length} expected ${n}`)),
     toHaveText:s=>check(v=>truth(typeof s==='string'?v.one().textContent.trim()===s:s.test(v.one().textContent),`Text ${v.one().textContent} expected ${s}`)),

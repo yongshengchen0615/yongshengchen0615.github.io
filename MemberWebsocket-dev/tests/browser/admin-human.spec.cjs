@@ -154,6 +154,24 @@ test('BOOKING_TECHNICIAN — create, edit, disable, restore and primary protecti
 });
 test('BOOKING_RESOURCE_SETTINGS — primary technician and party size save and reload',async({page:p},info)=>{
   await booking(p,'bookingAdminTechniciansSubtab');await fill(p,'bookingAdminMaxPartySize','3');await select(p,'bookingAdminPrimaryTechnician','tech-2');await click(p,'bookingAdminSavePartySizeButton');await expect.poll(()=>info.fixture.settings.primaryTechnicianId).toBe('tech-2');await click(p,'bookingAdminResourceRefreshButton');await expect(p.locator('#bookingAdminMaxPartySize')).toHaveValue('3');
+  await expect(p.locator('#bookingAdminRequirePrimaryTechnician')).toBeChecked();
+  await p.locator('#bookingAdminRequirePrimaryTechnician').uncheck();await click(p,'bookingAdminSavePartySizeButton');await click(p,'bookingAdminResourceRefreshButton');
+  await expect(p.locator('#bookingAdminRequirePrimaryTechnician')).not.toBeChecked();await expect(p.locator('#bookingAdminPrimaryTechnician')).toHaveValue('tech-2');
+  await p.locator('#bookingAdminRequirePrimaryTechnician').uncheck();await select(p,'bookingAdminPrimaryTechnician','');await click(p,'bookingAdminSavePartySizeButton');
+  await expect.poll(()=>info.fixture.settings.requirePrimaryTechnician).toBe(false);await click(p,'bookingAdminResourceRefreshButton');
+  await expect(p.locator('#bookingAdminRequirePrimaryTechnician')).not.toBeChecked();await expect(p.locator('#bookingAdminPrimaryTechnician')).toHaveValue('');
+  await p.locator('#bookingAdminRequirePrimaryTechnician').check();await click(p,'bookingAdminSavePartySizeButton');
+  await expect(p.locator('#bookingAdminResourceMessage')).toContainText('請選擇主要技師');
+  await select(p,'bookingAdminPrimaryTechnician','tech-1');await click(p,'bookingAdminSavePartySizeButton');await expect.poll(()=>info.fixture.settings.requirePrimaryTechnician).toBe(true);
+});
+
+test('FIXED_NOTIFICATION_TIME — Taipei time, off switch and persisted reload',async({page:p},info)=>{
+  await openEvent(p,'fixed');await fill(p,'fixedTicketNotifyTime','09:30');await p.locator('#fixedTicketNotifyLine').uncheck();await click(p,'saveEventTicketButton');
+  await expect.poll(()=>info.fixture.templates.length).toBe(1);expect(info.fixture.templates[0]).toMatchObject({notifyTime:'09:30',notifyLine:false});
+  await p.locator('#eventTicketListItems [data-fixed-ticket-id]').first().click();
+  await expect(p.locator('#fixedTicketNotifyTime')).toHaveValue('09:30');await expect(p.locator('#fixedTicketNotifyLine')).not.toBeChecked();
+  await fill(p,'fixedTicketNotifyTime','00:00');await p.locator('#fixedTicketNotifyLine').check();await click(p,'saveEventTicketButton');
+  await expect.poll(()=>info.fixture.templates[0].notifyTime).toBe('00:00');expect(info.fixture.templates[0].notifyLine).toBe(true);
 });
 test('BOOKING_SHARED_SETTINGS — overnight hours, advance window, common time and reminder',async({page:p},info)=>{
   await booking(p,'bookingAdminSettingsSubtab');await fill(p,'bookingAdminStartTime','20:00');await fill(p,'bookingAdminEndTime','02:00');await fill(p,'bookingAdminSlotInterval','15');await fill(p,'bookingAdminAdvanceDays','1');await fill(p,'bookingAdminMaxAdvanceDays','30');await fill(p,'bookingAdminStoreServiceMinutes','15');await p.locator('#bookingAdminReminderEnabled').check();await fill(p,'bookingAdminReminderTime','17:30');await fill(p,'bookingAdminNotice','QA line 1\nQA line 2');await click(p,'bookingAdminSaveSettingsButton');await expect.poll(()=>calls(info.fixture,'admin.booking.settings.save').length).toBe(1);await expect(p.locator('#bookingAdminSettingsMessage')).toContainText('儲存');expect(info.fixture.settings.workEndTime).toBe('02:00');

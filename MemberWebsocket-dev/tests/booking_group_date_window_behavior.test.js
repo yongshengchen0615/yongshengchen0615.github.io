@@ -75,6 +75,14 @@ test('group slots retain booking limits on a normally available date', async () 
   assert.ok(result.slots.length > 0);
 });
 
+test('optional onsite booking does not reserve or collide with an unselected primary technician', async () => {
+  const optional={...group,settings:{...group.settings,require_primary_technician:false}};
+  const result=await buildSlots(false,optional)({from(){throw new Error('No technician was selected');}},null,{bookingDate:'2026-10-01'});
+  assert.ok(result.slots.length>0);
+  assert.ok(result.slots.every(slot=>slot.available));
+  assert.equal(result.settings.requirePrimaryTechnician,false);
+});
+
 test('overnight slots carry the prior business date and reject midnight overlap', async () => {
   const bookingDate = '2026-09-30';
   const overnight = { ...group, settings: { ...group.settings, work_start_time: '14:00:00', work_end_time: '02:00:00', slot_interval_minutes: 15 } };

@@ -122,7 +122,7 @@ async function writeAudit(supabase: SupabaseClient, row: any, result: string, de
     detail:{ requestId:row.request_id,scheduleId:row.schedule_id,...detail },
   });
 }
-async function dispatchOne(supabase: SupabaseClient, token: string, row: any, eventLiffUrl: string): Promise<{ sent:boolean;lineRequestId:string;error:string }> {
+async function dispatchOne(supabase: SupabaseClient, token: string, row: any, eventLiffUrl: string): Promise<{ sent:boolean;lineRequestId:string;error:string;suppressed?:boolean;action?:string;scheduledFor?:string }> {
   try {
     const refreshedText = await refreshScheduledMessage(supabase,row);
     const message = buildLineFlexNotice(refreshedText,{
@@ -130,6 +130,15 @@ async function dispatchOne(supabase: SupabaseClient, token: string, row: any, ev
       eyebrow:"MEMBER BENEFITS",
     });
     if (isFixedTicketNotification(row)) addEventTicketAction(message, eventLiffUrl);
+
+    if (isFixedTicketNotification(row)) {
+      const check = await supabase.rpc("fixed_ticket_notification_delivery", { p_message_id:row.id });
+      if (check.error || !check.data?.action) throw new Error("FIXED_NOTIFICATION_CHECK_FAILED");
+      if (check.data.action !== "send") return {
+        sent:false,lineRequestId:"",error:asText(check.data.reason || "FIXED_NOTIFICATION_DEFERRED",100),
+        suppressed:true,action:String(check.data.action),scheduledFor:check.data.scheduledFor,
+      };
+    }
 
     const response = await fetch("https://api.line.me/v2/bot/message/push",{
       method:"POST",
@@ -207,6 +216,14 @@ Deno.serve(async (request: Request) => {
     }
 
     const result = await dispatchOne(supabase,token,row,eventLiffUrl);
+    if (result.suppressed) {
+      if (result.action !== "skip") await supabase.from("scheduled_grant_messages").update({
+        status:result.action === "defer" ? "pending" : "cancelled",last_error:result.error,
+        ...(result.scheduledFor ? {scheduled_for:result.scheduledFor} : {}),updated_at:new Date().toISOString(),
+      }).eq("id",row.id).eq("status","sending");
+      await writeAudit(supabase,row,"success",{ skipped:true,reason:result.error });
+      continue;
+    }
     if (result.sent) {
       await supabase.from("scheduled_grant_messages").update({
         status:"sent",sent_at:new Date().toISOString(),line_request_id:result.lineRequestId,last_error:"",updated_at:new Date().toISOString(),

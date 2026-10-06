@@ -17,10 +17,11 @@ test('accessible mode remembers preference, exposes eligible tickets safely and 
     w.BookingBenefits={getItems:()=>[],syncNow:()=>{}};
     w.eval(read('booking/booking-accessible.js'));
     await tick();
+    w.dispatchEvent(new w.CustomEvent('booking:member-loaded',{detail:{profile:{lineUserId:'test:member'}}}));
     const toggle=w.document.getElementById('bookingAccessibleToggle');
     toggle.click();
     assert.equal(toggle.getAttribute('aria-pressed'),'true');
-    assert.equal(w.localStorage.getItem('booking-accessible-mode'),'1');
+    assert.equal(w.localStorage.getItem('booking-mode:v2:test:member'),'accessible');
     assert.ok(w.document.getElementById('bookingForm'),'Existing form must survive mode switch');
     w.document.getElementById('bookingAccessibleUpload').click();
     assert.equal(opens,1); assert.ok(refreshes>0);
@@ -40,6 +41,48 @@ test('accessible mode remembers preference, exposes eligible tickets safely and 
     toggle.click(); assert.equal(toggle.getAttribute('aria-pressed'),'false');
     assert.ok(w.document.getElementById('bookingForm'));
   } finally {w.dispatchEvent(new w.Event('pagehide')); w.close();}
+});
+
+test('mode preferences restore per member, preserve drafts and ignore invalid or inaccessible storage',async()=>{
+  const create=async(initial={},unavailable=false)=>{
+    const dom=new JSDOM(read('booking/index.html'),{url:'https://example.test/booking/',runScripts:'outside-only'});
+    const w=dom.window;
+    for(const [key,value] of Object.entries(initial)) w.localStorage.setItem(key,value);
+    if(unavailable) Object.defineProperty(w,'localStorage',{get(){throw new Error('storage unavailable');}});
+    w.BookingReceipts={refresh:()=>{}}; w.BookingBenefits={getItems:()=>[]};
+    w.eval(read('booking/booking-accessible.js')); await tick();
+    return dom;
+  };
+  const load=(w,id)=>w.dispatchEvent(new w.CustomEvent('booking:member-loaded',{detail:{profile:{lineUserId:id}}}));
+  const dom=await create({'booking-accessible-mode':'1'}),w=dom.window;
+  try {
+    const toggle=w.document.getElementById('bookingAccessibleToggle');
+    load(w,'test:mode-a'); assert.equal(toggle.getAttribute('aria-pressed'),'false');
+    assert.equal(w.localStorage.getItem('booking-mode:v2:test:mode-a'),null,'Loading must not overwrite preferences');
+    const note=w.document.getElementById('memberNote'); note.value='unsent draft';
+    toggle.click(); assert.equal(w.localStorage.getItem('booking-mode:v2:test:mode-a'),'accessible');
+    toggle.click(); assert.equal(note.value,'unsent draft');
+    toggle.click();
+    load(w,'test:mode-b'); assert.equal(toggle.getAttribute('aria-pressed'),'false');
+    assert.equal(w.localStorage.getItem('booking-mode:v2:test:mode-b'),null);
+    load(w,'test:mode-a'); assert.equal(toggle.getAttribute('aria-pressed'),'true');
+    assert.equal(w.document.getElementById('bookingView').classList.contains('hidden'),true,'Restore occurs before the booking view is revealed');
+    toggle.click(); assert.equal(w.localStorage.getItem('booking-mode:v2:test:mode-a'),'general');
+  } finally {w.close();}
+  for(const preference of ['accessible','general','invalid']) {
+    const next=await create({'booking-mode:v2:test:mode-a':preference});
+    try {
+      load(next.window,'test:mode-a');
+      assert.equal(next.window.document.getElementById('bookingAccessibleToggle').getAttribute('aria-pressed'),String(preference==='accessible'));
+    } finally {next.window.close();}
+  }
+  const blocked=await create({},true);
+  try {
+    const bw=blocked.window,toggle=bw.document.getElementById('bookingAccessibleToggle');
+    load(bw,'test:mode-a'); assert.equal(toggle.getAttribute('aria-pressed'),'false');
+    toggle.click(); assert.equal(toggle.getAttribute('aria-pressed'),'true');
+    load(bw,'test:mode-b'); assert.equal(toggle.getAttribute('aria-pressed'),'false');
+  } finally {blocked.window.close();}
 });
 
 test('admin receipt queue registers actual minutes with one locked submission and exposes missing reward rules',async()=>{

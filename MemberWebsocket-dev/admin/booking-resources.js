@@ -20,6 +20,7 @@
     settingsForm: 'bookingAdminPartySizeForm',
     maxPartySize: 'bookingAdminMaxPartySize',
     primaryTechnician: 'bookingAdminPrimaryTechnician',
+    requirePrimaryTechnician: 'bookingAdminRequirePrimaryTechnician',
     settingsSave: 'bookingAdminSavePartySizeButton',
     technicianForm: 'bookingAdminTechnicianForm',
     technicianId: 'bookingAdminTechnicianId',
@@ -90,14 +91,18 @@
         <form id="${ids.settingsForm}" class="booking-admin-resource-box" novalidate>
           <div>
             <strong>預約基本設定</strong>
-            <small>會員端可選擇 1 人至設定上限；主要技師是每筆預約的必要人員。</small>
+            <small>會員端可選擇 1 人至設定上限；管理端可設定是否必須預約主要技師才能成立預約。</small>
           </div>
           <label>最多人數
             <input id="${ids.maxPartySize}" type="number" min="1" max="10" step="1" value="1" required>
           </label>
+          <label class="booking-admin-toggle">
+            <input id="${ids.requirePrimaryTechnician}" type="checkbox" checked>
+            <span><strong>必須預約主要技師才能成立預約</strong><small>開啟時，每筆預約至少一位服務對象須選擇主要技師，否則無法成立預約；關閉時，不必預約主要技師，可選其他技師或現場安排。新建及修改依最新設定驗證，既有預約不會自動改寫。</small></span>
+          </label>
           <label>主要技師
             <select id="${ids.primaryTechnician}" aria-label="主要技師"></select>
-            <small>不論預約幾位，至少一位必須指定此技師才能送出。</small>
+            <small>關閉上述預約限制後，仍可保留主要技師設定。主要技師的服務依現有規則計算集點與會員服務時間；其他技師或現場安排的服務不列入這項回饋。</small>
           </label>
           <button id="${ids.settingsSave}" class="button button-dark" type="submit">儲存預約設定</button>
         </form>
@@ -251,6 +256,7 @@
         technicians: Array.isArray(data.technicians) ? data.technicians : [],
       };
       document.getElementById(ids.maxPartySize).value = String(Number(state.data.settings.maxPartySize) || 1);
+      document.getElementById(ids.requirePrimaryTechnician).checked = state.data.settings.requirePrimaryTechnician !== false;
       renderPrimaryOptions();
       renderTechnicians();
       if (showFeedback) showMessage('預約人數、主要技師與技師清單已更新。', 'success');
@@ -287,9 +293,9 @@
     if (state.savingSettings) return;
     const value = Number(document.getElementById(ids.maxPartySize)?.value);
     const primaryTechnicianId = String(document.getElementById(ids.primaryTechnician)?.value || '');
-    const hasActiveTechnicians = (state.data?.technicians || []).some((item) => item.isActive);
+    const requirePrimaryTechnician = document.getElementById(ids.requirePrimaryTechnician).checked;
     if (!Number.isInteger(value) || value < 1 || value > 10) return showMessage('預約人數上限必須是 1–10 的整數。', 'error');
-    if (hasActiveTechnicians && !primaryTechnicianId) return showMessage('請選擇主要技師。', 'error');
+    if (requirePrimaryTechnician && !primaryTechnicianId) return showMessage('請選擇主要技師。', 'error');
 
     const button = document.getElementById(ids.settingsSave);
     state.savingSettings = true;
@@ -298,14 +304,15 @@
       const result = await request('admin.booking.resources.settings.save', {
         maxPartySize: value,
         primaryTechnicianId,
+        requirePrimaryTechnician,
         expectedUpdatedAt: state.data?.settings?.updatedAt || undefined,
       }, true);
       state.data = state.data || { settings: {}, technicians: [] };
-      state.data.settings = result.settings || { ...state.data.settings, maxPartySize: value, primaryTechnicianId };
+      state.data.settings = result.settings || { ...state.data.settings, maxPartySize: value, primaryTechnicianId, requirePrimaryTechnician };
       renderPrimaryOptions();
       renderTechnicians();
       const primary = (state.data.technicians || []).find((item) => item.technicianId === state.data.settings.primaryTechnicianId);
-      showMessage(primary ? `預約設定已儲存；主要技師為 ${primary.name}。` : '預約人數設定已儲存；尚未設定主要技師。', primary ? 'success' : 'error');
+      showMessage(primary ? `預約設定已儲存；主要技師為 ${primary.name}，${requirePrimaryTechnician ? '必須預約主要技師才能成立預約' : '不必預約主要技師也能成立預約'}。` : '預約設定已儲存；不必預約主要技師也能成立預約，可由現場安排。', 'success');
     } catch (error) {
       showMessage(error?.code === 'CONFLICT' ? '預約設定已被其他管理者更新，已重新載入最新資料。' : error?.message || '預約設定儲存失敗。', 'error');
       if (error?.code === 'CONFLICT') await refresh(false);
@@ -345,7 +352,7 @@
       renderPrimaryOptions();
       renderTechnicians();
       closeTechnicianModal(true);
-      const needsPrimary = !state.data.settings?.primaryTechnicianId && rows.some((item) => item.isActive);
+      const needsPrimary = state.data.settings?.requirePrimaryTechnician !== false && !state.data.settings?.primaryTechnicianId && rows.some((item) => item.isActive);
       showMessage(needsPrimary ? '技師已儲存。請在「主要技師」選擇一位並儲存預約設定。' : '技師設定已儲存。', needsPrimary ? 'error' : 'success');
     } catch (error) {
       showTechnicianModalMessage(error?.code === 'CONFLICT' ? '技師資料已被其他管理者更新，請重新開啟技師資料。' : error?.message || '技師設定儲存失敗。', 'error');

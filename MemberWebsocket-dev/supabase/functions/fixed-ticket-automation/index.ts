@@ -137,6 +137,7 @@ function normalizeRedemptionLocations(value: unknown, requiresLocation: boolean)
 
 function validateTemplate(value: unknown): Json {
   const input = value && typeof value === "object" ? value as Json : {};
+  if (input.notifyLine !== undefined && typeof input.notifyLine !== "boolean") throw new ApiError(400,"INVALID_INPUT","LINE 通知啟用設定必須是布林值。");
   const title = asText(input.title, 100);
   const description = asText(input.description, 240);
   const usageMethod = asText(input.usageMethod, 120);
@@ -201,8 +202,15 @@ function validateTemplate(value: unknown): Json {
     requires_location: requiresLocation,
     redemption_locations: redemptionLocations,
     notify_line: Boolean(input.notifyLine),
+    notify_time: notificationTime(input.notifyTime),
     calendar_enabled: Boolean(input.calendarEnabled),
   };
+}
+
+function notificationTime(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new ApiError(400,"INVALID_INPUT","LINE 通知時間必須是台北時間 HH:mm。");
+  return value;
 }
 
 function clientTemplate(row: any): Json {
@@ -226,6 +234,7 @@ function clientTemplate(row: any): Json {
     requiresLocation: Boolean(row.requires_location),
     redemptionLocations: Array.isArray(row.redemption_locations) ? row.redemption_locations : [],
     notifyLine: Boolean(row.notify_line),
+    notifyTime: row.notify_time ? String(row.notify_time).slice(0,5) : null,
     calendarEnabled: Boolean(row.calendar_enabled),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -286,6 +295,7 @@ Deno.serve(async (request: Request) => {
           .is("deleted_at", null)
           .maybeSingle();
         if (current.error || !current.data) throw new ApiError(404, "FIXED_TICKET_NOT_FOUND", "找不到指定固定票券。");
+        if ((body.template as Json)?.notifyTime === undefined) patch.notify_time = current.data.notify_time || null;
         const expected = asText(body.expectedUpdatedAt, 100);
         if (expected && expected !== current.data.updated_at) throw new ApiError(409, "CONFLICT", "固定票券已被其他管理者更新，請重新整理後再試。");
 
@@ -322,6 +332,8 @@ Deno.serve(async (request: Request) => {
         expiryDate: row.expiry_date,
         expiryDays: row.expiry_days,
         calendarEnabled: Boolean(row.calendar_enabled),
+        notifyLine: Boolean(row.notify_line),
+        notifyTime: row.notify_time ? String(row.notify_time).slice(0,5) : null,
         requiresLocation: Boolean(row.requires_location),
         redemptionLocationCount: Array.isArray(row.redemption_locations) ? row.redemption_locations.length : 0,
         run,

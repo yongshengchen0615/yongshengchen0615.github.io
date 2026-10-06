@@ -1461,11 +1461,14 @@
       .filter((item) => item.isActive || String(item.technicianId || '') === String(participant.technicianId || ''))
       .slice()
       .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant'));
-    if (!technicians.length) return window.alert('目前沒有可用技師，請先到預約人數與技師設定新增技師。');
+    if (!technicians.length && state.booking.settings?.requirePrimaryTechnician !== false) return window.alert('目前沒有可用技師，請先到預約人數與技師設定新增技師。');
 
     els.bookingAdminCrudModalTitle.textContent = `${participantLabel(participantIndex)}｜修改技師`;
     els.bookingAdminCrudModalBody.innerHTML = '<form class="booking-admin-form"><p class="booking-admin-time">同一筆多人預約不可重複指定同一位技師，且至少一位必須指定主要技師。儲存時會重新檢查技師時段衝突。</p><label>預約技師<select data-participant-technician></select></label><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">取消</button><button class="button button-dark" type="submit">儲存修改</button></div></form>';
     const form = els.bookingAdminCrudModalBody.querySelector('form');
+    form.querySelector('.booking-admin-time').textContent = state.booking.settings?.requirePrimaryTechnician === false
+      ? '目前不必預約主要技師也能成立預約，可選其他技師或現場安排。同一筆多人預約不可重複指定同一位技師；儲存時重新檢查時段衝突。'
+      : '每筆預約至少一位服務對象須預約主要技師，才能成立預約。同一筆多人預約不可重複指定同一位技師；儲存時重新檢查時段衝突。';
     const select = form.querySelector('[data-participant-technician]');
     const onsite = document.createElement('option');
     onsite.value = '';
@@ -1494,8 +1497,8 @@
         return showMessage(form.querySelector('[data-modal-message]'), '同一筆多人預約不可重複指定同一位技師。', 'error');
       }
       const primaryTechnicianId = String(state.booking.primaryTechnicianId || '');
-      if (primaryTechnicianId && !selectedIds.includes(primaryTechnicianId)) {
-        return showMessage(form.querySelector('[data-modal-message]'), '至少一位預約人必須指定主要技師。', 'error');
+      if (state.booking.settings?.requirePrimaryTechnician !== false && primaryTechnicianId && !selectedIds.includes(primaryTechnicianId)) {
+        return showMessage(form.querySelector('[data-modal-message]'), '每筆預約至少一位服務對象須預約主要技師，才能成立預約。', 'error');
       }
 
       await runModalAction(async () => operationsRequest('admin.booking.participants.technicians.update', {
