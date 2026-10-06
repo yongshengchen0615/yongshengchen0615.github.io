@@ -49,13 +49,8 @@
           <h4 id="fixedTicketScheduleTitle">固定發放週期</h4>
           <p>系統會直接把票券發到符合條件的會員帳戶，不需要會員自行領取。</p>
         </div>
-        <label class="fixed-ticket-notify"><input id="fixedTicketNotifyLine" type="checkbox" checked> 發放後傳送 LINE 通知</label>
       </div>
       <div class="form-grid fixed-ticket-schedule-grid">
-        <label>LINE 通知時間（台北時間）
-          <input id="fixedTicketNotifyTime" type="time" step="60">
-          <small>留空沿用發放後通知。指定時間已過則立即通知；停用會取消待發通知，重新開啟只恢復仍有效且未發送的通知。</small>
-        </label>
         <label>發放週期
           <select id="fixedTicketScheduleType">
             <option value="birthday_month">會員生日當月 1 號</option>
@@ -95,6 +90,27 @@
         </label>
       </div>
       <p id="fixedTicketExpirySummary" class="fixed-ticket-schedule-summary" aria-live="polite"></p>
+      <section class="fixed-ticket-notification" aria-labelledby="fixedTicketNotificationTitle">
+        <div class="fixed-ticket-notification-heading">
+          <h4 id="fixedTicketNotificationTitle">LINE 通知</h4>
+          <span class="fixed-ticket-timezone">台北時間 UTC+8</span>
+        </div>
+        <label class="fixed-ticket-notify">
+          <input id="fixedTicketNotifyLine" type="checkbox" aria-describedby="fixedTicketNotifyHint" checked>
+          <span><strong>發放後傳送 LINE 通知</strong><small id="fixedTicketNotifyHint">關閉通知，票券仍會照常發放。</small></span>
+        </label>
+        <div class="fixed-ticket-notification-grid">
+          <label>通知時間
+            <input id="fixedTicketNotifyTime" type="time" step="60" aria-describedby="fixedTicketNotifyTimeHint">
+            <small id="fixedTicketNotifyTimeHint">留空即為發放後通知。</small>
+          </label>
+          <p id="fixedTicketNotifySummary" class="fixed-ticket-notification-summary" aria-live="polite"></p>
+        </div>
+        <details class="fixed-ticket-notification-details">
+          <summary>通知時間與停用規則</summary>
+          <p>指定時間已過時，會在票券發放後立即通知。停用會取消待發通知；重新開啟只恢復仍有效且未發送的通知。</p>
+        </details>
+      </section>
       <div class="fixed-ticket-inline-actions">
         <button id="fixedTicketRunButton" class="button button-outline" type="button" disabled>立即檢查發放</button>
       </div>`;
@@ -119,6 +135,9 @@
     document.getElementById('fixedTicketExpiryMode').addEventListener('change', updateFixedExpiryUI);
     document.getElementById('fixedTicketExpiryDays').addEventListener('input', updateFixedExpiryUI);
     document.getElementById('fixedTicketExpiryDate').addEventListener('change', updateFixedExpiryUI);
+    document.getElementById('fixedTicketNotifyLine').addEventListener('change', updateFixedNotificationUI);
+    document.getElementById('fixedTicketNotifyTime').addEventListener('input', updateFixedNotificationUI);
+    document.getElementById('fixedTicketNotifyTime').addEventListener('change', updateFixedNotificationUI);
     document.getElementById('fixedTicketRunButton').addEventListener('click', runFixedNow);
 
     form.addEventListener('submit', (event) => {
@@ -372,6 +391,18 @@
     window.TicketLocationEditors?.event?.refresh();
     updateFixedScheduleUI();
     updateFixedExpiryUI();
+    updateFixedNotificationUI();
+  }
+
+  function updateFixedNotificationUI() {
+    const enabled = document.getElementById('fixedTicketNotifyLine')?.checked;
+    const time = String(document.getElementById('fixedTicketNotifyTime')?.value || '');
+    const summary = document.getElementById('fixedTicketNotifySummary');
+    if (summary) summary.textContent = !enabled
+      ? '儲存後停用通知，票券仍會依週期發放。設定的時間會保留。'
+      : time ? `儲存後於發放日 ${time}（台北時間）通知；票券須先完成發放。`
+        : '儲存後於票券發放完成時通知。';
+    document.getElementById('fixedTicketScheduleFields')?.classList.toggle('fixed-ticket-notifications-off', !enabled);
   }
 
   function updateFixedScheduleUI() {

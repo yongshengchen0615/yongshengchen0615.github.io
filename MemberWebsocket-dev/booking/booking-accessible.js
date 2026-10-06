@@ -12,8 +12,13 @@
     const toggle = el('bookingAccessibleToggle');
     toggle?.setAttribute('aria-pressed', String(enabled));
     if (toggle) toggle.textContent = enabled ? '返回一般預約模式' : '開啟無障礙模式（大字・拍收據）';
+    if (el('bookingModeTitle')) el('bookingModeTitle').textContent = enabled ? '大字・拍收據模式' : '一般預約模式';
+    if (el('bookingModeDescription')) el('bookingModeDescription').textContent = enabled
+      ? '完成服務後拍收據，交由管理員核對登記。'
+      : '自行選擇日期、服務項目與時段。';
     if (persist && memberId) {
-      try { localStorage.setItem(keyPrefix + memberId, enabled ? 'accessible' : 'general'); } catch { /* Preference is optional. */ }
+      try { localStorage.setItem(keyPrefix + memberId, enabled ? 'accessible' : 'general'); }
+      catch { if (el('bookingModePreference')) el('bookingModePreference').textContent = '此裝置無法儲存偏好；重新開啟時會使用一般模式。'; }
     }
     if (enabled) { renderTickets(window.BookingBenefits?.getItems?.() || []); void window.BookingReceipts?.refresh?.(); }
   }
@@ -64,7 +69,9 @@
     if (nextId === memberId) return;
     memberId = nextId;
     let preferred = false;
-    try { preferred = Boolean(memberId) && localStorage.getItem(keyPrefix + memberId) === 'accessible'; } catch { /* Use general mode. */ }
+    if (el('bookingModePreference')) el('bookingModePreference').textContent = '切換後會記住此會員在本裝置的偏好。';
+    try { preferred = Boolean(memberId) && localStorage.getItem(keyPrefix + memberId) === 'accessible'; }
+    catch { if (el('bookingModePreference')) el('bookingModePreference').textContent = '此裝置無法儲存偏好；重新開啟時會使用一般模式。'; }
     setMode(preferred);
   });
   window.addEventListener('booking:benefits-loaded', event => renderTickets(event.detail?.items));

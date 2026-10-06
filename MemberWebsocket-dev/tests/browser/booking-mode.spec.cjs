@@ -25,14 +25,29 @@ test.beforeAll(async()=>{
 });
 test.afterAll(async()=>{await new Promise(resolve=>server.close(resolve));});
 test.beforeEach(async({page})=>{await page.route('https://**',route=>route.abort());});
-for(const mobile of [false,true])test('booking preference survives refresh and isolates accounts '+(mobile?'mobile dark':'desktop'),async({page},info)=>{
- await page.setViewportSize(mobile?{width:390,height:844}:{width:1280,height:900});
- if(mobile)await page.addInitScript(()=>{window.addEventListener('DOMContentLoaded',()=>{document.documentElement.dataset.theme='dark';});});
+for(const variant of [
+ {name:'desktop light',width:1280,theme:'light'},
+ {name:'desktop dark',width:1280,theme:'dark'},
+ {name:'mobile light',width:320,theme:'light'},
+ {name:'mobile dark',width:390,theme:'dark'},
+])test('booking preference survives refresh and isolates accounts '+variant.name,async({page},info)=>{
+ await page.setViewportSize({width:variant.width,height:844});
+ await page.addInitScript(theme=>{window.addEventListener('DOMContentLoaded',()=>{document.documentElement.dataset.theme=theme;});},variant.theme);
  await page.goto(base+'/booking/?member=test:mode-a');
  const toggle=page.locator('#bookingAccessibleToggle');
  await expect(toggle).toHaveAttribute('aria-pressed','false');
+ await expect(page.locator('#bookingModeTitle')).toHaveText('一般預約模式');
+ const switcher=page.locator('.booking-accessible-switch');
+ async function checkModeLayout() {
+  const bounds=await switcher.evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,viewport:innerWidth,overflow:el.scrollWidth-el.clientWidth}));
+  expect(bounds.left).toBeGreaterThanOrEqual(0);expect(bounds.right).toBeLessThanOrEqual(bounds.viewport+1);expect(bounds.overflow).toBeLessThanOrEqual(1);
+  expect((await toggle.boundingBox()).height).toBeGreaterThanOrEqual(48);
+ }
+ await checkModeLayout();await info.attach('booking-general-mode',{body:await switcher.screenshot(),contentType:'image/png'});
  await page.locator('#memberNote').evaluate(el=>el.value='unsent draft');
  await toggle.click();await expect(toggle).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('#bookingModeTitle')).toHaveText('大字・拍收據模式');
+ await checkModeLayout();
  expect(await page.evaluate(()=>localStorage.getItem('booking-mode:v2:test:mode-a'))).toBe('accessible');
  await toggle.click();expect(await page.locator('#memberNote').inputValue()).toBe('unsent draft');
  await toggle.click();await page.reload();await expect(toggle).toHaveAttribute('aria-pressed','true');
