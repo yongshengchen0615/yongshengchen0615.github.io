@@ -102,7 +102,9 @@ async function runFixture(mode) {
     el('eventTicketType').value = 'fixed';
     el('eventTicketType').dispatchEvent(new w.Event('change', { bubbles: true }));
     await tick();
-    assert.match(help.textContent, /等級不適用/);
+    assert.match(help.textContent, /符合所選會員等級才會自動取得並可使用/);
+    assert.match(help.textContent, /日曆呈現依「會員階級顯示規則」/);
+    assert.match(help.textContent, /鎖定預覽不可領取或使用/);
     assert.equal(w.document.querySelectorAll('#fixedTicketCalendarEnabled').length, 1);
 
     // Unrelated form mutations must settle without rewriting unchanged help.
