@@ -33,7 +33,7 @@
   <script src="./booking-benefits.js?v=ticket-service-requirements-20261002-1-accessible-1-ticket-source-20261004-1" defer></script>
   <script src="./app.js?v=booking-member-chat-20261003-1-ticket-source-20261004-1-ticket-card-ui-20261004-1-ticket-booking-20261006-1-booking-settings-20261006-1" defer></script>
   <script src="./booking-receipt.js?v=accessible-e2e-snapshot-20261005-1ssible-1" defer></script>
-  <script src="./booking-accessible.js?v=accessible-20261003-1-booking-settings-20261006-1" defer></script>
+  <script src="./booking-accessible.js?v=accessible-20261003-1-booking-settings-20261006-1-ui-20261006-1" defer></script>
   <script src="../user-tour.js?v=participant-state-isolation-20261004-1" defer></script>
   <script src="./calendar-flow.js?v=csp-hardening-20260929-1" defer></script>
   <script src="./booking-flow.js?v=lumen-experience-20260924-1" defer></script>
@@ -53,7 +53,7 @@
   <link rel="stylesheet" href="./booking-mobile.css?v=booking-mobile-layout-20261002-3">
   <script src="../membership-milestones.js?v=lumen-experience-20260924-1" defer></script>
   <script src="../theme.js?v=m3-ui-20260929-1"></script>
-  <link rel="stylesheet" href="./booking-accessible.css?v=accessible-20261003-1">
+  <link rel="stylesheet" href="./booking-accessible.css?v=accessible-20261003-1-ui-20261006-1">
 </head>
 <body>
   <div class="app-shell">
@@ -77,9 +77,14 @@
         <div><p class="kicker">Lumen Club / Booking</p><h1>預約服務</h1></div>
         <div class="account-menu"><span id="memberName">LINE 會員</span></div>
       </header>
-      <div class="booking-accessible-switch">
-        <button id="bookingAccessibleToggle" class="button button-outline" type="button" aria-pressed="false" aria-controls="bookingAccessiblePanel">開啟無障礙模式（大字・拍收據）</button>
-      </div>
+      <section class="booking-accessible-switch" aria-label="預約模式">
+        <div class="booking-mode-description">
+          <p class="booking-mode-current"><span aria-hidden="true"></span><strong id="bookingModeTitle">一般預約模式</strong></p>
+          <p id="bookingModeDescription">自行選擇日期、服務項目與時段。</p>
+          <small id="bookingModePreference">切換後會記住此會員在本裝置的偏好。</small>
+        </div>
+        <button id="bookingAccessibleToggle" class="button button-outline" type="button" aria-pressed="false" aria-controls="bookingAccessiblePanel" aria-describedby="bookingModePreference">開啟無障礙模式（大字・拍收據）</button>
+      </section>
       <section id="bookingAccessiblePanel" class="booking-accessible-panel hidden" aria-labelledby="bookingAccessibleTitle">
         <h2 id="bookingAccessibleTitle">拍收據，讓管理員幫您登記</h2>
         <p>不必選日期或填寫預約。完成服務後，拍下收據就可以了。</p>

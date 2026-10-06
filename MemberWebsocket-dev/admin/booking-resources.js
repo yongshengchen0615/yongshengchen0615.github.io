@@ -82,29 +82,39 @@
         <div>
           <p class="kicker">Capacity & technicians</p>
           <h3 id="bookingAdminResourceSettingsTitle">技師設定</h3>
-          <p>設定單筆預約最多人數、主要技師與技師清單；技師分為已公開與已停用，停用後可隨時恢復公開。</p>
+          <p>管理預約成立條件、每筆人數上限與公開技師。</p>
         </div>
         <button id="bookingAdminResourceRefreshButton" class="button button-outline" type="button">更新設定</button>
       </div>
 
       <div class="booking-admin-resource-grid booking-admin-resource-grid-single">
-        <form id="${ids.settingsForm}" class="booking-admin-resource-box" novalidate>
-          <div>
-            <strong>預約基本設定</strong>
-            <small>會員端可選擇 1 人至設定上限；管理端可設定是否必須預約主要技師才能成立預約。</small>
+        <form id="${ids.settingsForm}" class="booking-admin-resource-box booking-admin-policy-form" novalidate>
+          <div class="booking-admin-policy-heading">
+            <strong>預約成立條件</strong>
+            <small>先決定是否限制主要技師，再設定人數與回饋對象。</small>
           </div>
-          <label>最多人數
-            <input id="${ids.maxPartySize}" type="number" min="1" max="10" step="1" value="1" required>
+          <label class="booking-admin-resource-toggle booking-admin-policy-toggle">
+            <input id="${ids.requirePrimaryTechnician}" type="checkbox" aria-describedby="bookingAdminPrimaryRequirementHint" checked>
+            <span><strong>必須預約主要技師才能成立預約</strong><small id="bookingAdminPrimaryRequirementHint">每筆預約至少一位服務對象須選擇主要技師。</small></span>
           </label>
-          <label class="booking-admin-toggle">
-            <input id="${ids.requirePrimaryTechnician}" type="checkbox" checked>
-            <span><strong>必須預約主要技師才能成立預約</strong><small>開啟時，每筆預約至少一位服務對象須選擇主要技師，否則無法成立預約；關閉時，不必預約主要技師，可選其他技師或現場安排。新建及修改依最新設定驗證，既有預約不會自動改寫。</small></span>
-          </label>
-          <label>主要技師
-            <select id="${ids.primaryTechnician}" aria-label="主要技師"></select>
-            <small>關閉上述預約限制後，仍可保留主要技師設定。主要技師的服務依現有規則計算集點與會員服務時間；其他技師或現場安排的服務不列入這項回饋。</small>
-          </label>
-          <button id="${ids.settingsSave}" class="button button-dark" type="submit">儲存預約設定</button>
+          <div class="booking-admin-policy-fields">
+            <label>主要技師
+              <select id="${ids.primaryTechnician}" aria-label="主要技師" aria-describedby="bookingAdminPrimaryRewardHint"></select>
+              <small>關閉成立條件後，仍可保留主要技師。</small>
+            </label>
+            <label>每筆預約最多人數
+              <span class="booking-admin-policy-number">
+                <input id="${ids.maxPartySize}" type="number" min="1" max="10" step="1" value="1" inputmode="numeric" aria-label="每筆預約最多人數" aria-describedby="bookingAdminPartySizeHint" required>
+                <span aria-hidden="true">人</span>
+              </span>
+              <small id="bookingAdminPartySizeHint">可設定 1–10 人。</small>
+            </label>
+          </div>
+          <p id="bookingAdminPrimaryRewardHint" class="booking-admin-policy-note"><strong>回饋計算</strong>只有主要技師的服務列入集點與會員服務時間；其他技師或現場安排不列入。</p>
+          <div class="booking-admin-policy-actions">
+            <p>儲存後套用於新建及修改預約。<br>既有預約不會自動改寫。</p>
+            <button id="${ids.settingsSave}" class="button button-dark" type="submit">儲存預約設定</button>
+          </div>
         </form>
       </div>
 
@@ -172,6 +182,7 @@
 
   function bind() {
     document.getElementById(ids.settingsForm)?.addEventListener('submit', saveSettings);
+    document.getElementById(ids.requirePrimaryTechnician)?.addEventListener('change', renderRequirementHint);
     document.getElementById(ids.technicianForm)?.addEventListener('submit', saveTechnician);
     document.getElementById(ids.technicianNew)?.addEventListener('click', openNewTechnicianModal);
     document.getElementById(ids.technicianModalClose)?.addEventListener('click', closeTechnicianModal);
@@ -257,6 +268,7 @@
       };
       document.getElementById(ids.maxPartySize).value = String(Number(state.data.settings.maxPartySize) || 1);
       document.getElementById(ids.requirePrimaryTechnician).checked = state.data.settings.requirePrimaryTechnician !== false;
+      renderRequirementHint();
       renderPrimaryOptions();
       renderTechnicians();
       if (showFeedback) showMessage('預約人數、主要技師與技師清單已更新。', 'success');
@@ -276,7 +288,7 @@
     select.replaceChildren();
     const empty = document.createElement('option');
     empty.value = '';
-    empty.textContent = active.length ? '請選擇主要技師' : '請先新增開放中的技師';
+    empty.textContent = active.length ? (document.getElementById(ids.requirePrimaryTechnician)?.checked ? '請選擇主要技師' : '不指定主要技師') : '請先新增開放中的技師';
     select.appendChild(empty);
     active.forEach((technician) => {
       const option = document.createElement('option');
@@ -286,6 +298,16 @@
     });
     select.value = active.some((item) => item.technicianId === current) ? current : '';
     select.disabled = active.length === 0;
+  }
+
+  function renderRequirementHint() {
+    const required = document.getElementById(ids.requirePrimaryTechnician)?.checked;
+    const hint = document.getElementById('bookingAdminPrimaryRequirementHint');
+    if (hint) hint.textContent = required
+      ? '每筆預約至少一位服務對象須選擇主要技師。'
+      : '不必預約主要技師，可選其他開放技師或現場安排。';
+    const select = document.getElementById(ids.primaryTechnician);
+    if (select && !select.disabled && select.options[0]) select.options[0].textContent = required ? '請選擇主要技師' : '不指定主要技師';
   }
 
   async function saveSettings(event) {
