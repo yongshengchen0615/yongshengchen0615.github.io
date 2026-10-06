@@ -6723,7 +6723,7 @@
   }
 
   async function bookingUserQaFixtureRequest(participant, action, payload = {}) {
-    let login = participant?.surfaceLogins?.booking;
+    let login = reusablePairedSession(participant, 'booking');
     if (!login?.testSessionToken) {
       login = await createPairedSession(participant?.account, 'booking');
       participant.surfaceLogins = participant.surfaceLogins || {};
