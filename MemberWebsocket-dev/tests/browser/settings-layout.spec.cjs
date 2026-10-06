@@ -39,7 +39,9 @@ for(const variant of [
   await page.locator('#bookingAdminRequirePrimaryTechnician').uncheck();
   await expect(page.locator('#bookingAdminPrimaryRequirementHint')).toContainText('不必預約主要技師');
   const save=await page.locator('#bookingAdminSavePartySizeButton').boundingBox();expect(save.height).toBeGreaterThanOrEqual(44);
-  await info.attach('primary-technician-settings',{body:await policy.screenshot(),contentType:'image/png'});
+  const policyImage=info.outputPath('primary-technician-settings.png');
+  await policy.screenshot({path:policyImage});
+  await info.attach('primary-technician-settings',{path:policyImage,contentType:'image/png'});
 
   await page.locator('#eventsTab').click();await page.locator('#newEventTicketButton').click();
   await page.locator('#eventTicketType').selectOption('fixed');
@@ -53,7 +55,9 @@ for(const variant of [
   await page.locator('.fixed-ticket-notification-details summary').click();
   await expect(page.locator('.fixed-ticket-notification-details p')).toBeVisible();
   await fitsViewport(page,notification);
-  await info.attach('fixed-ticket-notification-off',{body:await notification.screenshot(),contentType:'image/png'});
+  const notificationImage=info.outputPath('fixed-ticket-notification-off.png');
+  await notification.screenshot({path:notificationImage});
+  await info.attach('fixed-ticket-notification-off',{path:notificationImage,contentType:'image/png'});
   await page.locator('#fixedTicketNotifyLine').check();
   await expect(page.locator('#fixedTicketNotifySummary')).toContainText('09:30');
   expect(errors).toEqual([]);expect(host.sessions.get(info.testId).unexpected).toEqual([]);
