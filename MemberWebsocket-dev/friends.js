@@ -37,7 +37,7 @@
    }catch(error){if(current===generation)status(error.message||'好友資料載入失敗，請更新好友重試。');}
    finally{loading=false;if(current!==generation&&profile)void refresh();}
  }
- function ready(event){const next=event.detail?.profile;if(!next?.lineUserId)return;const changed=profile?.lineUserId!==next.lineUserId;if(changed){generation++;selectedCode='';lockedRecipient=null;el('friendsPanel')?.remove();}profile=next;install();if(!el('friendsPanel'))return;
+ function ready(event){const next=event.detail?.profile;if(!next?.lineUserId)return;if(next.membershipRequired||next.profileComplete===false){generation++;profile=null;el('friendsPanel')?.remove();return;}const changed=profile?.lineUserId!==next.lineUserId;if(changed){generation++;selectedCode='';lockedRecipient=null;el('friendsPanel')?.remove();}profile=next;install();if(!el('friendsPanel'))return;
    if(!booking){const url=new URL('./',location.href);url.hash='friend='+encodeURIComponent(profile.inviteCode||profile.memberCode||'');el('friendShareUrl').value=url.href;if(window.FriendQRCode&&profile.inviteCode){el('friendQr').hidden=false;window.FriendQRCode.toCanvas(el('friendQr'),url.href,{width:192,margin:2}).catch(()=>{el('friendQr').hidden=true;});}}
    void refresh();
  }

@@ -356,7 +356,7 @@
     hideMessage();
   }
 
-  window.FixedTicketAdmin={selected:()=>templates.find(item=>item.fixedTicketId===selectedFixedTicketId)||null,loadCopy:async(id)=>{await loadTemplates();loadFixedTicket(id);}};
+  window.FixedTicketAdmin={selected:()=>templates.find(item=>item.fixedTicketId===selectedFixedTicketId)||null,loadCopy:async(id)=>{await loadTemplates();if(!templates.some(item=>item.fixedTicketId===id))throw new Error('複本已建立，但重新載入失敗；請重試同一操作。');loadFixedTicket(id);const input=document.getElementById('fixedTicketCalendarEnabled');if(input){input.checked=false;input.dispatchEvent(new Event('change',{bubbles:true}));}}};
 
   function updateFixedUI() {
     const fixed = document.getElementById('eventTicketType')?.value === 'fixed';

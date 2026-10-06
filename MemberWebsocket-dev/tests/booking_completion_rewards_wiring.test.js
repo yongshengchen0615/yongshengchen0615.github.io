@@ -38,8 +38,11 @@ test('booking completion requires admin receipt confirmation and keeps settlemen
 test('completed LINE notifications include settlement results', () => {
   const source = read('supabase/functions/booking-line-notifications/index.ts');
   assert.match(source, /booking_completion_settlements/);
-  assert.match(source, /完成服務時間/);
-  assert.match(source, /獲得集點/);
+  assert.match(source, /completionSummary/);
+  const summary=read('supabase/functions/booking-line-notifications/completion-summary.ts');
+  assert.match(summary, /完成服務時間/);
+  assert.match(summary, /獲得集點/);
+  assert.match(source,/friend_booking_rewards/);
 });
 
 test('migration excludes store service and protects idempotency', () => {

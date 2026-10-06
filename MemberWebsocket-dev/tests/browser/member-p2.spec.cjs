@@ -34,7 +34,7 @@ for(const surface of ['booking','event'])for(const [width,theme] of [[320,'light
  await info.attach('tour-target-layout',{body:await page.screenshot(),contentType:'image/png'});
  expect(await page.evaluate(()=>p2Calls.filter(c=>/claim|redeem|create/.test(c.action)))).toHaveLength(0);
  await page.locator('#memberTourSkip').click();await page.reload();await expect(page.locator('#memberTourDialog')).toBeHidden();
- await page.locator('#openMemberTour').evaluate(b=>b.click());await expect(page.locator('#memberTourDialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.locator('#memberTourDialog')).toBeHidden();await page.reload();await expect(page.locator('#memberTourDialog')).toBeHidden();expect(await page.evaluate(()=>document.getElementById('app').inert)).toBe(false);
+ await page.locator('#openMemberTour').evaluate(b=>b.click());await expect(page.locator('#memberTourDialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.locator('#memberTourDialog')).toBeHidden();await page.reload();await expect(page.locator('#memberTourDialog')).toBeHidden();expect(await page.evaluate(()=>(document.getElementById('app')||document.querySelector('.app-shell')).inert)).toBe(false);
 });
 test('friend link needs lookup and explicit request; incoming invite accepts separately',async({page},info)=>{
  await page.goto(base+'/member/#friend=INVITEQA');await page.locator('#memberTourDismiss').click();

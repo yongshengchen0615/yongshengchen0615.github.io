@@ -463,7 +463,7 @@ begin
       insert into public.point_balances(member_id,point_card_id,stamps,updated_at) values(v_actor_member_id,v_card.id,v_reward.points,v_now)
       on conflict(member_id,point_card_id) do update set stamps=public.point_balances.stamps+excluded.stamps,updated_at=v_now;
       perform public.issue_eligible_point_tickets(v_actor_member_id,v_card.id);
-      v_delegate_details:=v_delegate_details||jsonb_build_array(jsonb_build_object('pointCardId',v_card.id,'points',v_reward.points));
+      v_delegate_details:=v_delegate_details||jsonb_build_array(jsonb_build_object('pointCardId',v_card.id,'pointCardTitle',v_card.title,'points',v_reward.points));
     end loop;
     insert into public.friend_booking_rewards(booking_id,actor_member_id,recipient_member_id,service_minutes,reward_details)
     values(p_booking_id,v_actor_member_id,v_recipient_member_id,v_service_minutes/2,v_delegate_details);
@@ -508,3 +508,8 @@ begin
 end;
 $function$
 ;
+
+create index friend_booking_rewards_actor_idx on public.friend_booking_rewards(actor_member_id);
+create index friend_booking_rewards_recipient_idx on public.friend_booking_rewards(recipient_member_id);
+create index member_friendships_requester_idx on public.member_friendships(requested_by);
+notify pgrst, 'reload schema';

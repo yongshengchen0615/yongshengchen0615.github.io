@@ -3092,7 +3092,7 @@
     const buttons = Array.from(document.querySelectorAll('button')).filter((button) => !qaPanel?.contains(button) && button.id !== LAUNCHER_ID);
     const navigationIds = new Set(['retryButton','logoutButton','joinMemberButton','refreshProfileButton','refreshTicketButton']);
     const patterns = {
-      member: /^(edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|copyMemberInviteCode|bindMemberReferral|renewTermsButton)/,
+      member: /^(refreshFriends|shareFriendLink|confirmFriendRequest|edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|copyMemberInviteCode|bindMemberReferral|renewTermsButton)/,
       points: /^(retryButton|joinMemberButton|logoutButton|pointTransferButton|pointTransferClose|pointTransferCopyOwnCode|pointTransferLookup|pointTransferSubmit)$|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)/,
       event: /^(retryButton|joinMemberButton|logoutButton|closeTicketModal|ticketModalAction|refreshTicketButton)$|ticket-button|event-history-button/,
       calendar: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|todayButton|nextMonthButton|closeCalendarDetailButton)$|calendar-day/,
@@ -3108,7 +3108,7 @@
         continue;
       }
       const pattern = patterns[surface];
-      if (/^(openMemberTour|memberTourSkip|memberTourBack|memberTourNext)$/.test(button.id) || matchesButtonCoverage(button, pattern)) mapped.push(signature);
+      if (button.closest('#friendsPanel') || /^(openMemberTour|memberTourDismiss|memberTourSkip|memberTourBack|memberTourNext)$/.test(button.id) || matchesButtonCoverage(button, pattern)) mapped.push(signature);
       else unmapped.push(signature);
     }
     const actual = { totalButtons: buttons.length, mappedFunctional: mapped.length, navigationSessionControls: navigation, qaInfrastructureControls, unmapped };
