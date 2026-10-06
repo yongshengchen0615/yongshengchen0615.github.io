@@ -97,10 +97,6 @@
 
   function createOfferCard(offer) {
     const ticket = ticketForOffer(offer); const history = Boolean(offer.history); const fixed = isFixedOffer(offer); const used = history || String(offer?.claim?.status || '') === 'used'; const reserved = !used && Boolean(offer.reservedForBooking);
-    let bookingChoice = els.ticketModal.querySelector('[data-ticket-booking-choice]');
-    if (!bookingChoice) { bookingChoice = document.createElement('div'); bookingChoice.dataset.ticketBookingChoice = ''; els.ticketModalStatus.before(bookingChoice); }
-    bookingChoice.hidden = history || !claim || reserved;
-    window.TicketBookingChoice?.mount(bookingChoice, Array.isArray(offer.eligibleBookings) ? offer.eligibleBookings : [], () => { els.ticketModalAction.disabled = !offer.canUse || !window.TicketBookingChoice.selected(bookingChoice); });
     const eligible = !history && eventTicketTierEligible(offer);
     const stateLabel = used ? '已使用' : reserved ? '已預約使用' : !eligible ? '等級不適用' : offer.claim ? '已領取' : offer.soldOut ? '額滿' : fixed ? '尚未取得' : availabilityLabel(offer.availability);
     const item = document.createElement('article'); item.className = `event-ticket${history ? ' used-ticket' : ''}`; item.style.setProperty('--ticket-accent', safeAccent(ticket.accent));

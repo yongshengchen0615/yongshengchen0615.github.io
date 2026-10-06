@@ -25,3 +25,22 @@ test('real points modal requires booking selection and retries the identical usa
  button.click();await wait();assert.match(doc.querySelector('[data-batch-message]').textContent,/QA uncertain/);assert.equal(select.disabled,false);button.click();await wait();
  const writes=calls.filter(c=>c.operation==='member.redeem');assert.equal(writes.length,2);assert.equal(writes[0].bookingId,'B');assert.equal(writes[0].requestId,writes[1].requestId);assert.deepEqual(writes[0].ticketIds,['POINT']);
  }finally{dom.window.close();}});
+
+for(const owned of [true,false])test('real event page loads '+(owned?'owned usage choices':'unclaimed offers without a booking'),async()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../../event/index.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
+ const dom=new JSDOM(html,{runScripts:'outside-only',url:'https://qa.local/event/'}),w=dom.window,calls=[];
+ try{
+  await new Promise(r=>setTimeout(r,0));w.eval(source);w.confirm=()=>true;w.MembershipProgress={render(){}};
+  w.MemberSystem={bindDialogKeyboard(){},loadConfig:async()=>({supabaseUrl:'https://fixture.supabase.co'}),signIn:async()=> 'fixture',subscribeRealtime(){},request:async(_c,_surface,_token,action,payload)=>{
+   if(action==='user.event.bootstrap')return {profile:{displayName:'QA',tierKey:'general'},usedTickets:[],usedTicketCount:0,offers:[{ticket:{eventTicketId:'EVENT',title:'QA event',ticketType:'coupon',description:'QA',usageMethod:'QA',usageInstructions:'QA'},claim:owned?{claimId:'CLAIM',status:'available',ticketDescription:'QA'}:null,eligibleBookings:owned?[booking('A'),booking('B')]:[],canUse:owned,canClaim:!owned,tierEligible:true,availability:'active'}]};
+   calls.push({action,payload});throw Object.assign(new Error('QA location retry'),{code:'LOCATION_OUT_OF_RANGE'});
+  }};
+  w.eval(fs.readFileSync(path.join(__dirname,'../../event/app.js'),'utf8'));w.dispatchEvent(new w.Event('DOMContentLoaded'));
+  const wait=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(r=>setTimeout(r,1));}throw Error(w.document.getElementById('errorMessage').textContent||'UI did not settle');};
+  const doc=w.document;await wait(()=>!!doc.querySelector('[data-event-ticket-id]'));assert.equal(doc.getElementById('errorView').classList.contains('hidden'),true);
+  doc.querySelector('[data-event-ticket-id]').click();const choice=doc.querySelector('[data-ticket-booking-choice]'),button=doc.getElementById('ticketModalAction');
+  if(owned){assert.equal(button.disabled,true);const select=choice.querySelector('select');select.value='B';select.dispatchEvent(new w.Event('change'));assert.equal(button.disabled,false);
+   button.click();await wait(()=>button.textContent==='確認使用這張票券');assert.equal(calls.length,1);assert.equal(calls[0].payload.bookingId,'B');assert.equal(calls[0].payload.claimId,'CLAIM');
+  }else{assert.equal(choice.hidden,true);assert.equal(button.disabled,false);assert.match(button.textContent,/領取/);assert.equal(calls.length,0);}
+ }finally{dom.window.close();}
+});

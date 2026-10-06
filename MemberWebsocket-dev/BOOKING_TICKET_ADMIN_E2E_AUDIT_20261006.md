@@ -29,7 +29,7 @@
 | 連續提交／關閉 | `BOOKING_ACCESSIBLE_DOUBLE_SUBMIT` | held transport 讓請求未完成；連續 submit 只送一次、aria-busy、關閉鎖定、收到成功才關窗 |
 | 選項載入失敗 | `BOOKING_ACCESSIBLE_READ_FAILURE` | 讀取失敗時審核禁用；重新開啟取得資料；關閉清除收據 URL |
 | 解除綁定原因 | `BOOKING_RELEASED_TICKET` | 管理預約及無障礙唯讀歷史都顯示解除原因 |
-| 選擇實際預約 | `ticket_booking_choice.cjs`（6 項） | 批次交集、多筆需選擇、busy 鎖定、失效選項移除、文字防注入 |
+| 選擇實際預約 | `ticket_booking_choice.cjs`（8 項） | 批次交集、多筆需選擇、busy 鎖定、失效選項移除、文字防注入 |
 | Edge 身分／資格 | `api_performance.test.js` 新案例 | authenticated identity 與選定 booking 傳入 RPC；缺 booking 不產生核銷；資格查詢失敗不回傳部分成功 |
 | 真實資料庫交易 | `booking_ticket_consistency.cjs` | 空 PGlite 載入正式函式、觸發器、約束與票券領域 partial indexes，套用本次 migration；本人／非本人、保留量、any/all、改約、失效 payload、重選、效期、點數不足、批次回滾、重送、完成略過已用券、PUBLIC 執行權限 |
 | GPS／會員收據 | `receipt-location.spec.cjs` | 假相機產生 JPEG／收據快照、定位拒絕及超範圍；核銷 payload 含 bookingId，定位重試保留 requestId |
@@ -51,9 +51,10 @@
 ## 執行狀態與界線
 
 - 本地 unit 基準：662 passed，0 failed。
-- 本地整合基準：117 passed，0 failed；最後擴充的票券交易檔另跑 10 / 10 通過（新增集點卡實際 modal 案例後，CI 合併為 122 項）。
+- 本地整合基準：117 passed，0 failed；最後擴充的票券交易檔另跑 10 / 10 通過（新增集點卡實際 modal 案例後，CI 合併為 124 項）。
 - 本地管理操作：99 個流程 + 1 suite，100 passed，0 failed；這是 DOM integration，不能稱作 Chromium 或 live Supabase E2E。
 - 追加 API 回歸：無障礙歷史與選項帶回 cancellationReason，且不曝露原始核銷 metadata。
+- 初輪原生 GPS 案例發現活動清單誤引用 claim，已移除誤放的 modal 建立程式，另補持有／未領活動票券的整頁 DOM 載入與使用測試；最終以修正後 SHA 的 CI 為準。
 - Native Playwright inventory：110 個案例；本地 Chromium 下載受環境限制未完成，原生驗證交由 PR 的 `browser-e2e` job 執行。
 - 所有 case payload 會保存到 `admin-interaction-evidence`；新增無障礙／解除原因案例另附成功終態 screenshot；失敗保留 screenshot／trace。GitHub run ID／commit SHA 及 artifact 為這輪原生證據。
 - Supabase 只做 schema／ACL／既有 run 查核，尚未部署本分支 migration／Edge，沒有操作正式會員、票券或客戶影像。
