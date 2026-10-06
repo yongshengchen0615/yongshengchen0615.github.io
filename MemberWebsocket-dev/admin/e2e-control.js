@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-05.1';
+  const VERSION = '2026-10-06.1';
   const COVERAGE_STORAGE_KEY = 'member-admin-e2e-coverage-v1';
   const COVERAGE_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
@@ -63,8 +63,14 @@
     ADMIN_AUTOMATION_HEALTH: ['member','event','booking'],
     ADMIN_BIRTHDAY_SETTINGS: ['event'], ADMIN_FIXED_TICKET_CONTROLS: ['event'],
     ADMIN_TICKET_LOCATION_CONTROLS: ['points','event'], ADMIN_TICKET_SERVICE_RULES: ['points','event','booking'],
-    ADMIN_BOOKING_ACCESSIBLE_QUEUE: ['booking'], ADMIN_BOOKING_HISTORY_TICKET_SOURCES: ['booking'],
+    ADMIN_BOOKING_ACCESSIBLE_QUEUE: ['booking'], ADMIN_BOOKING_ACCESSIBLE_REVIEW: ['booking'],
+    ADMIN_BOOKING_ACCESSIBLE_IDEMPOTENCY: ['booking'], ADMIN_BOOKING_HISTORY_TICKET_SOURCES: ['booking'],
     ADMIN_BOOKING_RESOURCE_CONTROLS: ['booking'],
+    ADMIN_BOOKING_REJECT: ['booking'], ADMIN_BOOKING_CONFIRM: ['booking'],
+    ADMIN_BOOKING_MODIFY_ITEMS: ['booking'], ADMIN_BOOKING_MODIFY_TECHNICIAN: ['booking'],
+    ADMIN_BOOKING_COMPLETE: ['booking'], ADMIN_BOOKING_CANCELLATION_KEEP: ['booking'],
+    ADMIN_BOOKING_CANCELLATION_APPROVE: ['booking'], ADMIN_BOOKING_TERMINAL_STATE: ['booking'],
+    ADMIN_BOOKING_REALTIME_SYNC: ['booking'], ADMIN_BOOKING_RISK_SCAN: ['booking'],
     ADMIN_TICKET_CRUD: ['points'], ADMIN_LOTTERY_TICKET_CRUD: ['points', 'event'],
     ADMIN_POINT_CARD_CRUD: ['points'], ADMIN_EVENT_TICKET_CRUD: ['event'],
     ADMIN_EVENT_DAILY_LIMIT_SETTINGS: ['event'],
@@ -104,8 +110,20 @@
     ADMIN_TICKET_LOCATION_CONTROLS: {module:'ticket',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
     ADMIN_TICKET_SERVICE_RULES: {module:'ticket',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
     ADMIN_BOOKING_ACCESSIBLE_QUEUE: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONTROLS']},
+    ADMIN_BOOKING_ACCESSIBLE_REVIEW: {module:'booking',phase:5,risk:'mutation',dependencies:['ADMIN_BOOKING_ACCESSIBLE_QUEUE']},
+    ADMIN_BOOKING_ACCESSIBLE_IDEMPOTENCY: {module:'booking',phase:6,risk:'mutation',dependencies:['ADMIN_BOOKING_ACCESSIBLE_REVIEW']},
     ADMIN_BOOKING_HISTORY_TICKET_SOURCES: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONTROLS']},
     ADMIN_BOOKING_RESOURCE_CONTROLS: {module:'booking',phase:3,dependencies:['ADMIN_BOOKING_CONTROLS']},
+    ADMIN_BOOKING_REJECT: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONTROLS']},
+    ADMIN_BOOKING_CONFIRM: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONTROLS']},
+    ADMIN_BOOKING_MODIFY_ITEMS: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONFIRM']},
+    ADMIN_BOOKING_MODIFY_TECHNICIAN: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONFIRM']},
+    ADMIN_BOOKING_COMPLETE: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONFIRM']},
+    ADMIN_BOOKING_CANCELLATION_KEEP: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONTROLS']},
+    ADMIN_BOOKING_CANCELLATION_APPROVE: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CANCELLATION_KEEP']},
+    ADMIN_BOOKING_TERMINAL_STATE: {module:'booking',phase:6,dependencies:['ADMIN_BOOKING_COMPLETE','ADMIN_BOOKING_CANCELLATION_APPROVE']},
+    ADMIN_BOOKING_REALTIME_SYNC: {module:'booking',phase:6,dependencies:['ADMIN_BOOKING_COMPLETE','ADMIN_BOOKING_CANCELLATION_APPROVE']},
+    ADMIN_BOOKING_RISK_SCAN: {module:'booking',phase:6,dependencies:['ADMIN_BOOKING_TERMINAL_STATE','ADMIN_BOOKING_REALTIME_SYNC']},
     ADMIN_AUTH_READY: { module: 'shared', phase: 0, required: true, risk: 'auth' },
     ADMIN_PRIMARY_NAVIGATION: { module: 'shared', phase: 1, required: true, dependencies: ['ADMIN_AUTH_READY'] },
     ADMIN_TEST_MEMBER_ROSTER: { module: 'member', phase: 2, dependencies: ['ADMIN_PRIMARY_NAVIGATION'] },
@@ -1802,7 +1820,19 @@
       caseDef('ADMIN_TICKET_LOCATION_CONTROLS', '票券 GPS 地點編輯器契約', 'Configuration', adminTicketLocationControlsCase),
       caseDef('ADMIN_TICKET_SERVICE_RULES', '票券服務項目與 any／all 編輯器', 'Human E2E', adminTicketServiceRulesCase),
       caseDef('ADMIN_BOOKING_ACCESSIBLE_QUEUE', '無障礙：待確認／已完成／全部篩選', 'Human E2E', adminBookingAccessibleQueueCase),
+      caseDef('ADMIN_BOOKING_ACCESSIBLE_REVIEW', '無障礙：真人審核服務／票券／點數並完成結算', 'Booking / Accessible Review', adminBookingAccessibleReviewCase),
+      caseDef('ADMIN_BOOKING_ACCESSIBLE_IDEMPOTENCY', '無障礙：重送審核不得重複集點或核銷', 'Booking / Accessible Idempotency', adminBookingAccessibleIdempotencyCase),
       caseDef('ADMIN_BOOKING_HISTORY_TICKET_SOURCES', '管理端預約：票券來源卡片', 'Booking / History', adminBookingHistoryTicketSourcesCase),
+      caseDef('ADMIN_BOOKING_REJECT', '預約：管理端不通過固定節點', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('REJECT', '不通過')),
+      caseDef('ADMIN_BOOKING_CONFIRM', '預約：管理端確認預約固定節點', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('CONFIRM', '確認預約')),
+      caseDef('ADMIN_BOOKING_MODIFY_ITEMS', '預約：管理端修改項目固定節點', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('MODIFY', '修改此位項目')),
+      caseDef('ADMIN_BOOKING_MODIFY_TECHNICIAN', '預約：管理端修改技師固定節點', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('MODIFY_TECHNICIAN', '修改此位技師')),
+      caseDef('ADMIN_BOOKING_COMPLETE', '預約：管理端完成預約固定節點', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('COMPLETE', '完成預約')),
+      caseDef('ADMIN_BOOKING_CANCELLATION_KEEP', '預約：管理端保留取消申請固定節點', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('KEEP_CANCELLATION', '保留預約')),
+      caseDef('ADMIN_BOOKING_CANCELLATION_APPROVE', '預約：管理端確認取消固定節點', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('CANCEL', '確認取消')),
+      caseDef('ADMIN_BOOKING_TERMINAL_STATE', '預約：管理端／會員端終態一致', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('TERMINAL', '兩端終態')),
+      caseDef('ADMIN_BOOKING_REALTIME_SYNC', '預約：管理端動作 Realtime 同步固定節點', 'Booking / Realtime Evidence', adminBookingRealtimeEvidenceCase),
+      caseDef('ADMIN_BOOKING_RISK_SCAN', '預約：同步／競態／越權風險掃描固定節點', 'Booking / Risk Evidence', adminBookingRiskEvidenceCase),
       caseDef('ADMIN_BOOKING_RESOURCE_CONTROLS', '技師：啟用／停用列表與新增取消', 'Human E2E', adminBookingResourceControlsCase),
       caseDef('ADMIN_TEST_MEMBER_PROFILE_EDIT', '真人操作：修改並還原測試會員資料', 'Human E2E', adminProfileMutationCase),
       caseDef('ADMIN_MEMBERSHIP_TERMS', '會員條款：管理端版本清單與啟用版本契約', 'Legal E2E', adminMembershipTermsCase),
@@ -6592,6 +6622,429 @@
     return actual.event && actual.reward
       ? pass('活動券及集點卡節點均可設定具體服務項目與 any／all。', {event:true,reward:true}, actual)
       : fail('票券服務項目或 any／all 編輯器未完整掛載。', {event:true,reward:true}, actual);
+  }
+
+
+  function pairedBookingEvidenceRows(suffix) {
+    const normalized = String(suffix || '').replace(/[^A-Z0-9_]/g, '');
+    if (!normalized) return [];
+    const pattern = new RegExp('^PAIRED_(\\d+)_ADMIN_BOOKING_' + normalized + '$');
+    return state.results.map((row) => {
+      const match = String(row?.key || '').match(pattern);
+      return match ? { participantIndex:Number(match[1]), row } : null;
+    }).filter(Boolean);
+  }
+
+  function expectedBookingParticipantIndexes() {
+    return state.participants.map((participant) => Number(participant?.index || 0)).filter((value) => value > 0);
+  }
+
+  async function adminBookingPairedOperationEvidenceCase(suffix, label) {
+    const expectedParticipants = expectedBookingParticipantIndexes();
+    const evidence = pairedBookingEvidenceRows(suffix);
+    const byParticipant = new Map(evidence.map((item) => [item.participantIndex, item.row]));
+    const missingParticipants = expectedParticipants.filter((index) => !byParticipant.has(index));
+    const failed = evidence.filter((item) => item.row?.status !== 'passed').map((item) => ({
+      participantIndex:item.participantIndex,
+      status:String(item.row?.status || 'missing'),
+      failureCode:String(item.row?.failureCode || item.row?.trace?.diagnosis?.code || '')
+    }));
+    const actual = {
+      operation:String(suffix || ''),
+      expectedParticipants,
+      observedParticipants:evidence.map((item) => item.participantIndex),
+      missingParticipants,
+      failed
+    };
+    const ok = expectedParticipants.length > 0 && missingParticipants.length === 0 && failed.length === 0;
+    return ok
+      ? pass('既有 paired 真人管理端「' + label + '」動作已提升為固定功能節點，所有測試會員皆有通過證據。', {
+          participantEvidenceComplete:true
+        }, actual)
+      : fail('「' + label + '」缺少 paired 管理端真人操作證據或至少一位測試會員失敗。', {
+          participantEvidenceComplete:true
+        }, actual);
+  }
+
+  async function adminBookingRealtimeEvidenceCase() {
+    const suffixes = ['REJECT','KEEP_CANCELLATION','CONFIRM','MODIFY','MODIFY_TECHNICIAN','COMPLETE','CANCEL'];
+    const expectedParticipants = expectedBookingParticipantIndexes();
+    const checks = [];
+    for (const suffix of suffixes) {
+      const rows = pairedBookingEvidenceRows(suffix);
+      const byParticipant = new Map(rows.map((item) => [item.participantIndex, item.row]));
+      for (const participantIndex of expectedParticipants) {
+        const row = byParticipant.get(participantIndex);
+        checks.push({
+          participantIndex,
+          operation:suffix,
+          status:String(row?.status || 'missing'),
+          realtime:Boolean(row?.actual?.realtimeSync?.ok)
+        });
+      }
+    }
+    const failed = checks.filter((item) => item.status !== 'passed' || item.realtime !== true);
+    return expectedParticipants.length > 0 && failed.length === 0
+      ? pass('一般預約所有管理端狀態變更均保留會員端 Realtime 成功證據。', {
+          everyAdminMutationRealtime:true
+        }, { checks:checks.length, failed })
+      : fail('至少一個一般預約管理端動作缺少 Realtime 成功證據。', {
+          everyAdminMutationRealtime:true
+        }, { checks, failed });
+  }
+
+  async function adminBookingRiskEvidenceCase() {
+    const expectedParticipants = expectedBookingParticipantIndexes();
+    const rows = pairedBookingEvidenceRows('RISK_SCAN');
+    const byParticipant = new Map(rows.map((item) => [item.participantIndex, item.row]));
+    const checks = expectedParticipants.map((participantIndex) => {
+      const row = byParticipant.get(participantIndex);
+      return {
+        participantIndex,
+        status:String(row?.status || 'missing'),
+        risksDetected:Array.isArray(row?.actual?.risksDetected) ? row.actual.risksDetected : ['missing-risk-scan']
+      };
+    });
+    const failed = checks.filter((item) => item.status !== 'passed' || item.risksDetected.length > 0);
+    return expectedParticipants.length > 0 && failed.length === 0
+      ? pass('一般預約 paired 風險掃描沒有發現跨會員、Realtime、取消競態或終態殘留。', {
+          risksDetected:0
+        }, { checks })
+      : fail('一般預約 paired 風險掃描存在失敗或缺少證據。', {
+          risksDetected:0
+        }, { checks, failed });
+  }
+
+  function participantForAccessibleRecord(record) {
+    const memberCode = String(record?.memberCode || '');
+    return state.participants.find((participant) =>
+      memberCode && String(participant?.account?.memberCode || '') === memberCode
+    ) || null;
+  }
+
+  async function bookingUserQaFixtureRequest(participant, action, payload = {}) {
+    let login = reusablePairedSession(participant, 'booking');
+    if (!login?.testSessionToken) {
+      login = await createPairedSession(participant?.account, 'booking');
+      participant.surfaceLogins = participant.surfaceLogins || {};
+      participant.surfaceLogins.booking = login;
+    }
+    const data = await postFunction('user-test-api', {
+      ...payload,
+      action,
+      surface:'booking',
+      idToken:'',
+      testSessionToken:String(login.testSessionToken || '')
+    });
+    return { data, login };
+  }
+
+  async function adminBookingReceiptRequest(action, payload = {}) {
+    const session = await adminSession();
+    return postFunction('booking-receipt-api', {
+      ...payload,
+      action,
+      clientType:'admin',
+      idToken:session.idToken
+    });
+  }
+
+  async function waitAccessibleReceiptRecord(receiptId, predicate, timeoutMs = 18000) {
+    const deadline = Date.now() + Math.max(1000, Number(timeoutMs) || 18000);
+    let last = null;
+    while (Date.now() < deadline) {
+      const data = await adminBookingReceiptRequest('admin.booking.receipt.list');
+      last = (Array.isArray(data?.accessibleRecords) ? data.accessibleRecords : [])
+        .find((record) => String(record?.receiptId || '') === String(receiptId || '')) || null;
+      if (last && (!predicate || predicate(last))) return last;
+      await sleep(650);
+    }
+    return last;
+  }
+
+  function accessibleSettlementSnapshot(record) {
+    return {
+      receiptId:String(record?.receiptId || ''),
+      bookingId:String(record?.bookingId || ''),
+      reviewStatus:String(record?.reviewStatus || ''),
+      serviceMinutes:Math.max(0, Number(record?.serviceMinutes || 0)),
+      points:Math.max(0, Number(record?.points || 0)),
+      services:(Array.isArray(record?.services) ? record.services : []).map((item) => ({
+        serviceId:String(item?.serviceId || ''),
+        title:String(item?.title || ''),
+        minutes:Math.max(0, Number(item?.minutes || 0)),
+        quantity:Math.max(0, Number(item?.quantity || 0))
+      })),
+      benefits:(Array.isArray(record?.benefits) ? record.benefits : []).map((item) => ({
+        kind:String(item?.kind || ''),
+        title:String(item?.title || ''),
+        status:String(item?.status || '')
+      }))
+    };
+  }
+
+  async function adminBookingAccessibleReviewCase() {
+    await openAdminBookingQueue('pending');
+    const mode = await waitFor(() => document.getElementById('bookingAdminAccessibleMode'), 5000);
+    await adminHumanClick(mode, '無障礙審核模式');
+
+    const initial = await adminBookingReceiptRequest('admin.booking.receipt.list');
+    const runStartedMs = new Date(state.runStartedAt || 0).getTime();
+    const currentRunFloor = Number.isFinite(runStartedMs) ? runStartedMs - 5 * 60 * 1000 : 0;
+    const pending = (Array.isArray(initial?.accessibleRecords) ? initial.accessibleRecords : []).find((record) => {
+      const createdAt = new Date(record?.createdAt || 0).getTime();
+      return record?.reviewStatus === 'pending'
+        && participantForAccessibleRecord(record)
+        && (!currentRunFloor || (Number.isFinite(createdAt) && createdAt >= currentRunFloor));
+    });
+    if (!pending) {
+      return fail('本輪測試會員沒有留下可供管理端審核的無障礙收據。', {
+        currentRunPendingAccessibleReceipt:true
+      }, {
+        pendingCount:(initial?.accessibleRecords || []).filter((record) => record?.reviewStatus === 'pending').length
+      });
+    }
+
+    const participant = participantForAccessibleRecord(pending);
+    if (!participant) {
+      return fail('無障礙收據無法對應本輪測試會員。', {
+        ownedByCurrentTestParticipant:true
+      }, { memberCode:String(pending.memberCode || '') });
+    }
+
+    const fixtureResult = await bookingUserQaFixtureRequest(participant, 'user.qa.fixture.prepare');
+    const fixture = fixtureResult.data || {};
+    if (!fixture.ticketId || !fixture.fixtureTag) {
+      return fail('無法建立無障礙審核專用集點卡票券 Fixture。', {
+        pointTicketFixture:true
+      }, { fixtureReady:false });
+    }
+    state.accessibleReviewEvidence = {
+      receiptId:String(pending.receiptId || ''),
+      participantIndex:Number(participant.index || 0),
+      registerPayload:null,
+      fixtureTag:String(fixture.fixtureTag || ''),
+      testSessionToken:String(fixtureResult.login?.testSessionToken || ''),
+      beforeReplay:null
+    };
+
+    const refreshed = await adminBookingReceiptRequest('admin.booking.receipt.list');
+    window.dispatchEvent(new CustomEvent('admin:accessible-receipts-updated', {
+      detail:{
+        submissions:Array.isArray(refreshed?.submissions) ? refreshed.submissions : [],
+        records:Array.isArray(refreshed?.accessibleRecords) ? refreshed.accessibleRecords : []
+      }
+    }));
+    document.querySelector('[data-accessible-filter="pending"]')?.click();
+
+    const selector = '#accessibleAdminQueueList [data-receipt-id="' + CSS.escape(String(pending.receiptId || '')) + '"]';
+    const card = await waitFor(() => document.querySelector(selector), 5000);
+    if (!card) throw new Error('管理端無障礙待確認清單找不到本輪收據。');
+    await adminHumanClick(card.querySelector('.accessible-admin-review-button'), '開始審核');
+
+    const modal = await waitFor(() => {
+      const node = document.getElementById('accessibleAdminModal');
+      return node && !node.classList.contains('hidden') && node.dataset.receiptId === String(pending.receiptId || '') ? node : null;
+    }, 7000);
+    if (!modal) throw new Error('無障礙審核視窗未開啟。');
+    if (!await waitFor(() => {
+      const submit = document.getElementById('accessibleAdminSubmit');
+      return submit && !submit.disabled && document.querySelectorAll('#accessibleAdminItems [data-service-check]').length ? submit : null;
+    }, 10000)) {
+      throw new Error('無障礙審核服務選項尚未載入完成。');
+    }
+
+    const serviceRows = Array.from(document.querySelectorAll('#accessibleAdminItems .accessible-admin-item'));
+    const rewardRow = serviceRows.find((row) => /每\s+\d+\s+分鐘集\s+1\s+點/.test(String(row.textContent || '')));
+    if (!rewardRow) {
+      return fail('目前服務資料沒有可驗證自動集點的服務類型，無法宣告無障礙點數結算 E2E 完整。', {
+        rewardServiceAvailable:true
+      }, { serviceRows:serviceRows.length });
+    }
+    const rewardMatch = String(rewardRow.textContent || '').match(/每\s+(\d+)\s+分鐘集\s+1\s+點/);
+    const rewardMinutes = Math.max(1, Number(rewardMatch?.[1] || 0));
+    if (!Number.isInteger(rewardMinutes) || rewardMinutes > 720) {
+      throw new Error('無障礙審核的自動集點分鐘規則超出可測試範圍。');
+    }
+    const serviceCheck = rewardRow.querySelector('[data-service-check]');
+    await adminHumanClick(serviceCheck, '實際完成服務');
+    await adminHumanTextInput(rewardRow.querySelector('[data-minutes]'), String(rewardMinutes), '實際服務分鐘');
+    await adminHumanTextInput(rewardRow.querySelector('[data-quantity]'), '1', '服務次數');
+
+    const yesterday = new Intl.DateTimeFormat('en-CA', {
+      timeZone:'Asia/Taipei', year:'numeric', month:'2-digit', day:'2-digit'
+    }).format(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    if (!setField('accessibleAdminDate', yesterday) || !setField('accessibleAdminTime', '09:00')) {
+      throw new Error('無障礙審核日期或時間欄位未載入。');
+    }
+    await adminHumanPause(80, 180);
+
+    const ticketSelector = '#accessibleAdminBenefits [data-benefit-check][data-kind="points"][data-selection-id="' +
+      CSS.escape(String(fixture.ticketId || '')) + '"]';
+    const ticket = await waitFor(() => {
+      const node = document.querySelector(ticketSelector);
+      return node && !node.disabled ? node : null;
+    }, 7000);
+    if (!ticket) {
+      return fail('無障礙審核專用集點卡票券沒有出現在可審核清單，或被錯誤禁用。', {
+        pointTicketSelectable:true
+      }, { ticketId:String(fixture.ticketId || '') });
+    }
+    await adminHumanClick(ticket, '集點卡票券');
+    if (!ticket.checked) throw new Error('集點卡票券真人勾選後未保持選取。');
+
+    const note = 'QA ACCESSIBLE REVIEW ' + qaCrudStamp();
+    await adminHumanTextInput(document.getElementById('accessibleAdminNote'), note, '無障礙審核備註');
+
+    const registerPayload = {
+      receiptId:String(pending.receiptId || ''),
+      expectedUpdatedAt:String(pending.updatedAt || ''),
+      bookingId:'',
+      bookingDate:String(document.getElementById('accessibleAdminDate')?.value || ''),
+      startTime:String(document.getElementById('accessibleAdminTime')?.value || ''),
+      items:[{
+        serviceId:String(rewardRow.dataset.serviceId || ''),
+        minutes:Number(rewardRow.querySelector('[data-minutes]')?.value || 0),
+        quantity:Number(rewardRow.querySelector('[data-quantity]')?.value || 0)
+      }],
+      benefits:[{kind:'points',id:String(fixture.ticketId || '')}],
+      adminNote:note
+    };
+
+    const pointSummaryBefore = String(document.getElementById('accessibleAdminPointSummary')?.textContent || '').trim();
+    await adminHumanClick(document.getElementById('accessibleAdminSubmit'), '確認並完成審核');
+    const completed = await waitAccessibleReceiptRecord(
+      pending.receiptId,
+      (record) => record?.reviewStatus === 'completed' && Boolean(record?.bookingId),
+      22000
+    );
+    const modalClosed = Boolean(await waitFor(() => document.getElementById('accessibleAdminModal')?.classList.contains('hidden'), 5000));
+    const completedTicket = (Array.isArray(completed?.benefits) ? completed.benefits : []).find((benefit) =>
+      benefit?.kind === 'points'
+      && String(benefit?.title || '').includes(String(fixture.ticketTitle || 'QA 預約自動核銷票券'))
+      && ['redeemed','applied'].includes(String(benefit?.status || ''))
+    );
+    const completedService = (Array.isArray(completed?.services) ? completed.services : []).find((service) =>
+      String(service?.serviceId || '') === String(rewardRow.dataset.serviceId || '')
+    );
+    const actual = {
+      receiptId:String(pending.receiptId || ''),
+      participantIndex:Number(participant.index || 0),
+      modalClosed,
+      reviewStatus:String(completed?.reviewStatus || ''),
+      bookingId:String(completed?.bookingId || ''),
+      serviceMinutes:Number(completed?.serviceMinutes || 0),
+      rewardPoints:Number(completed?.points || 0),
+      serviceRecorded:Boolean(completedService),
+      ticketRedeemed:Boolean(completedTicket),
+      pointBudgetRendered:/本次扣除|審核後剩餘/.test(pointSummaryBefore),
+      completedFilterSelected:document.querySelector('[data-accessible-filter="completed"]')?.getAttribute('aria-selected') === 'true'
+    };
+    const ok = actual.modalClosed
+      && actual.reviewStatus === 'completed'
+      && Boolean(actual.bookingId)
+      && actual.serviceMinutes >= rewardMinutes
+      && actual.rewardPoints >= 1
+      && actual.serviceRecorded
+      && actual.ticketRedeemed
+      && actual.pointBudgetRendered
+      && actual.completedFilterSelected;
+
+    state.accessibleReviewEvidence = {
+      ...(state.accessibleReviewEvidence || {}),
+      receiptId:String(pending.receiptId || ''),
+      participantIndex:Number(participant.index || 0),
+      registerPayload,
+      fixtureTag:String(fixture.fixtureTag || ''),
+      testSessionToken:String(fixtureResult.login?.testSessionToken || ''),
+      beforeReplay:accessibleSettlementSnapshot(completed)
+    };
+
+    return ok
+      ? pass('已像真人完成無障礙審核：收據、實際服務、集點卡票券、點數與完成狀態均由正式流程結算。', {
+          reviewStatus:'completed',
+          rewardPointsAtLeast:1,
+          ticketRedeemed:true,
+          completedUi:true
+        }, actual)
+      : fail('無障礙真人審核完成後，服務、票券、點數或 UI 終態至少一項不一致。', {
+          reviewStatus:'completed',
+          rewardPointsAtLeast:1,
+          ticketRedeemed:true,
+          completedUi:true
+        }, actual);
+  }
+
+  async function adminBookingAccessibleIdempotencyCase() {
+    const evidence = state.accessibleReviewEvidence;
+    if (!evidence?.receiptId || !evidence?.registerPayload) {
+      let fixtureCleanup = false;
+      let cleanupError = '';
+      if (evidence?.fixtureTag && evidence?.testSessionToken) {
+        try {
+          const cleanup = await postFunction('user-test-api', {
+            action:'user.qa.fixture.cleanup',
+            surface:'booking',
+            idToken:'',
+            testSessionToken:evidence.testSessionToken,
+            fixtureTag:evidence.fixtureTag
+          });
+          fixtureCleanup = cleanup?.cleaned === true;
+        } catch (error) {
+          cleanupError = String(error?.code || error?.message || 'cleanup-failed').slice(0, 160);
+        }
+      }
+      state.accessibleReviewEvidence = null;
+      return fail('缺少前一個無障礙審核案例的完成證據，已嘗試清理其 QA Fixture，無法驗證重送冪等。', {
+        completedAccessibleReviewEvidence:true,
+        fixtureCleanup:true
+      }, { evidenceReady:false, fixtureCleanup, cleanupError });
+    }
+
+    const before = await waitAccessibleReceiptRecord(evidence.receiptId, (record) => record?.reviewStatus === 'completed', 5000);
+    const replay = await adminBookingReceiptRequest('admin.booking.receipt.register', evidence.registerPayload);
+    const after = await waitAccessibleReceiptRecord(evidence.receiptId, (record) => record?.reviewStatus === 'completed', 5000);
+    const beforeSnapshot = accessibleSettlementSnapshot(before);
+    const afterSnapshot = accessibleSettlementSnapshot(after);
+    const settlementUnchanged = JSON.stringify(beforeSnapshot) === JSON.stringify(afterSnapshot);
+    let fixtureCleanup = false;
+    let cleanupError = '';
+    if (evidence.fixtureTag && evidence.testSessionToken) {
+      try {
+        const cleanup = await postFunction('user-test-api', {
+          action:'user.qa.fixture.cleanup',
+          surface:'booking',
+          idToken:'',
+          testSessionToken:evidence.testSessionToken,
+          fixtureTag:evidence.fixtureTag
+        });
+        fixtureCleanup = cleanup?.cleaned === true;
+      } catch (error) {
+        cleanupError = String(error?.code || error?.message || 'cleanup-failed').slice(0, 160);
+      }
+    }
+    const actual = {
+      alreadyApplied:replay?.alreadyApplied === true,
+      sameBookingId:String(replay?.bookingId || '') === String(beforeSnapshot.bookingId || ''),
+      settlementUnchanged,
+      before:beforeSnapshot,
+      after:afterSnapshot,
+      fixtureCleanup,
+      cleanupError
+    };
+    const ok = actual.alreadyApplied && actual.sameBookingId && actual.settlementUnchanged && actual.fixtureCleanup;
+    state.accessibleReviewEvidence = null;
+    return ok
+      ? pass('同一張無障礙收據重送正式 register API 只回傳既有結算，不會重複服務時間、集點或票券核銷。', {
+          alreadyApplied:true,
+          settlementUnchanged:true,
+          fixtureCleanup:true
+        }, actual)
+      : fail('無障礙審核重送後發現重複結算風險，或測試 Fixture 未清理完成。', {
+          alreadyApplied:true,
+          settlementUnchanged:true,
+          fixtureCleanup:true
+        }, actual);
   }
 
   async function adminBookingAccessibleQueueCase() {

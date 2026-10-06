@@ -167,6 +167,9 @@
       const statusInfo = recordStatus(receipt);
       const card = document.createElement('article');
       card.className = `accessible-admin-queue-card accessible-admin-record-card status-${statusInfo.className}`;
+      card.dataset.receiptId = String(receipt.receiptId || '');
+      card.dataset.memberCode = String(receipt.memberCode || '');
+      card.dataset.reviewStatus = String(receipt.reviewStatus || 'pending');
       const info = document.createElement('div'); info.className = 'accessible-admin-queue-info';
       const heading = document.createElement('div'); heading.className = 'accessible-admin-queue-member';
       const name = document.createElement('strong'); name.textContent = receipt.memberName || '會員';
@@ -580,7 +583,12 @@
   function close() {
     if (state.busy) return;
     state.generation++;
-    el('accessibleAdminModal')?.classList.add('hidden');
+    const modal = el('accessibleAdminModal');
+    modal?.classList.add('hidden');
+    if (modal) {
+      delete modal.dataset.receiptId;
+      delete modal.dataset.memberCode;
+    }
     el('accessibleAdminImage')?.removeAttribute('src');
     state.selected = null;
   }
@@ -589,6 +597,8 @@
     const modal = ensureModal();
     el('accessibleAdminForm').reset(); el('accessibleAdminNewFields').disabled = false;
     state.selected = receipt; state.options = null;
+    modal.dataset.receiptId = String(receipt.receiptId || '');
+    modal.dataset.memberCode = String(receipt.memberCode || '');
     const generation = ++state.generation;
     modal.classList.remove('hidden');
     el('accessibleAdminMember').textContent = `${receipt.memberName || '會員'} · ${receipt.memberCode || '無會員編號'}`;
