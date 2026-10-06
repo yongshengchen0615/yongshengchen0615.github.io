@@ -80,3 +80,17 @@ test('bound accessible receipt replay skips consumed benefit validation and reac
   assert.deepEqual(Array.from(result),[]);
   assert.match(selected,/status/);
 });
+
+
+test('accessible history preserves released ticket reason without exposing raw redemption metadata',async()=>{
+  const code=source.slice(source.indexOf('async function adminList('),source.indexOf('async function adminUrl('));
+  const context=vm.createContext({ApiError:class extends Error {}});vm.runInContext(stripTypeScriptTypes(code),context);
+  const row={receipt_id:'QA-RECEIPT',booking_id:body.bookingId,status:'bound',bookings:{id:body.bookingId,status:'completed',booking_benefit_selections:[
+    {benefit_kind:'points',title_snapshot:'QA coupon',status:'cancelled',result:{cancellationReason:'booking_services_changed',privateMetadata:'not-public'}},
+    {benefit_kind:'event',title_snapshot:'QA used',status:'redeemed',result:null},
+  ]}};
+  let call=0;const q={select(){return q;},eq(){return q;},in(){return q;},order(){return q;},limit:async()=>({data:call++?[row]:[],error:null})};
+  const result=await context.adminList({from:()=>q});const benefits=result.accessibleRecords[0].benefits;
+  assert.equal(benefits[0].cancellationReason,'booking_services_changed');assert.equal(benefits[1].cancellationReason,'');
+  assert.equal(benefits[0].title,'QA coupon');assert.equal(Object.hasOwn(benefits[0],'result'),false);assert.equal(JSON.stringify(result).includes('privateMetadata'),false);
+});

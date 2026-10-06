@@ -71,6 +71,8 @@ jobs:
             MemberWebsocket-dev/tests/integration/member_terms_startup.cjs \
             MemberWebsocket-dev/tests/integration/transaction_lifecycle.cjs \
             MemberWebsocket-dev/tests/integration/receipt_integrity_sql.cjs \
+            MemberWebsocket-dev/tests/integration/booking_ticket_consistency.cjs \
+            MemberWebsocket-dev/tests/integration/ticket_booking_choice.cjs \
             MemberWebsocket-dev/tests/integration/booking_accessible.cjs \
             MemberWebsocket-dev/tests/integration/test_account_phone_sql.cjs \
             MemberWebsocket-dev/tests/integration/e2e_feature_nodes.cjs \

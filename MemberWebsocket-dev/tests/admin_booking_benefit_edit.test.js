@@ -44,5 +44,5 @@ test('admin booking UI can add, remove and replace already-owned reservation tic
 
 test('admin booking ticket editor assets are cache-busted', () => {
   assert.match(read('admin/index.html'), /booking-panel\.js\?v=booking-operations-split-20261003-1-ticket-source-20261004-1-ticket-card-ui-20261004-1/);
-  assert.match(read('admin/booking-panel.js'), /booking-panel-core\.js', 'booking-operations-split-20261003-1-ticket-source-20261004-1-ticket-card-ui-20261004-1'/);
+  assert.match(read('admin/booking-panel.js'), /booking-panel-core\.js', 'booking-operations-split-20261003-1-ticket-source-20261004-1-ticket-card-ui-20261004-1-ticket-booking-20261006-1'/);
 });

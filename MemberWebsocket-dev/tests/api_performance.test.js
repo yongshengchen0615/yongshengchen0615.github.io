@@ -25,6 +25,8 @@ function api() {
     requireActiveAdminContract, verifyLineIdTokenContract,
     hasCurrentTermsConsent: async () => true,
   });
+  const usage=fs.readFileSync(path.join(__dirname,'../supabase/functions/_shared/booking-ticket-usage.ts'),'utf8').replace(/^export /gm,'');
+  vm.runInContext(stripTypeScriptTypes(usage),context);
   vm.runInContext(stripTypeScriptTypes(source), context); return context;
 }
 const member = { id: 'member-A', line_user_id: 'line-A', display_name: 'Fixture', membership_status: 'active', status: 'active', is_test_account: false };
@@ -65,6 +67,7 @@ function database({ rows = {}, errorTable, hold = () => false } = {}) {
     return q;
   }, rpc(name, args) {
     calls.push({ table: name, args });
+    if (name === 'member_ticket_booking_options') return Promise.resolve({data: data.bookingOptions || {points:{},event:{}}, error:name===errorTable?{message:'fixture database failure'}:null});
     if (name === 'member_service_minute_totals') {
       const totals = args.p_member_ids.map(member_id => ({ member_id, total_minutes: (data.service_time_entries || []).filter(row => row.member_id === member_id).reduce((sum, row) => sum + row.minutes, 0) }));
       const result = { data: totals, error: name === errorTable ? { message: 'fixture database failure' } : null };
@@ -139,7 +142,7 @@ test('no active events still returns historical tickets and skips active-claim q
   assert.equal(result.offers.length, 0); assert.equal(result.usedTicketCount, 1);
   assert.equal(db.calls.filter(c => c.table === 'event_ticket_claims').length, 1);
 });
-for (const [fn, table] of [['profileFor', 'membership_tier_settings'], ['profileFor', 'member_service_minute_totals'], ['pointBootstrap', 'point_balances'], ['pointBootstrap', 'point_tickets'], ['eventBootstrap', 'event_tickets'], ['eventBootstrap', 'event_ticket_claims']]) {
+for (const [fn, table] of [['profileFor', 'membership_tier_settings'], ['profileFor', 'member_service_minute_totals'], ['pointBootstrap', 'point_balances'], ['pointBootstrap', 'point_tickets'], ['eventBootstrap', 'event_tickets'], ['eventBootstrap', 'event_ticket_claims'], ['pointBootstrap', 'member_ticket_booking_options'], ['eventBootstrap', 'member_ticket_booking_options']]) {
   test(`${fn}: ${table} failure rejects instead of returning partial success`, async () => {
     await assert.rejects(api()[fn](database({ errorTable: table }), member), { code: 'DATABASE_ERROR' });
   });
@@ -153,4 +156,19 @@ test('unauthorized admin and disabled member cannot start optimized bootstrap qu
   await assert.rejects(context.handleAction(memberDb, identity, 'user.pointcard.bootstrap', {}), { code: 'MEMBER_DISABLED' });
   // ensureMember also updates last_login_at before checking active membership.
   assert.ok(memberDb.calls.every(c => c.table === 'members'));
+});
+
+test('ticket eligibility options stay scoped to the authenticated member',async()=>{
+  const db=database({rows:{bookingOptions:{points:{AVAILABLE:[{bookingId:'qa-booking'}]},event:{}}}});const result=await api().pointBootstrap(db,member);
+  assert.equal(result.cardDetails.CARD.tickets[0].eligibleBookings[0].bookingId,'qa-booking');
+  assert.equal(db.calls.find(c=>c.table==='member_ticket_booking_options').args.p_member_id,member.id);
+});
+for(const [action,refField,ref,kind]of [['user.pointcard.ticket.redeem','ticketId','AVAILABLE','points'],['user.event.ticket.redeem','claimId','OWNED','event']])test(action+' uses authenticated identity and selected booking, rejecting missing booking before mutation',async()=>{
+  const context=api(),db=database({rows:{event_ticket_claims:[{member_id:member.id,event_ticket_id:event.id,claim_id:'OWNED',status:'claimed',event_tickets:event}]}});
+  await assert.rejects(context.handleAction(db,identity,action,{[refField]:ref}),{code:'BOOKING_TICKET_CONFIRMATION_REQUIRED'});
+  assert.equal(db.calls.some(c=>c.table==='redeem_member_tickets_for_booking_request'),false);
+  const bookingId='10000000-0000-4000-8000-000000000001';
+  await context.handleAction(db,identity,action,{[refField]:ref,bookingId,requestId:'QA-USE-123456',lineUserId:'forged-owner',memberId:'forged-member'});
+  const args=db.calls.find(c=>c.table==='redeem_member_tickets_for_booking_request').args;
+  assert.equal(args.p_line_user_id,identity.lineUserId);assert.equal(args.p_booking_id,bookingId);assert.equal(args.p_kind,kind);assert.equal(args.p_request_id,'QA-USE-123456');assert.deepEqual(Array.from(args.p_refs),[ref]);
 });

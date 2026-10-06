@@ -1,3 +1,4 @@
+import { bookingTicketUsageError, ticketBookingId } from "../_shared/booking-ticket-usage.ts";
 import { loadBookingBenefits } from "../_shared/booking-benefits.ts";
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
@@ -114,6 +115,8 @@ function errorResponse(origin: string | null, error: unknown): Response {
 }
 
 function mapDatabaseError(error: unknown): ApiError {
+  const bookingError = bookingTicketUsageError(error, (status, code, message) => new ApiError(status, code, message));
+  if (bookingError) return bookingError as ApiError;
   const message = String((error as { message?: string })?.message || "");
   const rules: Array<[string, number, string, string]> = [
     ["TERMS_CONSENT_REQUIRED",400,"TERMS_CONSENT_REQUIRED","請閱讀並同意會員條款。"],
@@ -1001,10 +1004,12 @@ function pointTicketClient(row: any, cardId = "", reservedForBooking = false): J
 }
 
 async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
-  const [profile,{ cards: adminCardRows }] = await Promise.all([
+  const [profile,{ cards: adminCardRows },bookingOptions] = await Promise.all([
     profileFor(supabase,member),
     adminCards(supabase),
+    supabase.rpc("member_ticket_booking_options", { p_member_id: member.id }),
   ]);
+  if (bookingOptions.error) throw mapDatabaseError(bookingOptions.error);
   const activeCards = adminCardRows.filter((card:any) => card.status === "active");
   const rawCards = activeCards.length
     ? await supabase.from("point_cards").select("id,card_id").in("card_id",activeCards.map((card:any) => card.cardId))
@@ -1048,7 +1053,7 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   for (const ticket of availableTickets) {
     const cardId = cardIdByUuid.get(ticket.point_card_id) || "";
     const list = ticketByCard.get(cardId) || [];
-    list.push(pointTicketClient(ticket,cardId,reservedPointTicketIds.has(String(ticket.ticket_id || ""))));
+    list.push({ ...pointTicketClient(ticket,cardId,reservedPointTicketIds.has(String(ticket.ticket_id || ""))), eligibleBookings: (bookingOptions.data as any)?.points?.[ticket.ticket_id] || [] });
     ticketByCard.set(cardId,list);
   }
 
@@ -1151,13 +1156,15 @@ async function adminEventTickets(supabase: SupabaseClient): Promise<any[]> {
 }
 
 async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
-  const [profile,{ data: eventRows, error },allHistoryRes,pendingSelectionsRes] = await Promise.all([
+  const [profile,{ data: eventRows, error },allHistoryRes,pendingSelectionsRes,bookingOptions] = await Promise.all([
     profileFor(supabase,member),
     supabase.from("event_tickets").select("*").eq("status","active").is("deleted_at",null).order("created_at",{ ascending:false }),
     supabase.from("event_ticket_claims").select("*,event_tickets(*)").eq("member_id",member.id).eq("status","used").order("used_at",{ ascending:false }),
     supabase.from("booking_benefit_selections").select("benefit_ref")
       .eq("member_id",member.id).eq("benefit_kind","event").eq("status","pending"),
+    supabase.rpc("member_ticket_booking_options", { p_member_id: member.id }),
   ]);
+  if (bookingOptions.error) throw mapDatabaseError(bookingOptions.error);
   if (error) throw mapDatabaseError(error);
   const ids = (eventRows || []).map((row:any) => row.id);
   if (allHistoryRes.error) throw mapDatabaseError(allHistoryRes.error);
@@ -1196,7 +1203,9 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       availability,
       tierEligible,
       canClaim: !["referral","membership_join"].includes(String(row.ticket_type || "")) && !claim && tierEligible && availability === "active" && !soldOut,
-      canUse: Boolean(claim && claim.status === "available" && tierEligible && availability === "active" && !reservedForBooking),
+      canUse: Boolean(claim && claim.status === "available" && tierEligible && availability === "active" && !reservedForBooking && (bookingOptions.data as any)?.event?.[claimRow.claim_id]?.length),
+      eligibleBookings: claimRow ? (bookingOptions.data as any)?.event?.[claimRow.claim_id] || [] : [],
+      usageDisabledReason: "請先有管理員已確認、尚未完成且符合票券項目條件的預約。",
       reservedForBooking,
       soldOut,
       history: false,
@@ -2133,11 +2142,10 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       const ticketId = requireText(body.ticketId,"票券識別",120);
       const location = body.location && typeof body.location === "object" && !Array.isArray(body.location)
         ? body.location as Json : null;
-      const reserved = await supabase.from("booking_benefit_selections").select("id")
-        .eq("member_id",member.id).eq("benefit_kind","points").eq("benefit_ref",ticketId).eq("status","pending").limit(1);
-      if (reserved.error) throw mapDatabaseError(reserved.error);
-      if ((reserved.data || []).length) throw new ApiError(409,"BOOKING_BENEFIT_RESERVED","這張票券已預約使用，將於預約服務完成時自動核銷。");
-      const rpc = await supabase.rpc("redeem_point_ticket_with_location",{ p_line_user_id:identity.lineUserId,p_ticket_id:ticketId,p_location:location });
+      const rpc = await supabase.rpc("redeem_member_tickets_for_booking_request", {
+        p_line_user_id: identity.lineUserId, p_booking_id: ticketBookingId(body.bookingId, (status, code, message) => new ApiError(status, code, message)),
+        p_kind: "points", p_refs: [ticketId], p_request_id: asText(body.requestId, 120) || "SINGLE_" + crypto.randomUUID().replaceAll("-", ""), p_location: location,
+      });
       if (rpc.error) throw mapDatabaseError(rpc.error);
       const ticketRes = await supabase.from("point_tickets").select("*,point_cards(card_id,title)").eq("ticket_id",ticketId).single();
       if (ticketRes.error) throw mapDatabaseError(ticketRes.error);
@@ -2183,12 +2191,9 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       const claimId = requireText(body.claimId,"已領取票券識別",120);
       const location = body.location && typeof body.location === "object" && !Array.isArray(body.location)
         ? body.location as Json : null;
-      const reserved = await supabase.from("booking_benefit_selections").select("id")
-        .eq("member_id",member.id).eq("benefit_kind","event").eq("benefit_ref",claimId).eq("status","pending").limit(1);
-      if (reserved.error) throw mapDatabaseError(reserved.error);
-      if ((reserved.data || []).length) throw new ApiError(409,"BOOKING_BENEFIT_RESERVED","這張活動票券已預約使用，將於預約服務完成時自動核銷。");
-      const rpc = await supabase.rpc("redeem_event_ticket",{
-        p_line_user_id:identity.lineUserId,p_claim_id:claimId,p_location:location,
+      const rpc = await supabase.rpc("redeem_member_tickets_for_booking_request", {
+        p_line_user_id: identity.lineUserId, p_booking_id: ticketBookingId(body.bookingId, (status, code, message) => new ApiError(status, code, message)),
+        p_kind: "event", p_refs: [claimId], p_request_id: asText(body.requestId, 120) || "SINGLE_" + crypto.randomUUID().replaceAll("-", ""), p_location: location,
       });
       if (rpc.error) throw mapDatabaseError(rpc.error);
       const claimRes = await supabase.from("event_ticket_claims").select("*,event_tickets(event_ticket_id)").eq("claim_id",claimId).single();

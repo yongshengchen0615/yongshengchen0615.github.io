@@ -88,6 +88,7 @@ function mapDatabaseError(error: unknown): ApiError {
     ["INVALID_BOOKING_BENEFITS", 400, "INVALID_BOOKING_BENEFITS", "選用優惠資料格式不正確。"],
     ["BOOKING_BENEFIT_NOT_AVAILABLE", 409, "BOOKING_BENEFIT_NOT_AVAILABLE", "其中一項優惠目前已不可使用，請重新整理後再選擇。"],
     ["BOOKING_BENEFIT_LOCATION_REQUIRED", 409, "BOOKING_BENEFIT_LOCATION_REQUIRED", "其中一張票券需要定位核銷，無法綁定至預約自動核銷。"],
+    ["BOOKING_REDEEMED_BENEFIT_SERVICE_REQUIRED",409,"BOOKING_REDEEMED_BENEFIT_SERVICE_REQUIRED","已核銷票券所需的服務項目不能移除。"],
     ["BOOKING_BENEFIT_SERVICE_REQUIRED", 409, "BOOKING_BENEFIT_SERVICE_REQUIRED", "所選票券需要預約指定項目，請確認本次預約項目後再試。"],
     ["booking_benefit_selections_one_pending_ticket_idx", 409, "BOOKING_BENEFIT_ALREADY_RESERVED", "其中一張票券已被另一筆預約選用，請重新整理後再選擇。"],
     ["POINT_TICKET_INSUFFICIENT_POINTS", 409, "POINT_TICKET_INSUFFICIENT_POINTS", "集點卡點數不足，請取消部分票券後再預約。"],
@@ -313,7 +314,7 @@ function benefitClient(row: any): Json {
     kind: row.benefit_kind,
     id: row.benefit_ref,
     title: row.title_snapshot || "可用權益",
-    status: row.status || "pending",
+    status: row.status || "pending", cancellationReason: row.result?.cancellationReason || "",
     redeemedAt: row.redeemed_at || null,
   };
 }
@@ -416,7 +417,7 @@ async function hydrateBookings(supabase: SupabaseClient, rows: any[]): Promise<J
       .in("booking_id", bookingIds)
       .order("created_at", { ascending: true }),
     supabase.from("booking_benefit_selections")
-      .select("booking_id,benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,selected_at")
+      .select("booking_id,benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,selected_at,result")
       .in("booking_id", bookingIds)
       .order("selected_at", { ascending: true }),
   ]);

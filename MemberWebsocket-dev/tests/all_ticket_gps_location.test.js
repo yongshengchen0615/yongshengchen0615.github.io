@@ -54,9 +54,10 @@ test('server-side APIs enforce GPS for point tickets and accept location rules f
   const pointUi = read('points/pointcard-ticket-overview.js');
 
   assert.match(api, /normalizeTicketLocations/);
-  assert.match(api, /redeem_point_ticket_with_location/);
+  assert.match(api, /redeem_member_tickets_for_booking_request/);
+  assert.match(read('supabase/migrations/20261006023020_booking_ticket_usage_consistency.sql'), /redeem_point_tickets_with_location/);
   assert.doesNotMatch(api, /ticketType !== "coupon"/);
-  assert.match(pointApi, /redeem_point_tickets_with_location/);
+  assert.match(pointApi, /redeem_member_tickets_for_booking_request/);
   assert.match(pointApi, /LOCATION_OUT_OF_RANGE/);
   assert.match(fixedApi, /requires_location: requiresLocation/);
   assert.match(fixedApi, /redemption_locations: redemptionLocations/);

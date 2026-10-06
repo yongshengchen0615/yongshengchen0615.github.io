@@ -84,3 +84,8 @@ button { line-height: 1.35; }
 .state-view.login-loading .login-progress-value {
   display: none !important;
 }
+
+.ticket-booking-choice{display:grid;gap:8px;margin:16px 0;color:var(--text-color,inherit)}
+.ticket-booking-choice select{width:100%;min-height:44px;border:1px solid var(--border-color,#999);border-radius:10px;padding:10px;background:var(--surface-color,#fff);color:var(--text-color,#222);font:inherit}
+.ticket-booking-choice small{line-height:1.6}
+[data-theme="dark"] .ticket-booking-choice select{background:#202a33;color:#f4f4f4}

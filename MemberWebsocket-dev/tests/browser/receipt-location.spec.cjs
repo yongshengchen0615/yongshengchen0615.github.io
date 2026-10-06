@@ -25,7 +25,7 @@ function shell(surface,run,mode) {
     window.MembershipProgress={render(){}};
   `;
   fixtureScripts.set(run,fixture);
-  return html.replace(/href="\.\//g,`href="/${surface}/`).replace('</body>',`<script src="/fixture.js?run=${encodeURIComponent(run)}"></script><script src="/${surface==='booking'?'booking/booking-receipt.js':'event/app.js'}"></script></body>`);
+  return html.replace(/href="\.\//g,`href="/${surface}/`).replace('</body>',`<script src="/fixture.js?run=${encodeURIComponent(run)}"></script><script src="/ticket-booking-choice.js"></script><script src="/${surface==='booking'?'booking/booking-receipt.js':'event/app.js'}"></script></body>`);
 }
 test.beforeAll(async()=>{
   server=http.createServer(async(req,res)=>{
@@ -55,7 +55,7 @@ test.beforeAll(async()=>{
         if(action==='user.booking.receipt.list')return json(res,{bookings:[],submissions:[]});
         if(action==='user.event.bootstrap')return json(res,{profile:{displayName:'QA',tierKey:'general'},usedTickets:[],usedTicketCount:0,offers:[{
           ticket:{eventTicketId:'QA-GEO',title:'GPS QA',ticketType:'coupon',description:'GPS receipt QA',usageMethod:'Once',usageInstructions:'Once',requiresLocation:true,allowedTierKeys:['general'],prizes:[]},
-          claim:{claimId:'QA-CLAIM',status:'claimed',ticketTitle:'GPS QA',ticketDescription:'GPS receipt QA',ticketType:'coupon'},canUse:true,availability:'open',tierEligible:true
+          claim:{claimId:'QA-CLAIM',status:'claimed',ticketTitle:'GPS QA',ticketDescription:'GPS receipt QA',ticketType:'coupon'},eligibleBookings:[{bookingId:'00000000-0000-4000-8000-000000000001',bookingDate:'2099-01-01',startTime:'10:00',title:'GPS booking'}],canUse:true,availability:'open',tierEligible:true
         }]});
         if(action==='user.event.ticket.redeem') {
           state.redeem.push(payload);
@@ -165,4 +165,5 @@ test('GPS out of range keeps ticket usable and a new in-range fix can retry',asy
   await expect(page.locator('#ticketModalMessage')).toContainText('超出');
   await context.setGeolocation({latitude:25.033964,longitude:121.564468,accuracy:5});await page.locator('#ticketModalAction').click();
   await expect(page.locator('#ticketModalResult')).toBeVisible();expect(runs.get('gps-range').redeem).toHaveLength(2);
+  const attempts=runs.get('gps-range').redeem;expect(attempts[0].bookingId).toBe('00000000-0000-4000-8000-000000000001');expect(attempts[0].requestId).toBe(attempts[1].requestId);
 });

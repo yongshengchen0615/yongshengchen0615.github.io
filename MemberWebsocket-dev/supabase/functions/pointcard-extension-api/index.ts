@@ -1,3 +1,4 @@
+import { bookingTicketUsageError, ticketBookingId } from "../_shared/booking-ticket-usage.ts";
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
@@ -87,6 +88,8 @@ async function globalSetting(supabase: ReturnType<typeof db>) {
   return { maxTicketsPerRedemption, updatedAt: String(result.data?.updated_at || "") };
 }
 function mapRpcError(error: unknown): ApiError {
+  const bookingError = bookingTicketUsageError(error, (status, code, message) => new ApiError(status, code, message));
+  if (bookingError) return bookingError as ApiError;
   const message = String((error as { message?: string })?.message || "");
   if (message.includes("MEMBERSHIP_REQUIRED")) return new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員加入後再使用此功能。");
   if (message.includes("TICKET_NOT_FOUND")) return new ApiError(404, "TICKET_NOT_FOUND", "找不到其中一張票券。");
@@ -128,15 +131,10 @@ async function redeemTickets(origin: string | null, body: Json) {
   const memberRow = await supabase.from("members").select("id,status,membership_status").eq("line_user_id", identity.lineUserId).single();
   if (memberRow.error || memberRow.data?.status !== "active" || memberRow.data?.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員加入。");
   if (!(await hasCurrentTermsConsent(supabase, memberRow.data.id))) throw new ApiError(403, "TERMS_RECONSENT_REQUIRED", "請先至會員卡同意新版條款。");
-  const reserved = await supabase.from("booking_benefit_selections").select("benefit_ref")
-    .eq("member_id", memberRow.data.id).eq("benefit_kind", "points").eq("status", "pending").in("benefit_ref", ticketIds).limit(1);
-  if (reserved.error) throw new ApiError(500, "DATABASE_ERROR", "資料庫暫時無法完成操作。");
-  if ((reserved.data || []).length) throw new ApiError(409, "BOOKING_BENEFIT_RESERVED", "其中一張票券已預約使用，將於預約服務完成時自動核銷。");
-  const rpc = await supabase.rpc("redeem_point_tickets_with_location", {
+  const rpc = await supabase.rpc("redeem_member_tickets_for_booking_request", {
     p_line_user_id: identity.lineUserId,
-    p_ticket_ids: ticketIds,
-    p_request_id: requestId,
-    p_location: location,
+    p_booking_id: ticketBookingId(body.bookingId, (status, code, message) => new ApiError(status, code, message)),
+    p_kind: "points", p_refs: ticketIds, p_request_id: requestId, p_location: location,
   });
   if (rpc.error) throw mapRpcError(rpc.error);
 
