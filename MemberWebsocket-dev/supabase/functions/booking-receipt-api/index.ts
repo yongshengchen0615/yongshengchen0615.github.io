@@ -372,6 +372,7 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
         kind:String(item?.benefit_kind||""),
         title:String(item?.title_snapshot||"預約票券"),
         status:String(item?.status||""),
+        cancellationReason:String(item?.result?.cancellationReason||""),
         redeemedAt:item?.redeemed_at||null,
       }));
     const status=String(row.status||"");
@@ -655,7 +656,7 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
     supabase.from("members").select("id,birthday").eq("id",receipt.data.member_id).maybeSingle(),
     requestedBookingId
       ? supabase.from("booking_benefit_selections")
-          .select("benefit_kind,benefit_ref,title_snapshot,status,redeemed_at")
+          .select("benefit_kind,benefit_ref,title_snapshot,status,redeemed_at,result")
           .eq("booking_id",requestedBookingId)
           .in("benefit_kind",["points","event"])
           .order("selected_at",{ascending:true})
@@ -684,6 +685,7 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
       id:String(item.benefit_ref||""),
       title:String(item.title_snapshot||"預約票券"),
       status:String(item.status||"pending"),
+      cancellationReason:String(item.result?.cancellationReason||""),
       redeemedAt:item.redeemed_at||null,
     })),
     bookings:(bookings.data||[]).filter((b:any)=>!(b.booking_receipts||[]).some((r:any)=>["pending_upload","awaiting_review","bound"].includes(r.status)))

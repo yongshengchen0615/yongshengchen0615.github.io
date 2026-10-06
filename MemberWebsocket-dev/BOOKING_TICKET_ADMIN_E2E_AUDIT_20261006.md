@@ -50,9 +50,10 @@
 
 ## 執行狀態與界線
 
-- 本地 unit：662 passed，0 failed。
+- 本地 unit 基準：662 passed，0 failed。
 - 本地整合基準：117 passed，0 failed；最後擴充的票券交易檔另跑 10 / 10 通過（新增集點卡實際 modal 案例後，CI 合併為 122 項）。
 - 本地管理操作：99 個流程 + 1 suite，100 passed，0 failed；這是 DOM integration，不能稱作 Chromium 或 live Supabase E2E。
+- 追加 API 回歸：無障礙歷史與選項帶回 cancellationReason，且不曝露原始核銷 metadata。
 - Native Playwright inventory：110 個案例；本地 Chromium 下載受環境限制未完成，原生驗證交由 PR 的 `browser-e2e` job 執行。
 - 所有 case payload 會保存到 `admin-interaction-evidence`；新增無障礙／解除原因案例另附成功終態 screenshot；失敗保留 screenshot／trace。GitHub run ID／commit SHA 及 artifact 為這輪原生證據。
 - Supabase 只做 schema／ACL／既有 run 查核，尚未部署本分支 migration／Edge，沒有操作正式會員、票券或客戶影像。
@@ -67,4 +68,4 @@
 
 ## 發布順序
 
-確認 PR CI 後，先套用 migration `20261006023020`，再協調部署 api、pointcard-extension-api、event-ticket-extension-api、booking-api、booking-group-api、booking-admin-operations 與版本更新的前端。新版 Edge 會拒絕沒有 bookingId 的舊票券使用請求，因此需同步刷新舊頁面。完成後才執行隔離測試帳號 live 回歸、清理與多連線競爭驗證，補 run／case 證據，再勾完整驗收。
+確認 PR CI 後，先套用 migration `20261006023020`，再協調部署 api、pointcard-extension-api、event-ticket-extension-api、booking-api、booking-group-api、booking-admin-operations、booking-receipt-api 與版本更新的前端。新版 Edge 會拒絕沒有 bookingId 的舊票券使用請求，因此需同步刷新舊頁面。完成後才執行隔離測試帳號 live 回歸、清理與多連線競爭驗證，補 run／case 證據，再勾完整驗收。
