@@ -7,7 +7,6 @@
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
   const FAILURE_SCREENSHOT_MAX_BYTES = 1900000;
   const FAILURE_SCREENSHOT_BUDGET = 2;
-  const DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP = 2;
   const E2E_LEASE_HEARTBEAT_MS = 15000;
   const E2E_LEASE_HEARTBEAT_FAILURE_LIMIT = 2;
   const ADMIN_NODE_TIMEOUT_MS = 90000;
@@ -460,20 +459,25 @@
     const level = Math.max(1, Math.min(8, Number(data?.nextComplexityLevel || completedRootRuns + 1) || 1));
     const seed = 'E2E-L' + level + '-' + Date.now().toString(36).toUpperCase() + '-' + String(completedRootRuns + 1);
     state.complexityLevel = level;
-    const adaptiveConcurrency = Math.max(1, Math.min(4, 1 + Math.ceil(level / 2)));
     const hardwareConcurrency = Math.max(0, Number(window.navigator?.hardwareConcurrency || 0));
     const deviceMemory = Math.max(0, Number(window.navigator?.deviceMemory || 0));
     const constrainedDevice = (hardwareConcurrency > 0 && hardwareConcurrency <= 4) || (deviceMemory > 0 && deviceMemory <= 4);
     const selectedSurfaceCount = selectedClientSurfaces(modules).length;
-    const normalizedParticipantCount = Math.max(1, Number(participantCount || 1));
+    const normalizedParticipantCount = Math.max(1, Math.min(
+      MAX_PAIRED_PARTICIPANTS,
+      Math.trunc(Number(participantCount || 1)) || 1
+    ));
     const participantFanout = normalizedParticipantCount * Math.max(1, selectedSurfaceCount);
-    const participantConcurrencyCap = normalizedParticipantCount >= 3 || participantFanout >= 8
+    const adaptiveConcurrency = Math.max(1, Math.min(normalizedParticipantCount, 1 + Math.ceil(level / 2)));
+    const resourceSuggestedConcurrency = constrainedDevice
       ? 1
-      : DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP;
-    const localResourceCap = constrainedDevice
-      ? 1
-      : Math.min(DEFAULT_ACTIVE_CLIENT_CONCURRENCY_CAP, participantConcurrencyCap);
-    state.clientConcurrency = Math.max(1, Math.min(adaptiveConcurrency, localResourceCap));
+      : Math.min(normalizedParticipantCount, 4);
+    // "協同測試人數" is authoritative: every configured participant gets an
+    // active client worker immediately. Resource signals only tune pauses and
+    // diagnostics; they must never silently leave participant windows idle.
+    const participantConcurrencyCap = normalizedParticipantCount;
+    const localResourceCap = normalizedParticipantCount;
+    state.clientConcurrency = normalizedParticipantCount;
     state.rootRunId = 'ROOT-' + Date.now().toString(36).toUpperCase();
     configureRandom(seed);
     const surfaceWeightsMs = data?.surfaceWeightsMs && typeof data.surfaceWeightsMs === 'object'
@@ -507,7 +511,9 @@
         participantFanout,
         participantConcurrencyCap,
         activeClientConcurrencyCap: localResourceCap,
-        adaptiveConcurrency
+        adaptiveConcurrency,
+        resourceSuggestedConcurrency,
+        allParticipantsStartImmediately: true
       },
       rootRunId: state.rootRunId,
       surfaceWeightsMs,
@@ -2144,7 +2150,7 @@
         ? (() => {
             const manifest=state.replayContext.manifest;
             state.complexityLevel=Math.max(1,Math.min(8,Number(manifest.complexityLevel||1)||1));
-            state.clientConcurrency=Math.max(1,Math.min(4,Number(manifest.clientConcurrency||1)||1));
+            state.clientConcurrency=Math.max(1,Math.min(MAX_PAIRED_PARTICIPANTS,Number(manifest.participantCount||participantCount||1)||1));
             state.rootRunId='REPLAY-'+Date.now().toString(36).toUpperCase();
             configureRandom(String(manifest.rootSeed||''));
             return {completedRootRuns:0,complexityLevel:state.complexityLevel,seed:state.randomSeed,clientConcurrency:state.clientConcurrency,rootRunId:state.rootRunId,surfaceWeightsMs:{},surfaceSamples:{},replayOfRunId:state.replayContext.sourceRunId};
@@ -7350,8 +7356,8 @@
         child.document.title = `Lumen Club E2E · 測試用戶 ${index + 1}`;
         child.document.body.innerHTML =
           '<main style="font-family:system-ui,sans-serif;padding:28px;line-height:1.7">' +
-          '<h1>用戶端背景 E2E 準備中</h1>' +
-          '<p>此測試帳號只使用這一個背景視窗，稍後會依序執行五種用戶端。</p>' +
+          '<h1>測試用戶 ' + (index + 1) + ' / ' + count + ' · E2E 準備中</h1>' +
+          '<p>此測試帳號使用專屬背景視窗；協同 Runner 啟動後會立即進入本輪勾選的用戶端流程。</p>' +
           (mobileViewport ? '<p>Viewport 目標：430×932。</p>' : '') +
           '</main>';
       } catch {}
