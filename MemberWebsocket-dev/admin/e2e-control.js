@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-06.1';
+  const VERSION = '2026-10-06.2';
   const COVERAGE_STORAGE_KEY = 'member-admin-e2e-coverage-v1';
   const COVERAGE_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
@@ -688,6 +688,16 @@
       runId: state.backgroundRunId,
       running: state.running,
       cancelled: state.cancelled,
+      selectedModules: state.selectedModules.slice(),
+      currentExecution: (() => {
+        const current = [...state.results].reverse().find((row) => row?.status === 'running') || null;
+        return current ? {
+          key: String(current.key || ''),
+          name: String(current.name || ''),
+          domain: String(current.domain || ''),
+          status: 'running'
+        } : null;
+      })(),
       message: state.lastMessage,
       messageError: state.lastMessageError,
       testControl: isBackgroundRunnerWindow() ? safe(window.MemberAdminTestControl?.getStatus?.()) : null,
@@ -734,6 +744,9 @@
       } catch {}
     }
     state.cancelled = Boolean(snapshot.cancelled);
+    if (Array.isArray(snapshot.selectedModules) && snapshot.selectedModules.length) {
+      try { state.selectedModules = normalizeSelectedModules(snapshot.selectedModules); } catch {}
+    }
     state.lastMessage = String(snapshot.message || '');
     state.lastMessageError = Boolean(snapshot.messageError);
     state.featureCoverage = snapshot.coverage?.counts ? snapshot.coverage : null;

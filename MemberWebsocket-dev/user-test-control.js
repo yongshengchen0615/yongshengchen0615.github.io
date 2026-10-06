@@ -4175,6 +4175,26 @@
     surface,
     runFull: () => runSuite('full'),
     stop: () => requestStop(),
-    isRunning: () => state.running
+    isRunning: () => state.running,
+    getStatus: () => {
+      const current = [...state.results].reverse().find((item) => item?.status === 'running') || null;
+      const passed = state.results.filter((item) => item?.status === 'passed').length;
+      const failed = state.results.filter((item) => item?.status === 'failed').length;
+      const skipped = state.results.filter((item) => item?.status === 'skipped').length;
+      return {
+        version: VERSION,
+        surface,
+        running: state.running,
+        cancelled: state.cancelled,
+        suite: state.currentSuite,
+        current: current ? {
+          key: String(current.key || ''),
+          name: String(current.name || ''),
+          domain: String(current.domain || ''),
+          status: 'running'
+        } : null,
+        summary: { total: state.results.length, passed, failed, skipped }
+      };
+    }
   });
 })();
