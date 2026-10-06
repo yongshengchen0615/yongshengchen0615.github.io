@@ -41,3 +41,22 @@ test('late account A response cannot repaint account B; the current account is r
   assert.doesNotMatch(w.document.getElementById('friendList').textContent,/PRIVATE-A/);assert.match(w.document.getElementById('friendList').textContent,/BBBB/);
  }finally{dom.window.close();}
 });
+test('late lookup rejection and invite success cannot change the switched account panel',async()=>{
+ const {dom,w}=await page();try{
+  let reject,resolve,stage='lookup';
+  w.MemberSystem.request=async(_c,_t,_k,action)=>{
+   if(action.endsWith('list'))return {friends:[],receivedBookings:[]};
+   if(action.endsWith('lookup'))return stage==='lookup'?new Promise((_r,j)=>reject=j):{memberCode:'CCCC',displayName:'陳○'};
+   if(action.endsWith('request'))return new Promise(r=>resolve=r);
+  };
+  const switchAccount=id=>w.dispatchEvent(new w.CustomEvent('member-profile-ready',{detail:{profile:{lineUserId:id,memberCode:id}}}));
+  w.document.getElementById('addFriendForm').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();
+  switchAccount('verified-B');await tick();reject(new Error('PRIVATE-A lookup error'));await tick();
+  assert.doesNotMatch(w.document.getElementById('friendStatus').textContent,/PRIVATE-A/);
+  stage='request';w.document.getElementById('addFriendForm').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();
+  w.document.getElementById('confirmFriendRequest').click();await tick();switchAccount('verified-C');await tick();
+  resolve({status:'pending'});await tick();
+  assert.equal(w.document.getElementById('confirmFriendRequest').hidden,true);
+  assert.doesNotMatch(w.document.getElementById('friendStatus').textContent,/邀請已送出/);
+ }finally{dom.window.close();}
+});
