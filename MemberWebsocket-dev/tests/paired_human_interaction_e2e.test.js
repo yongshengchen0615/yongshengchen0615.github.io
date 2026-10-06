@@ -75,3 +75,45 @@ test('fixture and assertion APIs remain separate from the human UI gate', () => 
   assert.match(admin, /recordResultRows/);
   assert.match(admin, /pairedHumanInteractionCoverageCase/);
 });
+
+
+test('admin booking lifecycle has fixed evidence keys and accessible review settlement coverage', () => {
+  const runner = read('admin/e2e-control.js');
+  const accessible = read('admin/booking-accessible-admin.js');
+  const coverage = read('e2e-feature-coverage.js');
+
+  for (const key of [
+    'ADMIN_BOOKING_REJECT',
+    'ADMIN_BOOKING_CONFIRM',
+    'ADMIN_BOOKING_MODIFY_ITEMS',
+    'ADMIN_BOOKING_MODIFY_TECHNICIAN',
+    'ADMIN_BOOKING_COMPLETE',
+    'ADMIN_BOOKING_CANCELLATION_KEEP',
+    'ADMIN_BOOKING_CANCELLATION_APPROVE',
+    'ADMIN_BOOKING_TERMINAL_STATE',
+    'ADMIN_BOOKING_REALTIME_SYNC',
+    'ADMIN_BOOKING_RISK_SCAN',
+    'ADMIN_BOOKING_ACCESSIBLE_REVIEW',
+    'ADMIN_BOOKING_ACCESSIBLE_IDEMPOTENCY'
+  ]) {
+    assert.match(runner, new RegExp(key));
+  }
+
+  assert.match(runner, /adminBookingPairedOperationEvidenceCase/);
+  assert.match(runner, /adminBookingAccessibleReviewCase/);
+  assert.match(runner, /adminBookingAccessibleIdempotencyCase/);
+  assert.match(runner, /user\.qa\.fixture\.prepare/);
+  assert.match(runner, /admin\.booking\.receipt\.register/);
+  assert.match(runner, /alreadyApplied/);
+  assert.match(runner, /rewardPointsAtLeast:1/);
+  assert.match(runner, /ticketRedeemed:true/);
+
+  assert.match(accessible, /card\.dataset\.receiptId/);
+  assert.match(accessible, /card\.dataset\.reviewStatus/);
+  assert.match(accessible, /modal\.dataset\.receiptId/);
+
+  assert.match(coverage, /booking\.admin-lifecycle/);
+  assert.match(coverage, /ADMIN_BOOKING_CONFIRM/);
+  assert.match(coverage, /ADMIN_BOOKING_ACCESSIBLE_REVIEW/);
+  assert.match(coverage, /ADMIN_BOOKING_ACCESSIBLE_IDEMPOTENCY/);
+});
