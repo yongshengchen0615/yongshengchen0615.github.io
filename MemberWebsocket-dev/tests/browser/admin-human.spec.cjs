@@ -168,6 +168,7 @@ test('BOOKING_RESOURCE_SETTINGS — primary technician and party size save and r
 test('FIXED_NOTIFICATION_TIME — Taipei time, off switch and persisted reload',async({page:p},info)=>{
   await openEvent(p,'fixed');await fill(p,'fixedTicketNotifyTime','09:30');await p.locator('#fixedTicketNotifyLine').uncheck();await click(p,'saveEventTicketButton');
   await expect.poll(()=>info.fixture.templates.length).toBe(1);expect(info.fixture.templates[0]).toMatchObject({notifyTime:'09:30',notifyLine:false});
+  await p.locator('#eventTicketEditorModal .editor-modal-close').click();await expect(p.locator('#eventTicketEditorModal')).toBeHidden();
   await p.locator('#eventTicketListItems [data-fixed-ticket-id]').first().click();
   await expect(p.locator('#fixedTicketNotifyTime')).toHaveValue('09:30');await expect(p.locator('#fixedTicketNotifyLine')).not.toBeChecked();
   await fill(p,'fixedTicketNotifyTime','00:00');await p.locator('#fixedTicketNotifyLine').check();await click(p,'saveEventTicketButton');
