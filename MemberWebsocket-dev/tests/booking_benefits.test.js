@@ -205,7 +205,7 @@ test('reads are member-scoped, batched and strict on backend failure', async () 
   const db = database();
   await loadBookingBenefits(db, member, 'silver', today);
   for (const table of ['point_tickets', 'point_balances', 'event_ticket_claims']) assert.ok(db.calls.some(call => call.table === table && call.key === 'member_id' && call.value === member.id));
-  assert.equal(db.calls.filter(call => call.read).length, 11);
+  assert.equal(db.calls.filter(call => call.read).length, 12);
   for (const fail of ['point_tickets', 'point_balances', 'booking_benefit_selections', 'event_ticket_claim_counts', 'calendar_items', 'event_ticket_settings', 'point_card_settings']) await assert.rejects(loadBookingBenefits(database({}, fail), member, 'silver', today));
 });
 
@@ -220,3 +220,10 @@ test('API authorization resolves membership/tier from identity and rejects disab
     else assert.equal((await pending).items.length, 3);
   }
 });
+
+ test('higher tier previews stay locked in both ticket and calendar recommendations',async()=>{
+ const {loadBookingBenefits}=await modulePromise;
+ const result=await loadBookingBenefits(database({event_ticket_settings:[{id:1,visibility_policy:'higher_preview'}],event_tickets:[{id:'event',title:'Gold',status:'active',allowed_tier_keys:['gold']}],calendar_items:[{calendar_item_id:'CAL',title:'Gold activity',status:'active',item_type:'event',starts_on:today,ends_on:today,allowed_tier_keys:['gold']}]}),member,'silver',today);
+ for(const item of result.items.filter(x=>x.kind!=='points')){assert.equal(item.statusLabel,'需升級');assert.notEqual(item.selectable,true);assert.match(item.subtitle,/金級/);}
+ const downgraded=await loadBookingBenefits(database({event_ticket_settings:[{id:1,visibility_policy:'eligible_only'}],event_tickets:[{id:'event',status:'active',allowed_tier_keys:['gold']}],calendar_items:[]}),member,'silver',today);assert.equal(downgraded.items.filter(x=>x.kind==='event').length,0);
+ });

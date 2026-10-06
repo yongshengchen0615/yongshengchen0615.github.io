@@ -177,7 +177,7 @@ async function memberRequest(supabase: SupabaseClient, identity: Identity, membe
 }
 async function adminList(supabase: SupabaseClient): Promise<Json> {
   const result = await supabase.from("bookings")
-    .select("id,status,member_id,booking_date,start_time,end_time,start_at,end_at,total_duration_minutes,member_note,admin_note,cancellation_source_status,cancellation_requested_at,updated_at,contact_source,contact_surname,contact_salutation,contact_phone,technician_id,party_size,members(display_name,member_code,surname,salutation,phone),booking_technicians(name)")
+    .select("id,status,member_id,booking_date,start_time,end_time,start_at,end_at,total_duration_minutes,member_note,admin_note,cancellation_source_status,cancellation_requested_at,updated_at,contact_source,contact_surname,contact_salutation,contact_phone,technician_id,party_size,members!bookings_member_id_fkey(display_name,member_code,surname,salutation,phone),booking_technicians(name)")
     .in("status", ["pending", "confirmed"])
     .not("cancellation_requested_at", "is", null).is("cancellation_reviewed_at", null)
     .order("cancellation_requested_at", { ascending: true }).limit(250);

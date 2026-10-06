@@ -191,3 +191,6 @@
     transition: none;
   }
 }
+
+.member-tour-dismiss { display:block; margin:0 0 8px auto; border:0; padding:8px 12px; min-height:40px; color:var(--theme-text); background:var(--theme-surface-muted); border-radius:8px;cursor:pointer; }
+@media (max-width:620px) { .member-tour-dialog { max-height:45dvh;padding:16px; } .member-tour-dialog > p:not(.member-tour-progress) {margin:8px 0 12px;line-height:1.5;} }

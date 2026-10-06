@@ -6,7 +6,7 @@ import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 
 type Json = Record<string, unknown>;
 type Identity = { lineUserId: string; displayName: string };
-type ClientType = "member" | "event" | "points";
+type ClientType = "member" | "event" | "points" | "booking";
 
 const MAX_REQUEST_BYTES = 20_000;
 const READ_LIMIT = 90;
@@ -49,6 +49,7 @@ function dbClient(): SupabaseClient {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 function channelId(clientType: ClientType): string {
+  if (clientType === "booking") return env("LINE_BOOKING_CHANNEL_ID") || "2010787602";
   if (clientType === "points") return env("LINE_POINTS_CHANNEL_ID") || "2010787602";
   if (clientType === "event") return env("LINE_EVENT_CHANNEL_ID") || "2010787602";
   return env("LINE_MEMBER_CHANNEL_ID") || "2010787602";
@@ -113,6 +114,10 @@ function mapDatabaseError(error: unknown): ApiError {
   const raw = error as { message?: string; details?: string; code?: string };
   const message = String(raw?.message || "") + " " + String(raw?.details || "");
   const rules: Array<[string, number, string, string]> = [
+    ["FRIEND_NOT_FOUND",404,"FRIEND_NOT_FOUND","找不到可加入的好友，請確認會員編號或邀請碼。"],
+    ["SELF_FRIEND_NOT_ALLOWED",409,"SELF_FRIEND_NOT_ALLOWED","不可加入自己為好友。"],
+    ["FRIEND_BLOCKED",403,"FRIEND_BLOCKED","目前無法建立此好友關係。"],
+    ["FRIEND_ACCEPT_DENIED",403,"FRIEND_ACCEPT_DENIED","只有收到邀請的好友可以接受。"],
     ["INVALID_INVITE_CODE",400,"INVALID_INVITE_CODE","邀請碼格式不正確。"],
     ["INVITE_CODE_NOT_FOUND",404,"INVITE_CODE_NOT_FOUND","找不到可使用的邀請碼。"],
     ["SELF_REFERRAL_NOT_ALLOWED",409,"SELF_REFERRAL_NOT_ALLOWED","不可使用自己的邀請碼。"],
@@ -239,22 +244,29 @@ Deno.serve(async (request: Request) => {
     const clientType = asText(body.clientType, 20) as ClientType;
     const action = asText(body.action, 100);
     const allowed: Record<ClientType, Set<string>> = {
-      member: new Set(["member.referral.bind","member.line.official-account"]),
+      member: new Set(["member.referral.bind","member.line.official-account","member.friend.list","member.friend.lookup","member.friend.request","member.friend.accept","member.friend.remove","member.friend.block"]),
+      booking:new Set(["member.friend.list"]),
       event: new Set(["event.today-usable"]),
       points: new Set(["points.transfer.options","points.transfer.receiver","points.transfer.create"]),
     };
-    if (!["member","event","points"].includes(clientType) || !allowed[clientType]?.has(action)) {
+    if (!["member","event","points","booking"].includes(clientType) || !allowed[clientType]?.has(action)) {
       throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
     }
 
     const supabase = dbClient();
     const identity = await resolveIdentity(supabase, body, clientType);
-    const write = action === "member.referral.bind" || action === "points.transfer.create";
+    const write = action === "member.friend.lookup" || action === "member.referral.bind" || action === "points.transfer.create" || /^member\.friend\.(request|accept|remove|block)$/.test(action);
     await consumeRateLimit(supabase, identity, write);
     const member = await requireMember(supabase, identity);
 
     let data: Json;
-    if (action === "event.today-usable") data = await todayUsable(supabase, identity);
+    if (action.startsWith("member.friend.")) {
+      const operation=action.split('.').pop();
+      const r=await supabase.rpc("member_friend_action",{p_actor:identity.lineUserId,p_operation:operation,p_code:asText(body.memberCode || body.inviteCode,40)});
+      if(r.error) throw mapDatabaseError(r.error);
+      data=r.data as Json;
+    }
+    else if (action === "event.today-usable") data = await todayUsable(supabase, identity);
     else if (action === "member.referral.bind") data = await referralBind(supabase, identity, body);
     else if (action === "member.line.official-account") data = await lineOfficialAccount(supabase);
     else if (action === "points.transfer.options") data = await transferOptions(supabase, member);

@@ -1,0 +1,13 @@
+.friends-panel {padding:20px;margin:20px 0;border:1px solid var(--theme-border);border-radius:20px;background:var(--theme-surface);color:var(--theme-text);}
+.friends-panel h2 {margin:0 0 12px;font-size:22px;}
+.friends-panel p,.friends-panel small {color:var(--theme-text-muted);line-height:1.6;}
+.friends-panel form,.friend-actions {display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.friends-panel input,.friends-panel select {width:100%;max-width:420px;padding:12px;border:1px solid var(--theme-border);border-radius:10px;background:var(--theme-surface-muted);color:var(--theme-text);font:inherit;}
+.friends-panel label {display:block;margin:12px 0;}
+.friend-row {display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 0;border-top:1px solid var(--theme-border);}
+.friend-row strong,.friend-row small {display:block;}
+.friend-qr {display:block;width:192px;max-width:100%;height:auto;margin:12px 0;background:white;border:8px solid white;border-radius:12px;}
+.friends-panel button {min-height:44px;}
+.friends-panel [role=status] {min-height:1.6em;}
+#settingsCopyModal .modal-card {width:min(560px,calc(100vw - 24px));max-height:85dvh;overflow:auto;}
+@media(max-width:620px){.friends-panel{padding:16px;} .friend-row{align-items:flex-start;} .friend-actions{width:100%;} }

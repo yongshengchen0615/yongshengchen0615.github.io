@@ -94,9 +94,12 @@
         items: undefined,
         participants,
         ...contactPayload(),
+        ...(action === 'user.booking.create' ? {serviceRecipientMemberCode:window.MemberFriends?.selected()||''} : {}),
       });
       if (result?.booking) {
         const groupMeta = {
+          serviceRecipientMemberCode:result.booking.serviceRecipientMemberCode,
+          serviceRecipientName:result.booking.serviceRecipientName,
           technicianId: result.booking.technicianId,
           technicianName: result.booking.technicianName,
           partySize: result.booking.partySize,
@@ -105,6 +108,7 @@
         state.bookingGroups.set(result.booking.bookingId, groupMeta);
         result.booking = normalizeBookingForMember(result.booking, groupMeta);
         resetGroupSelection();
+        window.MemberFriends?.clear();
       }
       return result;
     }
@@ -697,6 +701,7 @@
   function applyBookingGroup(bookingId) {
     const group = state.bookingGroups.get(bookingId);
     if (!group) return;
+    window.MemberFriends?.lock(group.serviceRecipientMemberCode,group.serviceRecipientName);
     state.partySize = clamp(Number(group.partySize || 1), 1, state.maxPartySize);
     const participants = Array.isArray(group.participants) ? group.participants : [];
     state.participantTechnicians = participants.map((participant) => String(participant.technicianId || ''));
@@ -710,6 +715,7 @@
   }
 
   function resetGroupSelection() {
+    window.MemberFriends?.clear();
     state.partySize = 1;
     state.primaryItems = [];
     state.extras = [];
@@ -724,6 +730,8 @@
     const participantOneItems = Array.isArray(group.participants?.[0]?.items) ? group.participants[0].items : [];
     return {
       ...booking,
+      serviceRecipientMemberCode:group.serviceRecipientMemberCode||booking.serviceRecipientMemberCode||'',
+      serviceRecipientName:group.serviceRecipientName||booking.serviceRecipientName||'',
       partySize: Number(group.partySize || 1),
       technicianId: group.technicianId || '',
       technicianName: group.technicianName || '',
@@ -853,6 +861,7 @@
     const heading = document.createElement('strong');
     heading.textContent = `本次預約 ${state.partySize} 位`;
     box.appendChild(heading);
+    const recipient=document.createElement('p');recipient.textContent='實際受服務者：'+(document.getElementById('friendBookingRecipient')?.selectedOptions[0]?.textContent||'本人');box.appendChild(recipient);
 
     const bookingDate = String(document.getElementById('bookingDate')?.value || '');
     const selectedSlot = String(document.querySelector('#slotGrid .slot-button.selected')?.textContent || '').trim();

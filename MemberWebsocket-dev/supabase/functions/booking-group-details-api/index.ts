@@ -84,15 +84,16 @@ async function groupDetails(supabase: ReturnType<typeof db>, body: Record<string
     throw new ApiError(400, "INVALID_BOOKING_IDS", "預約識別資料格式不正確。");
   }
 
-  const [settingsResult, storeResult, participantsResult] = await Promise.all([
+  const [settingsResult, storeResult, participantsResult,recipientResult] = await Promise.all([
     supabase.from("booking_settings").select("primary_technician_id").eq("id", 1).single(),
     supabase.from("booking_services").select("duration_minutes").eq("id", STORE_SERVICE_ID).maybeSingle(),
     supabase.from("booking_participants")
       .select("id,booking_id,position,technician_id,booking_technicians(name)")
       .in("booking_id", bookingIds)
       .order("position", { ascending: true }),
+    supabase.from("bookings").select("id,recipient:members!bookings_service_recipient_member_id_fkey(member_code,display_name)").in("id",bookingIds),
   ]);
-  if (settingsResult.error || participantsResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取多人預約資料。");
+  if (settingsResult.error || participantsResult.error || recipientResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取多人預約資料。");
   if (storeResult.error) throw new ApiError(500, "DATABASE_ERROR", "無法讀取店內服務時間。");
 
   const primaryTechnicianId = String(settingsResult.data?.primary_technician_id || "");
@@ -138,10 +139,13 @@ async function groupDetails(supabase: ReturnType<typeof db>, body: Record<string
     groups.set(String(row.booking_id), list);
   }
 
+  const recipients=new Map((recipientResult.data||[]).map((b:any)=>[b.id,b.recipient]));
   const bookingGroups: Record<string, any> = {};
   for (const bookingId of bookingIds) {
     const rows = (groups.get(bookingId) || []).sort((a, b) => a.position - b.position);
     bookingGroups[bookingId] = {
+      serviceRecipientMemberCode:(recipients.get(bookingId) as any)?.member_code||"",
+      serviceRecipientName:(recipients.get(bookingId) as any)?.display_name||"",
       partySize: rows.length,
       participants: rows,
       totalDurationMinutes: rows.reduce((max, row) => Math.max(max, Number(row.totalMinutes || 0)), 0),

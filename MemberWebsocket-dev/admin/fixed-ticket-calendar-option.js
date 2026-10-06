@@ -5,7 +5,7 @@
   const templateById = new Map();
   const originalFetch = window.fetch.bind(window);
   const TARGETED_MESSAGE = '此日曆項目由壽星固定票券自動管理；請回到活動票券中的固定票券設定修改或關閉。';
-  const FIXED_TIER_HELP = '固定票券會和一般活動票券一樣顯示給會員；只有勾選的會員等級會自動取得並可使用。不符合等級的會員仍看得到票券與適用等級，但會顯示「等級不適用」且不可使用。';
+  const FIXED_TIER_HELP = '固定票券只有符合所選會員等級才會自動取得並可使用；票券頁只顯示已取得的票券。日曆呈現依「會員階級顯示規則」，較高階鎖定預覽不可領取或使用。';
 
   function isFixedTicketRequest(input) {
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input || '');
@@ -62,8 +62,8 @@
     }
     const scheduleType = String(document.getElementById('fixedTicketScheduleType')?.value || 'birthday_month');
     summary.textContent = scheduleType === 'birthday_month'
-      ? '會加入會員日曆，但只有生日月份相符的當月壽星看得到；其他會員不會收到這筆日曆資料。會員等級不符的當月壽星仍看得到日曆與票券，但不可使用。'
-      : '會依固定票券的每個發放週期自動建立或更新會員日曆項目；會員等級不符仍看得到活動，但不可使用票券。';
+      ? '會加入會員日曆，但只有生日月份相符的當月壽星看得到；其他會員不會收到這筆日曆資料。會員階級是否顯示依共用規則決定；高階預覽顯示「需升級」。'
+      : '會依固定票券的每個發放週期自動建立或更新會員日曆項目；日曆是否顯示依共用階級規則決定；高階預覽不可使用票券。';
   }
 
   function updateTierHelp() {

@@ -1304,6 +1304,7 @@
       summaryMetaItem('總服務時間', `${Math.max(0, Number(group?.totalDurationMinutes || booking.totalDurationMinutes || 0))} 分鐘`),
       summaryMetaItem('總金額', formatMoney(Number(group?.totalAmount ?? booking.totalAmount ?? 0))),
     );
+    if(group?.serviceRecipientMemberCode)memberMeta.append(summaryMetaItem('實際受服務者',`${group.serviceRecipientName||'好友'} · ${group.serviceRecipientMemberCode}（好友代約）`));
     summary.appendChild(memberMeta);
 
     const dateTime = document.createElement('p');
@@ -1597,6 +1598,7 @@
 
   function openCompletionPreview(booking, adminNote) {
     const preview = completionPreviewData(booking);
+    const recipient=state.booking.groups?.[booking.bookingId];
     els.bookingAdminCrudModalTitle.textContent = `完成結算預覽｜${booking.memberDisplayName || '會員'}`;
     const itemRows = preview.items.map((item) => `
       <div class="booking-completion-preview-item">
@@ -1613,11 +1615,12 @@
     els.bookingAdminCrudModalBody.innerHTML = `
       <form class="booking-admin-form booking-completion-preview">
         <div class="booking-completion-preview-summary">
-          <div><span>會員</span><strong>${escapeHtml(booking.memberDisplayName || '會員')}</strong></div>
+          <div><span>受服務會員</span><strong>${escapeHtml(recipient?.serviceRecipientName || booking.memberDisplayName || '會員')}</strong></div>
           <div><span>將計入服務時間</span><strong>${preview.serviceMinutes} 分鐘</strong></div>
           <div><span>預估自動集點</span><strong>${preview.totalRewardPoints} 點</strong></div>
           <div><span>待核銷優惠</span><strong>${pendingBenefits.length} 項</strong></div>
         </div>
+        ${recipient?.serviceRecipientMemberCode ? `<p>好友代約：正常集點與服務時間歸受服務好友；建立者 ${escapeHtml(booking.memberDisplayName||'會員')} 另取得每種已配置服務類型 1 點及 ${Math.floor(preview.serviceMinutes/2)} 分鐘。票券使用建立者自己的資產。</p>` : ''}
         <section><p class="kicker">Service settlement</p><div class="booking-completion-preview-list">${itemRows || '<p class="integration-empty">沒有可結算的服務項目。</p>'}</div></section>
         <section><p class="kicker">Point rewards</p><div class="booking-completion-preview-list">${rewardRows}</div></section>
         <section><p class="kicker">Benefit redemption</p><div class="booking-completion-preview-list">${benefitRows}</div></section>

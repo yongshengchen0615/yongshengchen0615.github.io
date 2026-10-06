@@ -80,7 +80,9 @@ jobs:
             MemberWebsocket-dev/tests/integration/fixed_ticket_automation_sql.cjs \
             MemberWebsocket-dev/tests/integration/automation_health_sql.cjs \
             MemberWebsocket-dev/tests/integration/qa_event_day_sql.cjs \
-            MemberWebsocket-dev/tests/integration/qa_cleanup_boundaries.cjs
+            MemberWebsocket-dev/tests/integration/qa_cleanup_boundaries.cjs \
+            MemberWebsocket-dev/tests/integration/member_p2_features.cjs \
+            MemberWebsocket-dev/tests/integration/friends_ui.cjs
           node --max-old-space-size=1024 --test MemberWebsocket-dev/tests/integration/admin_human_journeys.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs
@@ -134,6 +136,8 @@ jobs:
       - name: Check browser JavaScript syntax
         run: |
           printf '%s\n' \
+            MemberWebsocket-dev/friends.js \
+            MemberWebsocket-dev/admin/ticket-visibility.js \
             MemberWebsocket-dev/theme.js \
             MemberWebsocket-dev/user-tour.js \
             MemberWebsocket-dev/e2e-feature-coverage.js \

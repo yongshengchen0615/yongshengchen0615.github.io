@@ -332,3 +332,18 @@ test('BOOKING_RELEASED_TICKET — booking and accessible history explain why a h
   await booking(p,'bookingAdminQueueSubtab');await expect(p.locator('[data-booking-id="booking-1"]').first()).toContainText('項目變更，已解除綁定');
   await click(p,'bookingAdminAccessibleMode');await p.locator('[data-accessible-filter="completed"]').click();await p.locator('#accessibleAdminQueueList button').click();await expect(p.locator('#accessibleAdminRecordModal')).toContainText('項目變更，已解除綁定');
 });
+
+for(const kind of ['card','ticket','event','fixed'])test('SETTINGS_COPY_'+kind+' — preview, name, draft and independent source',async({page:p},info)=>{
+ if(kind==='card'){await click(p,'cardsTab');await p.locator('#cardListItems .card-list-item-main').first().click();}
+ else if(kind==='ticket'){await click(p,'cardsTab');await click(p,'ticketSettingsTab');await p.locator('[data-ticket-template-id]').first().click();}
+ else{await openEvent(p,kind==='fixed'?'fixed':'coupon');await click(p,'saveEventTicketButton');await expect.poll(()=>kind==='fixed'?info.fixture.templates.length:info.fixture.eventTickets.length).toBe(1);}
+ const [table,key,field]=({card:['cards','cardId','cardId'],ticket:['tickets','ticketTemplateId','ticketTemplateId'],event:['eventTickets','eventTicketId','eventTicketId'],fixed:['templates','fixedTicketId','eventTicketTitle']})[kind];
+ const source=structuredClone(info.fixture[table][0]);await click(p,'copySettings-'+(kind==='fixed'?'event':kind));await expect(p.locator('#settingsCopyModal')).toBeVisible();await expect(p.locator('#settingsCopyPreview')).toContainText(source.title);
+ await fill(p,'settingsCopyName','QA copied '+kind);await click(p,'settingsCopyConfirm');await expect(p.locator('#settingsCopyModal')).toBeHidden();await expect.poll(()=>info.fixture[table].length).toBe(kind==='card'?3:2);
+ const copied=info.fixture[table].at(-1);expect(copied.status).toBe('draft');expect(copied[key]).not.toBe(source[key]);expect(info.fixture[table][0]).toEqual(source);
+ if(kind==='fixed'){expect(copied.notifyLine).toBe(false);expect(copied.calendarEnabled).toBe(false);}else await expect(p.locator('#'+field)).toHaveValue(copied[key]);
+ expect(calls(info.fixture,'admin.settings.copy')).toHaveLength(1);
+});
+test('TICKET_VISIBILITY — save both policies and reload persisted setting',async({page:p},info)=>{
+ await click(p,'eventsTab');await expect(p.locator('#saveTicketVisibility')).toBeEnabled();await select(p,'ticketVisibilityPolicy','higher_preview');await click(p,'saveTicketVisibility');await expect(p.locator('#ticketVisibilityStatus')).toContainText('已儲存');await p.reload();await click(p,'eventsTab');await expect(p.locator('#ticketVisibilityPolicy')).toHaveValue('higher_preview');await select(p,'ticketVisibilityPolicy','eligible_only');await click(p,'saveTicketVisibility');await expect.poll(()=>info.fixture.visibilityPolicy).toBe('eligible_only');
+});

@@ -13,7 +13,7 @@ function fixture() {
   const card = n => ({cardId:'card-'+n,title:'QA card '+n,status:'active',styleKey:'denim',pointCardStyleKey:'denim',expiryMode:'unlimited',expiresOn:'',accent:'#df6b4d',usageMethod:'QA',usageInstructions:'QA',benefitDescription:'QA',updatedAt:version,sortOrder:n,rewards:[{thresholdStamps:5,ticketTemplateId:'ticket-1',requiredServiceIds:[],requiredServiceMatchMode:'any'}]});
   const member = n => ({memberId:'member-'+n,lineUserId:'test:member-'+n,memberCode:'TEST'+n,displayName:'QA Member '+n,surname:'QA',salutation:'mr',birthday:'1980-01-01',phone:'+886912345678',status:'active',isTestAccount:true,tierKey:'general',tier:'一般會員',serviceMinutesTotal:0,joinedAt:version,updatedAt:version,isOnline:true,onlineSurfaces:['member']});
   return {
-    calls:[],unexpected:[],fault:null,hold:null,seq:10,receiptResults:{},settlements:[],
+    visibilityPolicy:'eligible_only',visibilityVersion:version,copies:{},calls:[],unexpected:[],fault:null,hold:null,seq:10,receiptResults:{},settlements:[],
     members:[member(1),member(2),member(3)],cards:[card(1),card(2)],tickets:[ticket],eventTickets:[],calendarItems:[],messagePresets:[],templates:[],
     tierSettings:tiers.map((tierKey,i)=>({tierKey,requiredServiceMinutes:i*100,styleKey:'forest'})),
     terms:[{id:'terms-1',version:'1',title:'QA terms',summary:'QA summary',body:'QA terms body',effectiveAt:version,status:'active',required:true,reconsentExisting:false}],
@@ -33,7 +33,17 @@ function transport(s, action, p={}, slug='api',record=true) {
   const del=(table,key,id)=>{s[table]=s[table].filter(x=>x[key]!==id);return {deleted:true};};
   const page=()=>{const members=s.members.filter(m=>!p.memberQuery||JSON.stringify(m).toLowerCase().includes(p.memberQuery.toLowerCase()));const n=p.memberPage||1;return {members:members.slice((n-1)*2,n*2),memberPage:{page:n,pageSize:2,total:members.length,totalPages:Math.max(1,Math.ceil(members.length/2)),query:p.memberQuery||''}};};
   const bootstrap=()=>({...page(),profile:{displayName:'QA Admin'},role:'Admin',tierSettings:s.tierSettings,cards:s.cards,tickets:s.tickets,eventTickets:s.eventTickets,calendarItems:s.calendarItems,messagePresets:s.messagePresets,bookingServices:s.services,stats:{memberCount:s.members.length,activeMemberCount:s.members.length,activeCardCount:s.cards.length,todayEntryCount:0,activeEventTicketCount:s.eventTickets.length}});
-  if(action==='admin.bootstrap'||action==='admin.summary')return bootstrap();
+  if(action==='admin.ticket-visibility.get')return {visibilityPolicy:s.visibilityPolicy,updatedAt:s.visibilityVersion};
+  if(action==='admin.ticket-visibility.save'){if(p.expectedUpdatedAt!==s.visibilityVersion)throw Object.assign(new Error('設定已更新'),{code:'CONFLICT'});s.visibilityPolicy=p.visibilityPolicy;s.visibilityVersion=stamp();return {visibilityPolicy:s.visibilityPolicy,updatedAt:s.visibilityVersion};}
+  if(action==='admin.settings.copy'){
+    if(s.copies[p.requestId])return s.copies[p.requestId];
+    const [table,key]=({card:['cards','cardId'],ticket:['tickets','ticketTemplateId'],event:['eventTickets','eventTicketId'],fixed:['templates','fixedTicketId']})[p.kind];
+    const source=s[table].find(x=>x[key]===p.sourceId);if(!source)throw new Error('COPY_SOURCE_NOT_FOUND');
+    const row=save(table,key,{...structuredClone(source),[key]:'',title:p.title,status:'draft',...(p.kind==='fixed'?{notifyLine:false,calendarEnabled:false}:{})});
+    if(p.kind==='card')row.rewards=row.rewards.map(reward=>{const template=s.tickets.find(t=>t.ticketTemplateId===reward.ticketTemplateId);const child=save('tickets','ticketTemplateId',{...template,ticketTemplateId:'',status:'draft'});return {...reward,ticketTemplateId:child.ticketTemplateId};});
+    s[table][s[table].length-1]=row;return s.copies[p.requestId]={publicId:row[key],status:'draft',kind:p.kind};
+  }
+  if(action==='admin.bootstrap' ||action==='admin.summary')return bootstrap();
   if(action==='admin.members.list')return page();
   if(action==='admin.members.presence.list')return {members:s.members};
   if(action==='admin.member.update'){const m=s.members.find(m=>m.lineUserId===p.lineUserId);return {member:save('members','memberId',{...m,...p,...p.profile})};}
@@ -106,7 +116,7 @@ function transport(s, action, p={}, slug='api',record=true) {
 }
 async function startFixture() {
   const sessions=new Map();let base;
-  const scripts=['theme.js','admin/admin-session.js','admin/coupon-location-editor.js','admin/app.js','admin/member-workspace-tabs.js','admin/terms.js','admin/grant-automation.js','admin/fixed-ticket-admin-integration.js','admin/fixed-ticket-calendar-option.js','admin/fixed-ticket-admin.js','admin/pointcard-redemption-limit.js','admin/event-ticket-redemption-limit.js','booking-copy-format.js','admin/booking-panel.js','admin/booking-receipt-admin.js','admin/booking-accessible-admin.js','admin/integration-hub.js'];
+  const scripts=['theme.js','admin/admin-session.js','admin/coupon-location-editor.js','admin/app.js','admin/ticket-visibility.js','admin/member-workspace-tabs.js','admin/terms.js','admin/grant-automation.js','admin/fixed-ticket-admin-integration.js','admin/fixed-ticket-calendar-option.js','admin/fixed-ticket-admin.js','admin/pointcard-redemption-limit.js','admin/event-ticket-redemption-limit.js','booking-copy-format.js','admin/booking-panel.js','admin/booking-receipt-admin.js','admin/booking-accessible-admin.js','admin/integration-hub.js'];
   const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url,'http://localhost');const id=/qa=([^;]+)/.exec(req.headers.cookie||'')?.[1];
     const send=(status,type,body)=>{res.writeHead(status,{'Content-Type':type});res.end(body);};

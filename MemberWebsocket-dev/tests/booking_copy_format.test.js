@@ -48,7 +48,7 @@ test('booking notifications use participant details and profile contact fallback
   assert.match(migration, /預約技師：/);
   assert.match(migration, /member_record\.surname/);
   assert.doesNotMatch(migration, /member_record\.display_name/);
-  assert.match(contactApi, /members\(surname,salutation,phone\)/);
+  assert.match(contactApi, /members!bookings_member_id_fkey\(surname,salutation,phone\)/);
   assert.match(contactApi, /source === "member"/);
   assert.match(delivery, /participantsCard/);
   assert.match(delivery, /每位預約明細/);

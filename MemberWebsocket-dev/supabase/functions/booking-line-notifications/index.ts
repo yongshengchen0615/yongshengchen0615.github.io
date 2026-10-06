@@ -1,3 +1,4 @@
+import { completionSummary } from "./completion-summary.ts";
 import { createClient } from 'npm:@supabase/supabase-js@2.57.0';
 import { buildBookingFlexMessage, deliver, secureEqual } from './delivery.ts';
 import {
@@ -197,19 +198,9 @@ Deno.serve(async (request: Request) => {
             .eq('booking_id', job.booking_id)
             .maybeSingle();
           if (!settlement.error && settlement.data) {
-            const rewards = Array.isArray(settlement.data.reward_details) ? settlement.data.reward_details : [];
-            const rewardText = rewards
-              .map((item: any) => {
-                const title = String(item?.pointCardTitle || '').trim();
-                const points = Math.max(0, Number(item?.points || 0));
-                return title && points > 0 ? `${title} +${points} 點` : '';
-              })
-              .filter(Boolean)
-              .join('、');
-            const suffix = [
-              `完成服務時間：${Math.max(0, Number(settlement.data.service_minutes || 0))} 分鐘`,
-              `獲得集點：${rewardText || '本次無符合自動集點規則'}`,
-            ].join('\n');
+            const delegate=await db.from('friend_booking_rewards').select('service_minutes,reward_details').eq('booking_id',job.booking_id).maybeSingle();
+            if(delegate.error){failed++;return;}
+            const suffix=completionSummary(settlement.data,delegate.data);
             const base = String(job.message_text || '');
             const maxBaseLength = Math.max(0, 2200 - suffix.length - 1);
             deliveryJob = { ...job, message_text: `${base.slice(0, maxBaseLength)}\n${suffix}` };

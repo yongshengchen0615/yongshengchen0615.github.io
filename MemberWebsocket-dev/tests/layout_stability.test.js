@@ -6,10 +6,10 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('automatic tutorial open does not scroll the document', () => {
+test('tutorial opening brings the current target into view without repeated scrolling', () => {
   const source = read('user-tour.js');
-  assert.match(source, /renderStep\(\{ scroll: Boolean\(trigger\) \}\)/);
-  assert.match(source, /if \(options\.scroll === true\) target\.scrollIntoView/);
+  assert.match(source, /renderStep\(\{ scroll: true \}\)/);
+  assert.match(source, /if \(options\.scroll !== false\) target\.scrollIntoView/);
   assert.match(source, /renderStep\(\{ scroll: false \}\)/);
 });
 

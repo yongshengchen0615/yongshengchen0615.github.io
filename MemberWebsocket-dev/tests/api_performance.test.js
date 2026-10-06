@@ -25,6 +25,7 @@ function api() {
     requireActiveAdminContract, verifyLineIdTokenContract,
     hasCurrentTermsConsent: async () => true,
   });
+  vm.runInContext(stripTypeScriptTypes(fs.readFileSync(path.join(__dirname,'../supabase/functions/_shared/tier-visibility.ts'),'utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')),context);
   const usage=fs.readFileSync(path.join(__dirname,'../supabase/functions/_shared/booking-ticket-usage.ts'),'utf8').replace(/^export /gm,'');
   vm.runInContext(stripTypeScriptTypes(usage),context);
   vm.runInContext(stripTypeScriptTypes(source), context); return context;

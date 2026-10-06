@@ -144,7 +144,7 @@ test('booking event ticket checkbox can claim and server enforces configured sel
   const api = read('supabase/functions/api/index.ts');
   const bookingApi = read('supabase/functions/booking-api/index.ts');
   const groupApi = read('supabase/functions/booking-group-api/index.ts');
-  assert.match(source, /claimRequired: !offer\.claimed/);
+  assert.match(source, /claimRequired: visibility\.tierEligible && !offer\.claimed/);
   assert.match(source, /eventTicketMaxPerDay/);
   assert.match(common, /user\.booking\.event-ticket\.claim/);
   assert.match(common, /claimEventTicket/);

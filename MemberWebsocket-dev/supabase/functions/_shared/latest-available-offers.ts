@@ -152,7 +152,7 @@ export function selectLatestEventOffers(
     if (!eventId || memberUnavailableClaims.has(eventId)) continue;
 
     const claimed = memberAvailableClaims.has(eventId);
-    if (row.fixed_ticket_template_id && !claimed) continue;
+    if (!claimed && (row.fixed_ticket_template_id || ["referral","membership_join"].includes(text(row.ticket_type)))) continue;
     const quota = number(row.quota);
     const hasQuota = quota === 0 || (claimCounts.get(eventId) || 0) < quota;
     if (!claimed && !hasQuota) continue;
@@ -242,11 +242,12 @@ export async function loadLatestEventOffers(
   memberId: string,
   tierKey: string,
   strict: boolean,
-): Promise<Array<CurrentEventOffer & { eventTicketId: string; startsOn: string; endsOn: string }>> {
+  includeTierPreview = false,
+): Promise<Array<CurrentEventOffer & { eventTicketId: string; startsOn: string; endsOn: string; allowedTierKeys: string[] }>> {
   const today = taipeiDate();
   const eventsResult = await supabase
     .from("event_tickets")
-    .select("id,event_ticket_id,title,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id,requires_location,required_service_ids,required_service_match_mode")
+    .select("id,event_ticket_id,title,ticket_type,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id,requires_location,required_service_ids,required_service_match_mode")
     .eq("status", "active")
     .is("deleted_at", null);
   if (eventsResult.error) {
@@ -258,7 +259,7 @@ export async function loadLatestEventOffers(
     const allowed = Array.isArray(row.allowed_tier_keys) ? row.allowed_tier_keys : [];
     return (!row.starts_on || text(row.starts_on) <= today) &&
       (!row.ends_on || text(row.ends_on) >= today) &&
-      allowed.includes(tierKey);
+      (includeTierPreview || allowed.includes(tierKey));
   });
   const ids = eligible.map((row: any) => row.id);
   if (!ids.length) return [];
@@ -285,6 +286,7 @@ export async function loadLatestEventOffers(
     const event: any = eventById.get(offer.eventId);
     return {
       ...offer,
+      allowedTierKeys:Array.isArray(event?.allowed_tier_keys)?event.allowed_tier_keys:[],
       eventTicketId: text(event?.event_ticket_id),
       startsOn: text(event?.starts_on),
       endsOn: text(event?.ends_on),

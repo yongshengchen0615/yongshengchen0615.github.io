@@ -48,52 +48,17 @@ async function page({ surface = 'member', saved = {}, now = '2026-09-27T15:59:00
   return { dom, w, ready, dialog: w.document.getElementById('memberTourDialog') };
 }
 
-test('tour opens on every visit; today skip ends at Taipei midnight; manual completion clears skip', async () => {
-  const first = await page();
-  await first.ready();
-  assert.equal(first.dialog.classList.contains('hidden'), false);
-  assert.equal(first.w.document.getElementById('app').inert, true);
-  assert.equal(first.w.document.getElementById('memberTourSkip').textContent, '今日略過');
-  assert.match(first.dialog.textContent, /這是你的會員卡/);
-  first.w.document.getElementById('memberTourNext').click();
-  assert.match(first.dialog.textContent, /查看升等進度/);
-  first.w.document.getElementById('memberTourBack').click();
-  assert.match(first.dialog.textContent, /這是你的會員卡/);
-  first.w.document.getElementById('memberTourSkip').click();
-  assert.equal(first.dialog.classList.contains('hidden'), true);
-  assert.equal(first.w.document.getElementById('app').inert, false);
-  const entries = Object.fromEntries(Object.entries(first.w.localStorage));
-  assert.equal(Object.keys(entries).length, 1);
-  assert.equal(JSON.parse(Object.values(entries)[0]).outcome, 'skip');
-  assert.equal(JSON.parse(Object.values(entries)[0]).source, 'explicit');
-  assert.equal(JSON.parse(Object.values(entries)[0]).skippedAt, '2026-09-27T15:59:00.000Z');
-  first.dom.window.close();
-
-  const refreshed = await page({ saved: entries });
-  await refreshed.ready();
-  assert.equal(refreshed.dialog.classList.contains('hidden'), true);
-  refreshed.w.document.getElementById('openMemberTour').click();
-  assert.equal(refreshed.dialog.classList.contains('hidden'), false);
-  for (let index = 0; index < 3; index++) refreshed.w.document.getElementById('memberTourNext').click();
-  assert.match(refreshed.dialog.textContent, /探索其他功能/);
-  assert.equal(refreshed.w.document.getElementById('memberTourNext').textContent, '完成');
-  refreshed.w.document.getElementById('memberTourNext').click();
-  assert.equal(refreshed.dialog.classList.contains('hidden'), true);
-  const completed = Object.fromEntries(Object.entries(refreshed.w.localStorage));
-  assert.equal(Object.keys(completed).length, 0);
-  refreshed.dom.window.close();
-
-  const reopened = await page({ saved: completed });
-  await reopened.ready();
-  assert.equal(reopened.dialog.classList.contains('hidden'), false);
-  reopened.w.document.getElementById('memberTourSkip').click();
-  const skipBeforeMidnight = Object.fromEntries(Object.entries(reopened.w.localStorage));
-  reopened.dom.window.close();
-
-  const tomorrow = await page({ saved: skipBeforeMidnight, now: '2026-09-27T16:00:00Z' });
-  await tomorrow.ready();
-  assert.equal(tomorrow.dialog.classList.contains('hidden'), false);
-  tomorrow.dom.window.close();
+test('permanent opt-out survives another day and manual replay, isolated by member', async () => {
+ const first=await page();await first.ready();assert.equal(first.dialog.classList.contains('hidden'),false);
+ assert.equal(first.w.document.getElementById('memberTourSkip').textContent,'不再顯示');
+ first.w.document.getElementById('memberTourSkip').click();assert.equal(first.w.document.getElementById('app').inert,false);
+ const saved=Object.fromEntries(Object.entries(first.w.localStorage));assert.equal(JSON.parse(Object.values(saved)[0]).disabled,true);first.dom.window.close();
+ const tomorrow=await page({saved,now:'2026-10-03T16:00:00Z'});await tomorrow.ready();assert.equal(tomorrow.dialog.classList.contains('hidden'),true);
+ tomorrow.w.document.getElementById('openMemberTour').click();assert.equal(tomorrow.dialog.classList.contains('hidden'),false);
+ for(let i=0;i<8&&!tomorrow.dialog.classList.contains('hidden');i++)tomorrow.w.document.getElementById('memberTourNext').click();
+ assert.equal(JSON.parse(Object.values(Object.fromEntries(Object.entries(tomorrow.w.localStorage)))[0]).disabled,true);
+ await tomorrow.ready('LINE_TEST_B');assert.equal(tomorrow.dialog.classList.contains('hidden'),false);
+ tomorrow.dialog.dispatchEvent(new tomorrow.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(tomorrow.w.document.getElementById('app').inert,false);tomorrow.dom.window.close();
 });
 
 test('only an explicit current-format daily skip suppresses auto-start', async () => {
@@ -342,7 +307,7 @@ test('refresh during the tour restarts safely, and absent anchors leave the page
   noAnchors.dom.window.close();
 });
 
-test('every member client has a daily skip and manual replay button', async () => {
+test('every member client has a permanent opt-out and manual replay button', async () => {
   let saved = {};
   const titles = {
     member: '這是你的會員卡',
@@ -356,7 +321,7 @@ test('every member client has a daily skip and manual replay button', async () =
     await current.ready();
     assert.equal(current.dialog.classList.contains('hidden'), false, surface);
     assert.match(current.dialog.textContent, new RegExp(titles[surface]));
-    assert.equal(current.w.document.getElementById('memberTourSkip').textContent, '今日略過');
+    assert.equal(current.w.document.getElementById('memberTourSkip').textContent, '不再顯示');
     assert.equal(current.w.document.getElementById('openMemberTour').getAttribute('aria-controls'), 'memberTourDialog');
     current.w.document.getElementById('memberTourSkip').click();
     assert.equal(current.dialog.classList.contains('hidden'), true);
@@ -373,7 +338,7 @@ test('every member client has a daily skip and manual replay button', async () =
   sameDay.dom.window.close();
   const nextDay = await page({ surface: 'booking', saved, now: '2026-09-27T16:00:00Z' });
   await nextDay.ready();
-  assert.equal(nextDay.dialog.classList.contains('hidden'), false);
+  assert.equal(nextDay.dialog.classList.contains('hidden'), true);
   nextDay.dom.window.close();
 });
 
