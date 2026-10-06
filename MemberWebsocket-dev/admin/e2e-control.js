@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-06.3';
+  const VERSION = '2026-10-06.4';
   const COVERAGE_STORAGE_KEY = 'member-admin-e2e-coverage-v1';
   const COVERAGE_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
