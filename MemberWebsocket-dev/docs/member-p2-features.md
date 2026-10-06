@@ -18,7 +18,9 @@
 
 ## 好友與代約
 
-會員編號、邀請碼、QR Code 與分享連結共用同一好友查找／邀請流程。連結只填入查找欄位，必須明確送出邀請，由對方接受後才成立好友關係。好友關係和既有首次加入會員的 referral 獎勵分開。可婉拒、撤回、解除與封鎖；他人無法解除你的封鎖。
+會員頁的「好友與邀請」視窗整合邀請碼、分享連結、QR Code、查找欄位及好友名單。會員編號、邀請碼與分享連結使用同一欄位；查找後可明確送出好友邀請，由對方接受後成立好友關係。使用 10 碼邀請碼時，同一視窗提供獨立的「綁定首次邀請獎勵」確認按鈕；既有一次綁定、僅邀請者獲券規則保留。好友關係可婉拒、撤回、解除與封鎖；他人無法解除你的封鎖。
+
+「掃描 QR Code」開啟後鏡頭，也可選擇 10 MB 內的 PNG、JPEG 或 WebP 圖片。使用本地 jsQR 解碼，影像不會上傳；解碼後只查找會員，不自動送出好友邀請、綁定獎勵或跳轉。僅接受本站會員頁連結或合法會員／邀請碼，拒絕外站、非會員頁及含帳密的網址。相機權限遭拒時仍可貼上連結或輸入邀請碼。關閉相機、關閉視窗、頁面隱藏、離頁和切換帳號均停止媒體軌；遲到的相機權限與圖片解碼結果會被釋放／忽略。
 
 代約支援一位實際受服務會員。建立者保有預約管理與自己的票券選用權，好友只看到最小服務摘要，不開放彼此的資產或聯絡資料。編輯時受服務者固定，伺服器與資料庫限制單人代約。查找受登入、會員資格、條款和速率限制保護，只提供遮蔽姓名與編號。
 
@@ -38,8 +40,15 @@
 
 - `tests/integration/member_p2_features.cjs`：PostgreSQL migration、設定隔離、防重試、好友同意、代約歸屬、取消與結算。
 - `tests/integration/friends_ui.cjs`：好友入口、顯式確認、編輯受服務者、帳號切換的遲到回應隔離。
+- `tests/integration/friend_qr_scanner.cjs`：真實 QR 解碼、網址邊界、相機權限與遲到媒體釋放、檔案驗證。
 - `tests/integration/member_first_use_tour.cjs`：永久偏好、舊每日狀態、重播、焦點、缺少目標與離頁。
 - `tests/browser/admin-human.spec.cjs`：四類設定複製與兩種階級策略。
-- `tests/browser/member-p2.spec.cjs`：Chromium 手機／桌面、明／暗色導覽位置、無領券副作用及好友流程。
+- `tests/browser/member-p2.spec.cjs`：Chromium 手機／桌面、明／暗色導覽位置、好友與獎勵的明確確認、真實 QR 圖片及相機影格解碼、權限拒絕與焦點。
 
 本機 DOM／PGlite 和隔離 Chromium transport 測試不等同真人 LINE 訊息送達或真人會員操作。部署時另檢查 migration、函式版本與認證拒絕；不以真人會員資料作測試。
+
+## 集點卡資料庫依賴修復（2026-10-06）
+
+正式環境的 API 已使用 `member_ticket_booking_options`，但既有 `20261006023020_booking_ticket_usage_consistency.sql` 尚未部署，導致集點卡 bootstrap 回報資料庫操作失敗。本次以 `booking_ticket_usage_consistency_backfill` 套用該既有 migration 並重新載入 PostgREST schema；不重複建立另一份 migration。實際測試帳號 bootstrap 已回傳 HTTP 200 和 2 張卡片，測試工作階段隨後撤銷。
+
+部署 Edge API 前執行 `supabase/verify_api_dependencies.sql`，必須回傳零筆缺少 RPC 的資料。這個檢查亦在 PostgreSQL 整合測試驗證：修復前能找出缺失，依序套用相關 migration 後所有依賴存在。部署後仍須驗證集點卡 API；函式存在檢查不代表各 RPC 的完整參數與交易行為已被測試。
