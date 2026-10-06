@@ -647,7 +647,7 @@
       renderBenefits();
       el('accessibleAdminDate').value = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       el('accessibleAdminSubmit').disabled = false; el('accessibleAdminDismiss').disabled = false;
-      message(options.primaryTechnicianConfigured ? (options.rewardRules?.length ? '請依序核對收據、實際服務、票券與點數後完成審核。' : '目前未設定服務集點規則，這次只記錄服務時間；請先在服務類型設定集點卡與每點分鐘數，才會自動發點。') : '尚未設定主要技師；請先設定，或連結已有預約。',!options.primaryTechnicianConfigured);
+      message(options.requirePrimaryTechnician === false && !options.primaryTechnicianConfigured ? '目前不必預約主要技師也能成立預約；此收據可登記為現場安排，依現有規則不新增主要技師集點與會員服務時間。' : options.primaryTechnicianConfigured ? (options.rewardRules?.length ? '請依序核對收據、實際服務、票券與點數後完成審核。' : '目前未設定服務集點規則，這次只記錄服務時間；請先在服務類型設定集點卡與每點分鐘數，才會自動發點。') : '尚未設定主要技師；請先設定，或連結已有預約。',options.requirePrimaryTechnician !== false && !options.primaryTechnicianConfigured);
     } catch (error) { if (generation === state.generation) message(error.message || '目前無法載入登記選項。',true); }
   }
   function lock(value) {

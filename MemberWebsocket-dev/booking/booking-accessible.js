@@ -1,16 +1,20 @@
 (() => {
   'use strict';
-  const key = 'booking-accessible-mode';
+  const keyPrefix = 'booking-mode:v2:';
   const el = id => document.getElementById(id);
   let enabled = false;
-  function setMode(value) {
+  let memberId = '';
+  window.BookingAccessibility = Object.freeze({ getPreferenceKey: () => memberId ? keyPrefix + memberId : '' });
+  function setMode(value, persist = false) {
     enabled = Boolean(value);
     document.body.classList.toggle('booking-accessible-mode', enabled);
     el('bookingAccessiblePanel')?.classList.toggle('hidden', !enabled);
     const toggle = el('bookingAccessibleToggle');
     toggle?.setAttribute('aria-pressed', String(enabled));
     if (toggle) toggle.textContent = enabled ? '返回一般預約模式' : '開啟無障礙模式（大字・拍收據）';
-    try { localStorage.setItem(key, enabled ? '1' : '0'); } catch { /* Preference is optional. */ }
+    if (persist && memberId) {
+      try { localStorage.setItem(keyPrefix + memberId, enabled ? 'accessible' : 'general'); } catch { /* Preference is optional. */ }
+    }
     if (enabled) { renderTickets(window.BookingBenefits?.getItems?.() || []); void window.BookingReceipts?.refresh?.(); }
   }
   function renderTickets(items) {
@@ -46,14 +50,22 @@
     }
   }
   window.addEventListener('DOMContentLoaded', () => {
-    el('bookingAccessibleToggle')?.addEventListener('click', () => setMode(!enabled));
+    el('bookingAccessibleToggle')?.addEventListener('click', () => setMode(!enabled, true));
     el('bookingAccessibleUpload')?.addEventListener('click', () => window.BookingReceipts?.openAccessible?.());
     el('bookingAccessibleRefresh')?.addEventListener('click', () => {
       el('bookingAccessibleStatus').textContent = '正在更新登記狀態…';
       window.BookingBenefits?.syncNow?.(); void window.BookingReceipts?.refresh?.();
     });
-    try { enabled = localStorage.getItem(key) === '1'; } catch { /* Storage unavailable. */ }
-    setMode(enabled);
+    setMode(false);
+  });
+  // Resolve before revealing the booking view; the old shared key is deliberately ignored.
+  window.addEventListener('booking:member-loaded', event => {
+    const nextId = String(event.detail?.profile?.lineUserId || '');
+    if (nextId === memberId) return;
+    memberId = nextId;
+    let preferred = false;
+    try { preferred = Boolean(memberId) && localStorage.getItem(keyPrefix + memberId) === 'accessible'; } catch { /* Use general mode. */ }
+    setMode(preferred);
   });
   window.addEventListener('booking:benefits-loaded', event => renderTickets(event.detail?.items));
   window.addEventListener('booking:receipts-updated', event => renderStatus(event.detail?.submissions));

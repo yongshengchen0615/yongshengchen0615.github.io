@@ -8,7 +8,7 @@ const core = fs.readFileSync('MemberWebsocket-dev/admin/booking-panel-core.js', 
 assert.ok(core.includes('修改此位技師'));
 assert.ok(core.includes('admin.booking.participants.technicians.update'));
 assert.ok(core.includes('expectedUpdatedAt: booking.updatedAt'));
-assert.ok(core.includes('至少一位預約人必須指定主要技師'));
+assert.ok(core.includes('每筆預約至少一位服務對象須預約主要技師，才能成立預約'));
 assert.ok(core.includes('同一筆多人預約不可重複指定同一位技師'));
 assert.equal(fs.existsSync('MemberWebsocket-dev/booking-admin-group-details.js'), false);
 

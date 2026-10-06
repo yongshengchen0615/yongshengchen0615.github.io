@@ -32,24 +32,25 @@ test('phone node executes the production normalizer and catches a backend that a
   }finally{w.close();}
 });
 
-test('accessible node drives production mode UI and restores absent and enabled preferences',async()=>{
-  for(const preference of [null,'1']) {
+test('accessible node drives production mode UI and restores each member preference',async()=>{
+  const preferenceKey='booking-mode:v2:test:feature-node';
+  for(const preference of [null,'general','accessible']) {
     const d=dom('booking'),w=d.window;
     try {
-      if(preference!==null)w.localStorage.setItem('booking-accessible-mode',preference);
+      if(preference!==null)w.localStorage.setItem(preferenceKey,preference);
       const items=[{kind:'points',selectable:true,title:'QA card'}, {kind:'event',selectable:true,title:'QA event'}, {kind:'points',selectable:true,reservedForBooking:true}];
       let cameraCalls=0;
       w.BookingBenefits={getItems:()=>items,syncNow:()=>{w.document.getElementById('bookingBenefits').dataset.state='ready';w.document.getElementById('bookingBenefitsList').setAttribute('aria-busy','false');w.dispatchEvent(new w.CustomEvent('booking:benefits-loaded',{detail:{items}}));}};
       w.BookingReceipts={openAccessible:()=>cameraCalls++,refresh:async()=>w.dispatchEvent(new w.CustomEvent('booking:receipts-updated',{detail:{submissions:[]}}))};
       w.BookingSystem={request:async()=>({submissions:[]})};
       w.eval(read('booking/booking-accessible.js'));await tick();
-      if(preference===null)w.localStorage.removeItem('booking-accessible-mode');
+      w.dispatchEvent(new w.CustomEvent('booking:member-loaded',{detail:{profile:{lineUserId:'test:feature-node'}}}));
       const node=userProbe(w);
       const result=await node.bookingAccessibleModeCase();
       assert.equal(result.status,'passed',JSON.stringify(result));
-      assert.equal(w.localStorage.getItem('booking-accessible-mode'),preference);
+      assert.equal(w.localStorage.getItem(preferenceKey),preference);
       assert.equal(cameraCalls,0);
-      assert.equal(w.document.getElementById('bookingAccessibleToggle').getAttribute('aria-pressed'),String(preference==='1'));
+      assert.equal(w.document.getElementById('bookingAccessibleToggle').getAttribute('aria-pressed'),String(preference==='accessible'));
     }finally{w.close();}
   }
 });

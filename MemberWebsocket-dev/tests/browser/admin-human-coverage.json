@@ -3,25 +3,25 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "330ec5ec66cba6597bd29950cbef6adde1f79ef6b633f8fe93da05760b5226e8",
+    "admin/index.html": "416957e364229ddbbb2f40945272a2a5c10a340d760b47dabd9933f625005eea",
     "admin/app.js": "849e8a327f0e73c65c775f4a6c29519a9c1777abc4074cdf7e347b12ede362d9",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
     "admin/grant-automation.js": "f3178a0bb26745d6cd7731b24ab8ab9aaec96a4dada62699a3609ae8b803e2b0",
     "admin/coupon-location-editor.js": "96484e05db55f418b0f71bc118a406c04d79c6187cae995115c35c0333af8347",
-    "admin/fixed-ticket-admin.js": "47b483d93dceb0264a35a414e484790c78b534cb53f15441173511b3d5e877f2",
+    "admin/fixed-ticket-admin.js": "73e4841709ca587bdbc397b90d1cc300d188681a248999866a3f017ce52a85df",
     "admin/fixed-ticket-admin-integration.js": "af65455cf96f6770fdbb0a72558d970b5a4377b0d42557ef55b2f5e70c43c190",
     "admin/fixed-ticket-calendar-option.js": "4e1a45e5e563a303d4b610f7699b9bbe4ebf549c14bc63a908d1b9c5f33e7bb4",
     "admin/pointcard-redemption-limit.js": "a391a001602667e48e63ee5cb7353ac44596f4a39de36ac03b0084b88f0e2d2f",
     "admin/event-ticket-redemption-limit.js": "6391ce8e930503aae1291ce767da938204219f1b63f285b7425c19b1095de7d0",
     "admin/integration-hub.js": "696f38801b5e8755e706c3e0153aa023a1d47f01a3f68456dd8e5a7fec868b33",
-    "admin/booking-panel.js": "810ef2b0cae0ad6b1d971914ada4363fef6963caf4c530a163682c09c1c37371",
-    "admin/booking-panel-core.js": "609d6e25690fa6813f414a2892391047d542e5b8c2b02b5ec01aeffd126c9bcf",
-    "admin/booking-resources.js": "136a14edf9dc1699a7284b0b5905e1f2f4f21c952471a0fbb2fdab632f2e61e9",
+    "admin/booking-panel.js": "3038b167d34f9b16b52990880facf71f01a5b99164bbb527f3dd49eb00cd6bb8",
+    "admin/booking-panel-core.js": "6ed63b0fc2c62874e552a1a66bb1c0fca7a7fb5f5b6258c27b9ac65f079479ce",
+    "admin/booking-resources.js": "1b61780152e007a2fdb29a9f228dbe66d8464ffc8806cc15fbceecde2c34440f",
     "admin/booking-always-open.js": "9cb236902a7f3f36cf3fe4c3f13fbbac622f000c72d36ec34f7d4dde08e6e54a",
     "admin/booking-cancellation-sync.js": "54b6d5eafd064687439a3b84d3fdbb730413ddb06af4f18977294a9e628ac0ee",
     "admin/booking-receipt-admin.js": "b5873c2753c0f2f9c267d0d13583405c2205cc70c0f2103f5899f741a74cf920",
-    "admin/booking-accessible-admin.js": "3400051e47c2839d33c7ba2c12fd8de6e97624fa1d12e5b7a5f7fb96c84097af"
+    "admin/booking-accessible-admin.js": "903adf76adbbce3f39f680854973593d19606ddd386d7dddb264caa06eb0e524"
   },
   "features": [
     {
@@ -183,7 +183,8 @@
         "FIXED_birthday_month",
         "FIXED_weekly",
         "FIXED_monthly",
-        "FIXED_yearly"
+        "FIXED_yearly",
+        "FIXED_NOTIFICATION_TIME"
       ]
     },
     {

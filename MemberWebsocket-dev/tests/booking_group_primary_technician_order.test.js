@@ -22,11 +22,11 @@ test('group slot APIs do not reserve the primary technician with the legacy whol
 
   assert.match(
     dedicated,
-    /\.eq\("technician_id", group\.primaryId\)\s*\.eq\("party_size", 1\)\s*\.in\("status", \["pending", "confirmed"\]\)/,
+    /\.in\("technician_id", legacyTechnicianIds\)\s*\.eq\("party_size", 1\)\s*\.in\("status", \["pending", "confirmed"\]\)/,
   );
   assert.match(
     compatibility,
-    /\.eq\("technician_id",g\.primaryId\)\.eq\("party_size",1\)\.in\("status",\["pending","confirmed"\]\)/,
+    /\.in\("technician_id",legacyTechnicianIds\)\.eq\("party_size",1\)\.in\("status",\["pending","confirmed"\]\)/,
   );
 });
 

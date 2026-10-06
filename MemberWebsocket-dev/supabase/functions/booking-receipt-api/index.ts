@@ -649,7 +649,7 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
 
   const [services,settings,bookings,rewardRules,memberResult,currentBenefitsResult]=await Promise.all([
     supabase.from("booking_services").select("id,title,duration_minutes,service_type,counts_toward_membership").eq("is_active",true).is("deleted_at",null).neq("id","00000000-0000-4000-8000-000000000010").order("title"),
-    supabase.from("booking_settings").select("primary_technician_id").eq("id",1).maybeSingle(),
+    supabase.from("booking_settings").select("primary_technician_id,require_primary_technician").eq("id",1).maybeSingle(),
     supabase.from("bookings").select("id,booking_date,start_time,status,booking_items(service_id,service_title),booking_receipts(status)").eq("member_id",receipt.data.member_id)
       .in("status",["confirmed","completed"]).order("booking_date",{ascending:false}).limit(80),
     supabase.from("booking_service_type_rewards").select("minutes_per_point,booking_service_types(name),point_cards(title)"),
@@ -675,6 +675,7 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
     rewardRules:(rewardRules.data||[]).map((r:any)=>({serviceType:r.booking_service_types?.name||"",minutesPerPoint:r.minutes_per_point,cardTitle:r.point_cards?.title||""})),
     services:services.data||[],
     primaryTechnicianConfigured:Boolean(settings.data?.primary_technician_id),
+    requirePrimaryTechnician:settings.data?.require_primary_technician !== false,
     benefitCatalog,
     currentBookingStatus:currentBooking?String(currentBooking.status||""):"",
     currentBookingServiceIds:currentBooking

@@ -14,6 +14,7 @@
     maxPartySize: 1,
     partySize: 1,
     primaryTechnicianId: '',
+    requirePrimaryTechnician: true,
     technicians: [],
     participantTechnicians: [],
     services: [],
@@ -38,6 +39,7 @@
       const group = await groupRequest('user.booking.group.bootstrap');
       state.maxPartySize = clamp(Number(group.settings?.maxPartySize || 1), 1, 10);
       state.primaryTechnicianId = String(group.settings?.primaryTechnicianId || '');
+      state.requirePrimaryTechnician = group.settings?.requirePrimaryTechnician !== false;
       state.technicians = Array.isArray(group.technicians) ? group.technicians.filter((item) => item.isActive) : [];
       const storeService = Array.isArray(base.services)
         ? base.services.find((item) => item.serviceId === STORE_SERVICE_ID)
@@ -54,6 +56,7 @@
         ...(base.settings || {}),
         maxPartySize: state.maxPartySize,
         primaryTechnicianId: state.primaryTechnicianId,
+        requirePrimaryTechnician: state.requirePrimaryTechnician,
       };
       base.technicians = state.technicians;
       base.bookings = (base.bookings || []).map((booking) => normalizeBookingForMember(booking, state.bookingGroups.get(booking.bookingId)));
@@ -240,13 +243,18 @@
     const rule = document.getElementById('primaryTechnicianRule');
     if (!rule) return;
     const primary = technicianById(state.primaryTechnicianId);
+    if (!state.requirePrimaryTechnician) {
+      rule.className = 'group-booking-rule';
+      rule.textContent = '目前不必預約主要技師也能成立預約，可選其他開放技師或現場安排；未預約主要技師的服務不計入主要技師集點與會員服務時間。';
+      return;
+    }
     if (!primary) {
       rule.className = 'group-booking-rule error';
       rule.textContent = '管理端尚未設定可用的主要技師，目前無法送出預約。';
       return;
     }
     rule.className = 'group-booking-rule';
-    rule.textContent = `預約規則：不論預約幾位，至少一位必須選擇主要技師「${primary.name}」；其他預約人可選其他技師或現場安排。`;
+    rule.textContent = `預約成立條件：不論預約幾位，至少一位必須預約主要技師「${primary.name}」才能成立預約；其他服務對象可選其他技師或現場安排。`;
   }
 
   function partySizeChanged(event) {
@@ -265,7 +273,7 @@
     if (state.extras.length > Math.max(0, state.partySize - 1)) state.extras.length = Math.max(0, state.partySize - 1);
 
     if (initial || !previous.length) {
-      state.participantTechnicians[0] = state.primaryTechnicianId && technicianById(state.primaryTechnicianId) ? state.primaryTechnicianId : '';
+      state.participantTechnicians[0] = state.requirePrimaryTechnician && state.primaryTechnicianId && technicianById(state.primaryTechnicianId) ? state.primaryTechnicianId : '';
     }
   }
 
@@ -650,8 +658,8 @@
     if (!validateCompanionItems(state.primaryItems, participantLabel(0), strict)) return null;
     ensureParticipantCount(false);
     const primaryCount = state.participantTechnicians.filter((id) => id && id === state.primaryTechnicianId).length;
-    if (!state.primaryTechnicianId || primaryCount < 1) {
-      if (strict) throw clientError('BOOKING_PRIMARY_TECHNICIAN_REQUIRED', '至少一位預約必須選擇主要技師。');
+    if (state.requirePrimaryTechnician && (!state.primaryTechnicianId || primaryCount < 1)) {
+      if (strict) throw clientError('BOOKING_PRIMARY_TECHNICIAN_REQUIRED', '每筆預約至少一位服務對象須預約主要技師，才能成立預約。');
       return null;
     }
     const selectedTechs = state.participantTechnicians.filter(Boolean);
@@ -705,7 +713,7 @@
     state.partySize = 1;
     state.primaryItems = [];
     state.extras = [];
-    state.participantTechnicians = [state.primaryTechnicianId && technicianById(state.primaryTechnicianId) ? state.primaryTechnicianId : ''];
+    state.participantTechnicians = [state.requirePrimaryTechnician && state.primaryTechnicianId && technicianById(state.primaryTechnicianId) ? state.primaryTechnicianId : ''];
     state.openCards = new Set([0]);
     renderGroupControls();
   }

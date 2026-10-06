@@ -223,9 +223,9 @@ async function normalizeGroup(s: SupabaseClient, body: Json) {
   const cfg = await settings(s), raw = Array.isArray(body.participants) ? body.participants : [];
   if (raw.length < 1 || raw.length > Number(cfg.max_party_size || 1)) throw new ApiError(400,"INVALID_PARTY_SIZE","預約人數超出目前允許範圍。");
   const primaryId = optionalUuid(cfg.primary_technician_id,"主要技師");
-  if (!primaryId) throw new ApiError(409,"BOOKING_PRIMARY_TECHNICIAN_MISSING","管理端尚未設定主要技師。");
+  if (cfg.require_primary_technician !== false && !primaryId) throw new ApiError(409,"BOOKING_PRIMARY_TECHNICIAN_MISSING","管理端尚未設定主要技師。");
   const active = await activeTechs(s), techMap = new Map(active.map((x:any)=>[String(x.id),x]));
-  if (!techMap.has(primaryId)) throw new ApiError(409,"BOOKING_PRIMARY_TECHNICIAN_DISABLED","主要技師目前未開放預約。");
+  if (cfg.require_primary_technician !== false && !techMap.has(primaryId)) throw new ApiError(409,"BOOKING_PRIMARY_TECHNICIAN_DISABLED","主要技師目前未開放預約。");
 
   const serviceIds = new Set<string>(), selectedTechs = new Set<string>(), normalized:Json[] = [];
   let primarySelected = false;
@@ -247,7 +247,7 @@ async function normalizeGroup(s: SupabaseClient, body: Json) {
     }
     normalized.push({ technicianId:techId || null, items });
   }
-  if (!primarySelected) throw new ApiError(400,"BOOKING_PRIMARY_TECHNICIAN_REQUIRED","每筆預約至少要有一位選擇主要技師。");
+  if (cfg.require_primary_technician !== false && !primarySelected) throw new ApiError(400,"BOOKING_PRIMARY_TECHNICIAN_REQUIRED","每筆預約至少要有一位選擇主要技師。");
 
   const sr = await s.from("booking_services").select("*").in("id",[...serviceIds,STORE_SERVICE_ID]); if (sr.error) throw mapDbError(sr.error);
   const sm = new Map((sr.data||[]).map((x:any)=>[String(x.id),x])), store=sm.get(STORE_SERVICE_ID);
@@ -273,19 +273,20 @@ async function normalizeGroup(s: SupabaseClient, body: Json) {
 async function memberBootstrap(s: SupabaseClient, m: any) {
   const cfg=await settings(s), techs=await activeTechs(s), br=await s.from("bookings").select("id").eq("member_id",m.id).order("created_at",{ascending:false}).limit(50);
   if (br.error) throw mapDbError(br.error); const ids=(br.data||[]).map((x:any)=>x.id), groups=await groupData(s,ids);
-  return { settings:{ maxPartySize:Number(cfg.max_party_size||1), primaryTechnicianId:cfg.primary_technician_id||"", updatedAt:cfg.updated_at }, technicians:techs.map(techClient), bookingGroups:Object.fromEntries([...groups.entries()]) };
+  return { settings:{ maxPartySize:Number(cfg.max_party_size||1), requirePrimaryTechnician:cfg.require_primary_technician !== false,primaryTechnicianId:cfg.primary_technician_id||"", updatedAt:cfg.updated_at }, technicians:techs.map(techClient), bookingGroups:Object.fromEntries([...groups.entries()]) };
 }
 
 async function slots(s: SupabaseClient, m: any, body: Json) {
   const g=await normalizeGroup(s,body), date=dateValue(body.bookingDate), cfg=g.cfg, today=currentBusinessDate(taipeiDate(),taipeiMinutes(),cfg.work_start_time,cfg.work_end_time), earliest=addDays(today,Number(cfg.min_advance_days||0)), max=Number(cfg.max_advance_days||0), latest=max>0?addDays(today,max):"";
-  if (date < earliest || (latest && date > latest)) return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:[] };
-  if (await isActiveBookingHoliday(s,date)) return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, holidayBlocked:true, slots:[] };
+  if (date < earliest || (latest && date > latest)) return { settings:{maxPartySize:Number(cfg.max_party_size||1),requirePrimaryTechnician:cfg.require_primary_technician !== false,primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:[] };
+  if (await isActiveBookingHoliday(s,date)) return { settings:{maxPartySize:Number(cfg.max_party_size||1),requirePrimaryTechnician:cfg.require_primary_technician !== false,primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, holidayBlocked:true, slots:[] };
   let excluded="";
   if (body.bookingId) {
     excluded=uuid(body.bookingId,"預約"); const r=await s.from("bookings").select("id,status").eq("id",excluded).eq("member_id",m.id).maybeSingle();
     if (r.error) throw mapDbError(r.error); if (!r.data || !["pending","confirmed"].includes(r.data.status)) throw new ApiError(409,"BOOKING_NOT_EDITABLE","找不到可修改的預約。");
   }
-  const primaryRows=await s.from("bookings").select("id,start_at,end_at").gte("booking_date",addDays(date,-1)).lte("booking_date",addDays(date,1)).eq("technician_id",g.primaryId).eq("party_size",1).in("status",["pending","confirmed"]);
+  const legacyTechnicianIds=[...new Set([...g.assignments.map((x:any)=>x.technicianId),...(cfg.require_primary_technician !== false && g.primaryId ? [g.primaryId] : [])])];
+  const primaryRows=legacyTechnicianIds.length ? await s.from("bookings").select("id,start_at,end_at").gte("booking_date",addDays(date,-1)).lte("booking_date",addDays(date,1)).in("technician_id",legacyTechnicianIds).eq("party_size",1).in("status",["pending","confirmed"]) : {data:[],error:null};
   if (primaryRows.error) throw mapDbError(primaryRows.error);
   const primaryOccupied=(primaryRows.data||[]).filter((x:any)=>x.id!==excluded).map(occupiedRange);
 
@@ -306,7 +307,7 @@ async function slots(s: SupabaseClient, m: any, body: Json) {
     const passed=slotHasPassed(date,cursor);
     out.push({startTime:clockTime(cursor),endTime:clockTime(groupEnd),startAt:timeOnBusinessDate(date,cursor),endAt:timeOnBusinessDate(date,groupEnd),available:!mainOverlap&&!assignmentOverlap&&!passed});
   }
-  return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:out };
+  return { settings:{maxPartySize:Number(cfg.max_party_size||1),requirePrimaryTechnician:cfg.require_primary_technician !== false,primaryTechnicianId:g.primaryId,maxAdvanceDays:max}, totalDurationMinutes:g.duration, totalAmount:g.amount, slots:out };
 }
 
 function contact(body: Json) { const source=asText(body.contactSource,20)||"member"; return { source, surname:asText(body.contactSurname,40)||null, salutation:asText(body.contactSalutation,10)||null, phone:asText(body.contactPhone,20)||null }; }
@@ -351,7 +352,7 @@ async function createBooking(s: SupabaseClient, i: Identity, m: any, body: Json)
   const benefits=await validateBookingBenefitSelectionLimit(s,body.benefits);
   const r=await s.rpc("create_group_booking_with_benefits_request_v2", { p_request_id:requestId, p_member_id:m.id, p_booking_date:bookingDate, p_start_time:`${timeValue(body.startTime)}:00`, p_participants:g.participants, p_member_note:asText(body.memberNote,500), p_contact_source:c.source, p_contact_surname:c.surname, p_contact_salutation:c.salutation, p_contact_phone:c.phone, p_benefits:benefits });
   if (r.error) throw mapDbError(r.error); const row=Array.isArray(r.data)?r.data[0]:r.data, booking=await fullBooking(s,row.id);
-  await audit(s,i,"member","BOOKING_GROUP_REQUESTED","booking",row.id,{partySize:g.participants.length,primaryTechnicianId:g.primaryId,participantTechnicians:g.participants.map((p:any)=>p.technicianId||null)});
+  await audit(s,i,"member","BOOKING_GROUP_REQUESTED","booking",row.id,{partySize:g.participants.length,requirePrimaryTechnician:g.cfg.require_primary_technician !== false,primaryTechnicianId:g.primaryId,participantTechnicians:g.participants.map((p:any)=>p.technicianId||null)});
   return {booking};
 }
 async function updateBooking(s: SupabaseClient, i: Identity, m: any, body: Json) {
@@ -365,20 +366,24 @@ async function updateBooking(s: SupabaseClient, i: Identity, m: any, body: Json)
 
 async function adminBootstrap(s: SupabaseClient) {
   const cfg=await settings(s), tr=await s.from("booking_technicians").select("*").order("sort_order",{ascending:true}).order("created_at",{ascending:true}); if (tr.error) throw mapDbError(tr.error);
-  return { settings:{maxPartySize:Number(cfg.max_party_size||1),primaryTechnicianId:cfg.primary_technician_id||"",updatedAt:cfg.updated_at}, technicians:(tr.data||[]).map(techClient) };
+  return { settings:{maxPartySize:Number(cfg.max_party_size||1),requirePrimaryTechnician:cfg.require_primary_technician !== false,primaryTechnicianId:cfg.primary_technician_id||"",updatedAt:cfg.updated_at}, technicians:(tr.data||[]).map(techClient) };
 }
 async function saveSettings(s: SupabaseClient, i: Identity, body: Json) {
   const max=Number(body.maxPartySize); if (!Number.isInteger(max)||max<1||max>10) throw new ApiError(400,"INVALID_PARTY_SIZE","預約人數上限必須介於 1–10 人。");
   const expected=asText(body.expectedUpdatedAt,80), primary=optionalUuid(body.primaryTechnicianId,"主要技師");
+  const current = await settings(s);
+  const required = body.requirePrimaryTechnician === undefined ? current.require_primary_technician !== false : body.requirePrimaryTechnician;
+  if (typeof required !== "boolean") throw new ApiError(400,"INVALID_INPUT","主要技師必填設定必須是布林值。");
+  if (required && !primary) throw new ApiError(400,"BOOKING_PRIMARY_TECHNICIAN_MISSING","請選擇主要技師。");
   if (primary) {
     const tr=await s.from("booking_technicians").select("id,is_active").eq("id",primary).maybeSingle(); if (tr.error) throw mapDbError(tr.error);
     if (!tr.data) throw new ApiError(404,"BOOKING_TECHNICIAN_NOT_FOUND","找不到選擇的主要技師。");
     if (!tr.data.is_active) throw new ApiError(409,"BOOKING_TECHNICIAN_DISABLED","主要技師必須是開放狀態。");
   }
-  let q=s.from("booking_settings").update({max_party_size:max,primary_technician_id:primary||null,updated_by:i.lineUserId}).eq("id",1); if (expected) q=q.eq("updated_at",expected);
+  let q=s.from("booking_settings").update({max_party_size:max,primary_technician_id:primary||null,require_primary_technician:required,updated_by:i.lineUserId}).eq("id",1); if (expected) q=q.eq("updated_at",expected);
   const r=await q.select("*").maybeSingle(); if (r.error) throw mapDbError(r.error); if (!r.data) throw new ApiError(409,"CONFLICT","預約設定已被其他操作更新，請重新整理。");
-  await audit(s,i,"admin","BOOKING_RESOURCE_SETTINGS_UPDATED","booking_settings","1",{maxPartySize:max,primaryTechnicianId:primary||null});
-  return {settings:{maxPartySize:max,primaryTechnicianId:primary||"",updatedAt:r.data.updated_at}};
+  await audit(s,i,"admin","BOOKING_RESOURCE_SETTINGS_UPDATED","booking_settings","1",{maxPartySize:max,requirePrimaryTechnician:required,primaryTechnicianId:primary||null});
+  return {settings:{maxPartySize:max,requirePrimaryTechnician:required,primaryTechnicianId:primary||"",updatedAt:r.data.updated_at}};
 }
 async function saveTechnician(s: SupabaseClient, i: Identity, body: Json) {
   const name=asText(body.name,80); if (!name) throw new ApiError(400,"INVALID_INPUT","請輸入技師名稱。");

@@ -125,6 +125,7 @@
       state.data = bookingData || state.data;
       syncServerClock(state.data.serverNow);
       state.profile = profile || {};
+      window.dispatchEvent(new CustomEvent('booking:member-loaded', { detail: { profile: state.profile } }));
       pruneSelections();
       renderMemberProfile();
       renderSettings();

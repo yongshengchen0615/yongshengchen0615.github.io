@@ -10,12 +10,13 @@ const source = fs.readFileSync(path.join(__dirname, '../supabase/functions/sched
 const code = stripTypeScriptTypes(source.replace(/^import .*;\r?\n/gm, ''));
 const row = { id: '11111111-1111-4111-8111-111111111111', member_id: 'fixture-member', line_user_id: 'fixture-line', request_id: 'FIXED-fixture', schedule_id: 'fixture', message_text: '固定票券', attempt_count: 1 };
 
-function fixture({ url = '', status = 200, acceptedId = '', testMember = false, rows = [row] } = {}) {
+function fixture({ url = '', status = 200, acceptedId = '', testMember = false, rows = [row], delivery = {action:'send'}, deliveryError = false } = {}) {
   const calls = [];
   const updates = [];
   let handler;
   const db = {
     async rpc(name) {
+      if (name === 'fixed_ticket_notification_delivery') return { data:delivery, error:deliveryError ? new Error('fixture failure') : null };
       if (name === 'claim_due_grant_messages') return { data: rows, error: null };
       if (name === 'get_line_messaging_token') return { data: 'fixture-channel-token', error: null };
       if (name === 'get_line_setting') return { data: url, error: null };
@@ -60,6 +61,24 @@ test('scheduled fixed-ticket dispatch uses the configured LINE URL and completes
   assert.equal(calls[0].retryKey, row.id);
   assert.ok(calls[0].signal instanceof AbortSignal);
   assert.equal(updates.at(-1).status, 'sent');
+});
+
+test('fixed-ticket send checks disabled, changed, deferred and failed eligibility without pushing LINE', async () => {
+  for (const options of [
+    {delivery:{action:'cancel',reason:'FIXED_NOTIFICATION_DISABLED'}},
+    {delivery:{action:'cancel',reason:'FIXED_MEMBER_INELIGIBLE'}},
+    {delivery:{action:'skip',reason:'FIXED_NOTIFICATION_CHANGED'}},
+    {delivery:{action:'defer',scheduledFor:'2099-01-01T10:00:00Z'}},
+    {deliveryError:true},
+  ]) {
+    const {calls,updates,dispatch}=fixture(options);
+    const body=await (await dispatch()).json();
+    assert.equal(calls.length,0);
+    assert.equal(body.sent,0);
+    if (options.delivery?.action==='cancel') assert.equal(updates.at(-1).status,'cancelled');
+    if (options.delivery?.action==='defer') assert.equal(updates.at(-1).scheduled_for,options.delivery.scheduledFor);
+    if (options.deliveryError) assert.equal(body.failed,1);
+  }
 });
 
 test('an empty LINE URL setting keeps the existing LIFF fallback', async () => {
