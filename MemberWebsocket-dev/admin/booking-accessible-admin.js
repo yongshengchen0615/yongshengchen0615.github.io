@@ -169,6 +169,8 @@
       card.className = `accessible-admin-queue-card accessible-admin-record-card status-${statusInfo.className}`;
       card.dataset.receiptId = String(receipt.receiptId || '');
       card.dataset.memberCode = String(receipt.memberCode || '');
+      card.dataset.receiptId = String(receipt.receiptId || '');
+      card.dataset.memberCode = String(receipt.memberCode || '');
       card.dataset.reviewStatus = String(receipt.reviewStatus || 'pending');
       const info = document.createElement('div'); info.className = 'accessible-admin-queue-info';
       const heading = document.createElement('div'); heading.className = 'accessible-admin-queue-member';
@@ -203,6 +205,8 @@
       const button = document.createElement('button'); button.type = 'button';
       button.className = receipt.reviewStatus === 'pending' ? 'button button-dark accessible-admin-review-button' : 'button button-outline accessible-admin-review-button';
       button.textContent = receipt.reviewStatus === 'pending' ? '開始審核' : '查看紀錄';
+      button.dataset.accessibleReceiptId = String(receipt.receiptId || '');
+      button.dataset.accessibleReviewAction = receipt.reviewStatus === 'pending' ? 'review' : 'record';
       button.addEventListener('click', () => {
         if (receipt.reviewStatus === 'pending') void open(receipt);
         else void openRecord(receipt);
