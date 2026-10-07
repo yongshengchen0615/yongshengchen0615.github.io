@@ -21,8 +21,11 @@
 #friendQrScanner[hidden] {display:none;}
 #friendQrFile[hidden],#confirmFriendRequest[hidden] {display:none;}
 #friendQrVideo {display:block;width:100%;aspect-ratio:4/3;object-fit:contain;border-radius:12px;background:#111;}
-#friendQrScanner p,#friendStatus {margin:10px 0;line-height:1.6;color:var(--theme-text-muted);}
-#friendStatus:empty {display:none;}
+#friendQrScanner p {margin:10px 0;line-height:1.6;color:var(--theme-text-muted);}
+.friend-feedback {margin:10px 0;padding:10px 12px;border:1px solid var(--theme-border);border-radius:12px;background:var(--theme-surface-muted);color:var(--theme-text);line-height:1.6;}
+.friend-feedback:empty {display:none;}
+.friend-feedback[data-state="success"] {border-color:color-mix(in srgb,var(--theme-positive,#2f7b55) 32%,var(--theme-border));background:var(--theme-positive-soft,#eef8ef);color:var(--theme-positive-text,#1f5d2a);}
+.friend-feedback[data-state="error"] {border-color:color-mix(in srgb,var(--theme-danger,#a94635) 32%,var(--theme-border));background:var(--theme-danger-soft,#fff0f0);color:var(--theme-danger-text,#8c1d18);}
 #bindMemberReferral {min-height:44px;}
 @media(max-width:560px){.friend-sharing{grid-template-columns:minmax(0,1fr);gap:8px;}.friend-qr{margin:8px auto;}.member-referral-dialog .friend-actions button{flex-basis:120px;}.member-referral-dialog{padding:16px;}.member-referral-heading{position:sticky;top:-16px;background:var(--theme-surface-raised);padding:12px 0;z-index:1;}}
 
