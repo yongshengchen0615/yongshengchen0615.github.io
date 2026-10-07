@@ -22,10 +22,24 @@ test('all invite entrances populate a safe lookup; request needs explicit confir
   friendTab.click();assert.equal(friendTab.getAttribute('aria-selected'),'true');assert.equal(w.document.getElementById('memberReferralFriendsTabPanel').hidden,false);assert.equal(w.document.getElementById('memberReferralInviteTabPanel').hidden,true);
   inviteTab.click();assert.equal(inviteTab.getAttribute('aria-selected'),'true');
   w.document.getElementById('memberReferralForm').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();
-  assert.equal(calls.at(-1).action,'member.friend.lookup');assert.equal(w.document.getElementById('confirmFriendRequest').hidden,false);
+  assert.equal(calls.at(-1).action,'member.friend.lookup');assert.match(w.document.getElementById('friendStatus').textContent,/查找好友成功：陳○ · CCCC/);assert.equal(w.document.getElementById('confirmFriendRequest').hidden,false);
   w.document.getElementById('confirmFriendRequest').click();await tick();assert.equal(calls.some(c=>c.action==='member.friend.request'&&c.payload.memberCode==='CCCC'),true);
   [...w.document.querySelectorAll('#friendList button')].find(b=>b.textContent==='接受').click();await tick();assert.match(w.document.getElementById('friendList').textContent,/已成為好友/);
   assert.equal(calls.some(c=>/referral|ticket|points/.test(c.action)),false);
+ }finally{dom.window.close();}
+});
+test('friend lookup failure always reports an explicit failure message and keeps confirmation hidden',async()=>{
+ const {dom,w}=await page();try{
+  const field=w.document.getElementById('memberReferralInviteCode');
+  field.value='AAAA';field.dispatchEvent(new w.Event('input'));
+  await w.MemberFriends.lookup();
+  assert.match(w.document.getElementById('friendStatus').textContent,/^查找好友失敗：不可使用自己的邀請碼或會員編號。$/);
+  assert.equal(w.document.getElementById('confirmFriendRequest').hidden,true);
+  w.MemberSystem.request=async(_c,_t,_k,action)=>{if(action.endsWith('lookup'))throw new Error('找不到符合的好友。');return {friends:[],receivedBookings:[]};};
+  field.value='ZZZZ000000';field.dispatchEvent(new w.Event('input'));
+  await w.MemberFriends.lookup();
+  assert.match(w.document.getElementById('friendStatus').textContent,/^查找好友失敗：找不到符合的好友。$/);
+  assert.equal(w.document.getElementById('confirmFriendRequest').hidden,true);
  }finally{dom.window.close();}
 });
 test('booking lists only accepted friends and editing fixes the original recipient',async()=>{
