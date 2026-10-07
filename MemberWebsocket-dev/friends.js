@@ -19,8 +19,15 @@
     if (!response.ok || !result.ok) throw new Error(result.error?.message || '好友資料載入失敗。');
     return result.data;
   }
-  function status(message, state = 'info') {
-    for (const id of ['friendStatus', 'friendListStatus']) {
+  function status(message, state = 'info', target = 'auto') {
+    const ids = booking
+      ? ['friendStatus']
+      : target === 'invite'
+        ? ['friendStatus']
+        : target === 'friends'
+          ? ['friendListStatus']
+          : [el('memberReferralInviteTabPanel')?.hidden === false ? 'friendStatus' : 'friendListStatus'];
+    for (const id of ids) {
       const node = el(id);
       if (!node) continue;
       node.textContent = message;
@@ -117,7 +124,7 @@
     if (!profile || busy || window.MemberReferral?.isBusy()) return;
     const current = generation, entered = input().value;
     invalidate(); window.MemberReferral?.preview(''); busy = true;
-    status('正在查找好友…', 'loading');
+    status('正在查找好友…', 'loading', 'invite');
     const button = el('lookupFriend'); if (button) button.disabled = true;
     try {
       const code = window.FriendQRScanner.parseInvitation(entered);
@@ -126,10 +133,10 @@
       if (current !== generation || entered !== input().value) return;
       pendingCode = found.memberCode;
       window.MemberReferral?.preview(code, found.memberCode);
-      status(`查找好友成功：${found.displayName} · ${found.memberCode}。送出好友邀請後需等待對方接受；首次邀請獎勵可另外確認綁定。`, 'success');
+      status(`查找好友成功：${found.displayName} · ${found.memberCode}。送出好友邀請後需等待對方接受；首次邀請獎勵可另外確認綁定。`, 'success', 'invite');
       el('confirmFriendRequest').hidden = false;
     } catch (error) {
-      if (current === generation && entered === input().value) status(`查找好友失敗：${error?.message || '請確認邀請碼或會員編號後重試。'}`, 'error');
+      if (current === generation && entered === input().value) status(`查找好友失敗：${error?.message || '請確認邀請碼或會員編號後重試。'}`, 'error', 'invite');
     }
     finally { if (current === generation) busy = false; if (button) button.disabled = false; }
   }
