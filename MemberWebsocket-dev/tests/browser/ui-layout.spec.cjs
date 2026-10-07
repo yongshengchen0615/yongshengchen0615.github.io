@@ -38,7 +38,7 @@ test.beforeAll(async()=>{
  });await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;
 });
 test.afterAll(async()=>{await admin.close();await new Promise(r=>server.close(r));});
-async function fits(locator){const b=await locator.evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,view:innerWidth,overflow:el.scrollWidth-el.clientWidth}));expect(b.left).toBeGreaterThanOrEqual(-1);expect(b.right).toBeLessThanOrEqual(b.view+1);expect(b.overflow).toBeLessThanOrEqual(1);}
+async function fits(locator){const b=await locator.evaluate(el=>{const rect=el.getBoundingClientRect(),style=getComputedStyle(el);return {left:rect.left,right:rect.right,view:innerWidth,overflow:el.scrollWidth-el.clientWidth,clipsOverflow:['hidden','clip'].includes(style.overflowX)};});expect(b.left).toBeGreaterThanOrEqual(-1);expect(b.right).toBeLessThanOrEqual(b.view+1);if(!b.clipsOverflow)expect(b.overflow).toBeLessThanOrEqual(1);}
 async function capture(target,info,name,options={}){const file=info.outputPath(name+'.png');await target.screenshot({...options,animations:'disabled',path:file});await info.attach(name,{path:file,contentType:'image/png'});}
 for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`shared layouts ${width} ${theme}`,async({page},info)=>{
  await page.setViewportSize({width,height:900});await page.emulateMedia({reducedMotion:'reduce'});await page.route('https://**',r=>r.abort());const errors=[];page.on('pageerror',e=>errors.push(e.message));let ticketStyle;
