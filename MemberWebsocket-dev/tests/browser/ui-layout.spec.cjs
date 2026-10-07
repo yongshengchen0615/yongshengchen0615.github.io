@@ -39,13 +39,14 @@ test.beforeAll(async()=>{
 });
 test.afterAll(async()=>{await admin.close();await new Promise(r=>server.close(r));});
 async function fits(locator){const b=await locator.evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,view:innerWidth,overflow:el.scrollWidth-el.clientWidth}));expect(b.left).toBeGreaterThanOrEqual(-1);expect(b.right).toBeLessThanOrEqual(b.view+1);expect(b.overflow).toBeLessThanOrEqual(1);}
+async function capture(target,info,name,options={}){const file=info.outputPath(name+'.png');await target.screenshot({...options,path:file});await info.attach(name,{path:file,contentType:'image/png'});}
 for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`shared layouts ${width} ${theme}`,async({page},info)=>{
  await page.setViewportSize({width,height:900});await page.route('https://**',r=>r.abort());const errors=[];page.on('pageerror',e=>errors.push(e.message));let ticketStyle;
  for(const surface of surfaces){
   await page.goto(`${base}/${surface}/?theme=${theme}`);await expect(page.locator(`#${surface}View`)).toBeVisible();await fits(page.locator('.topbar'));
   if(surface==='member'){
    await page.locator('#openMemberReferral').click();await expect(page.locator('#memberReferralModal')).toBeVisible();await fits(page.locator('.member-referral-dialog'));await expect(page.locator('#memberReferralOwnCode')).toContainText('MEMBER-00001');await expect(page.locator('#friendShareUrl')).toHaveCount(0);
-   await page.locator('#copyMemberInviteCode').click();await expect(page.locator('#friendStatus')).toContainText('已複製');await info.attach(`friends-${width}-${theme}`,{body:await page.locator('.member-referral-dialog').screenshot(),contentType:'image/png'});await page.keyboard.press('Escape');expect(await page.locator('.app-shell').evaluate(e=>e.inert)).toBe(false);
+   await page.locator('#copyMemberInviteCode').click();await expect(page.locator('#friendStatus')).toContainText('已複製');await capture(page.locator('.member-referral-dialog'),info,`friends-${width}-${theme}`);await page.keyboard.press('Escape');expect(await page.locator('.app-shell').evaluate(e=>e.inert)).toBe(false);
   }
   if(surface==='points'||surface==='booking'){
    const card=page.locator(surface==='booking'?'#bookingBenefitsList .ui-ticket':'#pointsView .ui-ticket').first();await expect(card).toBeVisible();await fits(card);await expect(card.locator('.is-source')).toContainText(item.cardTitle);await expect(card.locator('.is-cost')).toContainText('5 點');
@@ -53,15 +54,15 @@ for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`shar
    if(surface==='booking'){
     await expect(page.locator('.booking-contact-fieldset #friendBookingRecipient')).toBeVisible();await page.locator('#friendBookingRecipient').selectOption('FRIEND-00002');expect(await page.evaluate(()=>MemberFriends.selected())).toBe('FRIEND-00002');
     await page.locator('input[data-booking-benefit-id="PT-1"]').check();expect(await page.evaluate(()=>BookingBenefits.selectionPayload())).toEqual([{kind:'points',id:'PT-1'}]);expect(await page.evaluate(()=>layoutCalls.some(c=>/create|redeem|bind/.test(c.action)))).toBe(false);
-    await info.attach(`booking-selection-${width}-${theme}`,{body:await page.locator('.booking-selection-modal-card').screenshot(),contentType:'image/png'});
+    await capture(page.locator('.booking-selection-modal-card'),info,`booking-selection-${width}-${theme}`);
     await page.locator('#appointmentPanel').evaluate(e=>e.classList.add('hidden'));await page.locator('#bookingAccessibleToggle').click();await expect(page.locator('#bookingAccessiblePanel .ui-ticket')).toBeVisible();await fits(page.locator('#bookingAccessiblePanel'));await expect(page.locator('#bookingAccessiblePanel .is-cost')).toContainText('5 點');
    }
   }
-  await page.evaluate(()=>scrollTo(0,0));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await info.attach(`${surface}-${width}-${theme}`,{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await page.evaluate(()=>scrollTo(0,0));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await capture(page,info,`${surface}-${width}-${theme}`,{fullPage:true});
  }
  await page.goto(admin.base+'/admin/?run='+info.testId);await expect(page.locator('#adminView')).toBeVisible();await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
  for(const id of ['membersTab','cardsTab','eventsTab','calendarTab','integrationTab','bookingTab']){
   const tab=page.locator('#'+id);if(await tab.count())await tab.click();await fits(page.locator('#adminView>.topbar'));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  }
- await info.attach(`admin-booking-${width}-${theme}`,{body:await page.screenshot({fullPage:true}),contentType:'image/png'});expect(errors).toEqual([]);
+ await capture(page,info,`admin-booking-${width}-${theme}`,{fullPage:true});expect(errors).toEqual([]);
 });
