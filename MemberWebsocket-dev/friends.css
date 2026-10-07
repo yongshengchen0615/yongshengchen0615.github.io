@@ -37,6 +37,10 @@
 .friend-link-actions small {line-height:1.6;}
 .friend-copy-buffer {position:fixed;opacity:0;width:1px;height:1px;inset:0;pointer-events:none;}
 .member-referral-section {grid-template-columns:minmax(0,1fr);}
+.friend-invite-section,.friend-add-section {gap:12px;}
+.friend-add-section>label {margin:0;}
+.friend-add-section>input {width:100%;}
+#memberReferralRewardTabPanel .member-referral-section {margin:0;}
 .member-referral-code-row {min-width:0;overflow-wrap:anywhere;}
 .member-invite-code {min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;}
 .member-referral-dialog .friends-panel {border-radius:var(--ui-radius-panel);}
