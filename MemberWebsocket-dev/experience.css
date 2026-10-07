@@ -621,7 +621,7 @@ html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] {
   box-shadow:0 18px 36px rgba(40,32,22,.16);
 }
 html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style]::before {
-  content:""; position:absolute; z-index:0; width:230px; height:230px; right:-92px; bottom:-152px;
+  content:""; position:absolute; z-index:0; width:190px; height:190px; right:12px; bottom:-122px;
   border:1px solid rgba(255,250,243,.20); border-radius:50%; pointer-events:none;
   box-shadow:0 0 0 28px rgba(255,250,243,.035),0 0 0 56px rgba(255,250,243,.025);
 }
