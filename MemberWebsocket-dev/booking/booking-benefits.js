@@ -319,6 +319,7 @@
         const card = document.createElement('article');
         card.className = `booking-benefit ui-ticket${isSelected ? ' is-selected' : ''}`;
         card.dataset.benefitKind = item.kind;
+        if (item.kind === 'points') card.dataset.cardStyle = window.MemberUI.pointCardStyleKey(item.cardStyleKey);
 
         const meta = document.createElement('p');
         meta.className = 'booking-benefit-meta';

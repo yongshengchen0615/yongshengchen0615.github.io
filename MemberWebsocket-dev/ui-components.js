@@ -1,6 +1,12 @@
 (() => {
   'use strict';
   // Presentation only: callers own eligibility, balances, selection and requests.
+  const POINT_CARD_STYLE_KEYS = new Set(['citrus', 'coral', 'lagoon', 'skyline', 'violet', 'berry', 'cocoa', 'lime', 'denim', 'peach']);
+  const LEGACY_POINT_CARD_STYLE_MAP = Object.freeze({ forest: 'lagoon', midnight: 'skyline', ocean: 'denim', sunset: 'coral', lavender: 'violet', rose: 'berry', gold: 'citrus', platinum: 'cocoa', mint: 'lime', cherry: 'peach' });
+  function pointCardStyleKey(value) {
+    const key = String(value || '').trim().toLowerCase();
+    return POINT_CARD_STYLE_KEYS.has(key) ? key : (LEGACY_POINT_CARD_STYLE_MAP[key] || 'citrus');
+  }
   function pointTicketDetails({ cardTitle, pointCost, pointBalance }) {
     const list = document.createElement('dl');
     list.className = 'ticket-cost-cards';
@@ -20,5 +26,5 @@
     }
     return list;
   }
-  window.MemberUI = Object.freeze({ pointTicketDetails });
+  window.MemberUI = Object.freeze({ pointTicketDetails, pointCardStyleKey });
 })();

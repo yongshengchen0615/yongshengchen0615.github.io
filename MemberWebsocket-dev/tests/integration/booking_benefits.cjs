@@ -17,7 +17,7 @@ function fixture(load, claim = async (config, token, eventTicketId) => ({ ticket
   return { w, el, close: () => w.close(), start: () => w.BookingBenefits.start({}, 'fixture') };
 }
 const items = [
-  { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', cardId: 'CARD', cardTitle: '集點卡', pointCost: 5, pointBalance: 10, statusLabel: '可使用', conditionLabel: '本卡目前 10 點 · 此票券需 5 點' },
+  { kind: 'points', id: 'reward', selectionId: 'PT-001', selectable: true, title: '集點券', cardId: 'CARD', cardTitle: '集點卡', cardStyleKey: 'lagoon', pointCost: 5, pointBalance: 10, statusLabel: '可使用', conditionLabel: '本卡目前 10 點 · 此票券需 5 點' },
   { kind: 'event', id: 'EVENT', selectionId: '', selectable: true, claimRequired: true, title: '<img src=x onerror=alert(1)>', statusLabel: '可勾選並領取', conditionLabel: '每日最多使用 2 張 · 服務限制：目前未設定' },
   { kind: 'calendar', id: 'CAL', selectionId: '', selectable: false, title: '會員活動', statusLabel: '活動進行中', conditionLabel: '會員條件：目前會員階級適用 · 活動資訊僅供預約參考' },
 ];
@@ -51,6 +51,10 @@ test('0/1/N benefit cards render safely inside booking form and expose only elig
           null,
           'event tickets stay actionable in booking without a detail link'
         );
+        const pointCard = h.el('bookingBenefitsList').querySelector('.booking-benefit-group[data-benefit-kind="points"] .booking-benefit');
+        const eventCard = h.el('bookingBenefitsList').querySelector('.booking-benefit-group[data-benefit-kind="event"] .booking-benefit');
+        assert.equal(pointCard.dataset.cardStyle, 'lagoon', 'point ticket inherits its source point-card visual preset');
+        assert.equal(eventCard.hasAttribute('data-card-style'), false, 'event tickets do not receive a point-card visual preset');
         assert.ok(
           h.el('bookingBenefitsList').querySelector('.booking-benefit-group[data-benefit-kind="calendar"] a'),
           'display-only activities may keep their calendar detail link'

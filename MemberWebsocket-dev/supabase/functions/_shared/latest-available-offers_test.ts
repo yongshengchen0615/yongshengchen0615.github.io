@@ -8,7 +8,7 @@ Deno.test("selectLatestPointOffers uses current reward/template definitions and 
       { id:"reward-a2",point_card_id:"card-1",threshold_stamps:10,ticket_template_id:"template-a2" },
     ],
     [
-      { id:"card-1",title:"腳底集點卡",status:"active",expiry_mode:"unlimited",expires_on:null,sort_order:0 },
+      { id:"card-1",title:"腳底集點卡",status:"active",style_key:"lagoon",expiry_mode:"unlimited",expires_on:null,sort_order:0 },
     ],
     [
       { id:"template-a1",title:"最新優惠 A1",status:"active" },
@@ -26,9 +26,10 @@ Deno.test("selectLatestPointOffers uses current reward/template definitions and 
   assertEquals(offers.map((offer) => ({
     title:offer.ticketTitle,
     threshold:offer.thresholdStamps,
+    style:offer.styleKey,
   })), [
-    { title:"最新優惠 A1",threshold:5 },
-    { title:"最新優惠 A2",threshold:10 },
+    { title:"最新優惠 A1",threshold:5,style:"lagoon" },
+    { title:"最新優惠 A2",threshold:10,style:"lagoon" },
   ]);
 });
 

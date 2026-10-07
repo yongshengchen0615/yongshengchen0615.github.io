@@ -186,7 +186,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           kind: 'points', id: offer.rewardId, title: offer.ticketTitle,
           subtitle: `${offer.cardTitle} · 消耗 ${pointCost} 點`,
           statusLabel: reservedForOtherBooking ? '已預約使用' : hasEnoughPoints ? '可使用' : '點數不足',
-          startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId, cardTitle: offer.cardTitle,
+          startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId, cardTitle: offer.cardTitle, cardStyleKey: offer.styleKey,
           pointCost, pointBalance, totalPointBalance, reservedPointBalance, otherBookingReserved,
           requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
           reservedForBooking: Boolean(reservationBookingId),

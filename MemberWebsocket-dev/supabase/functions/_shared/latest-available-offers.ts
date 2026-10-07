@@ -7,6 +7,7 @@ export type CurrentPointOffer = {
   ticketId?: string;
   pointCardId: string;
   cardTitle: string;
+  styleKey: string;
   ticketTemplateId: string;
   ticketTitle: string;
   thresholdStamps: number;
@@ -103,6 +104,7 @@ export function selectLatestPointOffers(
       rewardId,
       pointCardId,
       cardTitle: text(card?.title) || "集點卡",
+      styleKey: text(card?.style_key) || "citrus",
       ticketTemplateId,
       ticketTitle: text(template?.title) || "可用優惠",
       thresholdStamps,
@@ -209,7 +211,7 @@ export async function loadLatestPointOffers(
 
   const templateIds = [...new Set(rewards.map((row: any) => text(row.ticket_template_id)).filter(Boolean))];
   const [cardsResult, templatesResult] = await Promise.all([
-    supabase.from("point_cards").select("id,card_id,title,status,expiry_mode,expires_on,sort_order").in("id", cardIds),
+    supabase.from("point_cards").select("id,card_id,title,status,style_key,expiry_mode,expires_on,sort_order").in("id", cardIds),
     templateIds.length
       ? supabase.from("ticket_templates").select("id,title,status").in("id", templateIds)
       : Promise.resolve({ data: [], error: null }),

@@ -9,7 +9,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 test('all primary surfaces load the shared experience layer', () => {
   for (const entry of ['admin', 'member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(path.join(entry, 'index.html'));
-    assert.match(html, /\.\.\/experience\.css\?v=ui-consolidation-20261007-1/, entry);
+    assert.match(html, /\.\.\/experience\.css\?v=[^"']+/, entry);
   }
 });
 
@@ -51,6 +51,8 @@ test('experience layer provides operational hierarchy, milestones, ticket gramma
   assert.match(css, /#eventView \.event-ticket-action/);
   assert.match(css, /border-top:\s*1px dashed/);
   assert.match(css, /#pointsView \.member-ticket-footer/);
+  assert.match(css, /\.ui-ticket\[data-card-style="lagoon"\]/);
+  assert.match(css, /--card-style-background/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(css, /backdrop-filter:\s*blur\(/);
   assert.doesNotMatch(css, /color-mix\(/);

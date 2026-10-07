@@ -30,6 +30,7 @@
     tickets.forEach(item => {
       const card = document.createElement('article');
       card.className = 'ui-ticket';
+      if (item.kind === 'points') card.dataset.cardStyle = window.MemberUI.pointCardStyleKey(item.cardStyleKey);
       const title = document.createElement('h4'); title.textContent = String(item.title || '可用票券');
       const status = document.createElement('p'); status.textContent = item.claimRequired ? '符合領取資格・尚未領取' : '目前持有・可供核對使用';
       const condition = document.createElement('p'); condition.textContent = String(item.conditionLabel || item.subtitle || '依票券使用條件核對');

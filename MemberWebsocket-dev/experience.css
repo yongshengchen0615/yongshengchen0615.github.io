@@ -602,3 +602,44 @@ html[data-theme] .booking-accessible-mode #bookingView .ui-ticket :is(h3,h4) {fo
 html[data-theme] .booking-accessible-mode #bookingView .ui-ticket :is(p,small) {font-size:16px;}
 html[data-theme] .booking-accessible-mode #bookingView .ticket-cost-card dt {font-size:14px;}
 html[data-theme] .booking-accessible-mode #bookingView .ticket-cost-card dd {font-size:18px;}
+
+/* Point-card ticket visual identity: source card presets shared by points and booking. */
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="citrus"] { --card-style-surface:#6f2f0e; --card-style-background:linear-gradient(135deg,#6f2f0e 0%,#a84e13 56%,#573018 100%); --card-style-accent:#ffd29a; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="coral"] { --card-style-surface:#7a2630; --card-style-background:linear-gradient(135deg,#7a2630 0%,#b24c3b 55%,#5f2330 100%); --card-style-accent:#ffc0ad; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="lagoon"] { --card-style-surface:#07505b; --card-style-background:linear-gradient(135deg,#07505b 0%,#0b7380 55%,#123d4c 100%); --card-style-accent:#9ee9df; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="skyline"] { --card-style-surface:#1b3f72; --card-style-background:linear-gradient(135deg,#1b3f72 0%,#2567a7 55%,#182e52 100%); --card-style-accent:#b9dbff; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="violet"] { --card-style-surface:#3d286c; --card-style-background:linear-gradient(135deg,#3d286c 0%,#6d4aa0 55%,#2a234e 100%); --card-style-accent:#ddc5ff; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="berry"] { --card-style-surface:#662445; --card-style-background:linear-gradient(135deg,#662445 0%,#9a3b6e 55%,#47223f 100%); --card-style-accent:#ffc4df; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="cocoa"] { --card-style-surface:#523328; --card-style-background:linear-gradient(135deg,#523328 0%,#80503b 55%,#3d2a26 100%); --card-style-accent:#f3c8a6; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="lime"] { --card-style-surface:#315422; --card-style-background:linear-gradient(135deg,#315422 0%,#5d7e28 55%,#263d24 100%); --card-style-accent:#d9ef9c; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="denim"] { --card-style-surface:#314658; --card-style-background:linear-gradient(135deg,#314658 0%,#52718b 55%,#263846 100%); --card-style-accent:#c5dbea; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style="peach"] { --card-style-surface:#78383b; --card-style-background:linear-gradient(135deg,#78383b 0%,#b75f4f 55%,#5d3038 100%); --card-style-accent:#ffd0bd; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] {
+  position:relative; overflow:hidden; isolation:isolate; color:#fffaf3;
+  border-color:rgba(255,250,243,.24); border-radius:22px;
+  background:var(--card-style-background,var(--card-style-surface,#282016));
+  box-shadow:0 18px 36px rgba(40,32,22,.16);
+}
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style]::before {
+  content:""; position:absolute; z-index:0; width:230px; height:230px; right:-92px; bottom:-152px;
+  border:1px solid rgba(255,250,243,.20); border-radius:50%; pointer-events:none;
+  box-shadow:0 0 0 28px rgba(255,250,243,.035),0 0 0 56px rgba(255,250,243,.025);
+}
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] > * { position:relative; z-index:1; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] :is(h3,h4,.ticket-cost-card dd) { color:#fffaf3; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] :is(p,small,.ticket-state,.ticket-cost-card dt) { color:rgba(255,250,243,.74); }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] :is(.member-ticket-type,.booking-benefit-meta) {
+  color:var(--card-style-surface,#282016); background:var(--card-style-accent,#f2c36f); border:1px solid rgba(255,255,255,.18);
+}
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] .ticket-cost-card {
+  border-color:rgba(255,250,243,.18); background:rgba(255,250,243,.09);
+}
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] .ticket-cost-card.is-source { border-color:rgba(255,250,243,.28); }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] :is(.ticket-checkbox-action,.booking-benefit-select) {
+  color:#fffaf3; background:rgba(255,250,243,.10); border-color:rgba(255,250,243,.22);
+}
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style] :is(.ticket-checkbox-action,.booking-benefit-select) input { accent-color:var(--card-style-accent,#f2c36f); }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style].is-selected {
+  border-color:var(--card-style-accent,#f2c36f); box-shadow:0 0 0 2px var(--card-style-accent,#f2c36f),0 18px 36px rgba(40,32,22,.18);
+}
+html[data-theme] #pointsView .ui-ticket[data-card-style] .member-ticket-footer { border-top-color:rgba(255,250,243,.24); }
