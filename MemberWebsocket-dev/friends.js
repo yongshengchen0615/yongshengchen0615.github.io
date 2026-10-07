@@ -19,7 +19,14 @@
     if (!response.ok || !result.ok) throw new Error(result.error?.message || '好友資料載入失敗。');
     return result.data;
   }
-  function status(message) { if (el('friendStatus')) el('friendStatus').textContent = message; }
+  function status(message, state = 'info') {
+    for (const id of ['friendStatus', 'friendListStatus']) {
+      const node = el(id);
+      if (!node) continue;
+      node.textContent = message;
+      node.dataset.state = message ? state : '';
+    }
+  }
   function stopScan() { scanner?.stop(); if (el('friendQrScanner')) el('friendQrScanner').hidden = true; }
   function selectMemberTab(name, focus = false) {
     if (booking) return;
@@ -110,7 +117,7 @@
     if (!profile || busy || window.MemberReferral?.isBusy()) return;
     const current = generation, entered = input().value;
     invalidate(); window.MemberReferral?.preview(''); busy = true;
-    status('正在查找好友…');
+    status('正在查找好友…', 'loading');
     const button = el('lookupFriend'); if (button) button.disabled = true;
     try {
       const code = window.FriendQRScanner.parseInvitation(entered);
@@ -119,10 +126,10 @@
       if (current !== generation || entered !== input().value) return;
       pendingCode = found.memberCode;
       window.MemberReferral?.preview(code, found.memberCode);
-      status(`查找好友成功：${found.displayName} · ${found.memberCode}。送出好友邀請後需等待對方接受；首次邀請獎勵可另外確認綁定。`);
+      status(`查找好友成功：${found.displayName} · ${found.memberCode}。送出好友邀請後需等待對方接受；首次邀請獎勵可另外確認綁定。`, 'success');
       el('confirmFriendRequest').hidden = false;
     } catch (error) {
-      if (current === generation && entered === input().value) status(`查找好友失敗：${error?.message || '請確認邀請碼或會員編號後重試。'}`);
+      if (current === generation && entered === input().value) status(`查找好友失敗：${error?.message || '請確認邀請碼或會員編號後重試。'}`, 'error');
     }
     finally { if (current === generation) busy = false; if (button) button.disabled = false; }
   }
@@ -131,7 +138,7 @@
     if (booking) {
       const main = el('bookingView'); if (!main) return;
       const panel = document.createElement('section'); panel.id = 'friendsPanel'; panel.className = 'friends-panel booking-recipient';
-      panel.innerHTML = '<label>服務對象<select id="friendBookingRecipient"><option value="">本人</option></select></label><p>好友接受邀請後可代約單人服務。票券由建立者選用自己的票券；完成服務後，好友取得正常點數與服務分鐘，代約者取得每種已設定集點規則的服務類型 1 點及一半服務分鐘（不足 1 分鐘向下取整）。</p><a href="../member/#friends">管理好友與邀請</a><button id="refreshFriends" type="button" class="button button-refresh">更新好友</button><p id="friendStatus" role="status" aria-live="polite"></p>';
+      panel.innerHTML = '<label>服務對象<select id="friendBookingRecipient"><option value="">本人</option></select></label><p>好友接受邀請後可代約單人服務。票券由建立者選用自己的票券；完成服務後，好友取得正常點數與服務分鐘，代約者取得每種已設定集點規則的服務類型 1 點及一半服務分鐘（不足 1 分鐘向下取整）。</p><a href="../member/#friends">管理好友與邀請</a><button id="refreshFriends" type="button" class="button button-refresh">更新好友</button><p id="friendStatus" class="friend-feedback" role="status" aria-live="polite"></p>';
       (el('bookingRecipientHost') || el('bookingNotice')?.parentElement)?.append(panel);
       el('friendBookingRecipient').addEventListener('change', event => { selectedCode = event.target.value; status(selectedCode ? '將替所選好友預約；送出前請再次確認受服務者。' : '本次為本人預約。'); });
     } else {
@@ -147,10 +154,10 @@
       const camera = document.createElement('section'); camera.id = 'friendQrScanner'; camera.hidden = true;
       camera.innerHTML = '<video id="friendQrVideo" autoplay muted playsinline aria-label="好友 QR Code 相機預覽"></video><p>將完整 QR Code 放在畫面中央。影像只在目前裝置辨識。</p><button id="stopFriendQr" type="button" class="button button-refresh">關閉相機</button>';
       const panel = document.createElement('section'); panel.id = 'friendsPanel'; panel.className = 'friends-panel';
-      panel.innerHTML = '<div class="friends-panel-heading"><h3>我的好友</h3><button id="refreshFriends" type="button" class="button button-refresh">更新好友</button></div><div id="friendList"></div><div id="friendReceivedBookings"></div>';
-      const message = document.createElement('p'); message.id = 'friendStatus'; message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite');
-      tabs.tablist.after(message);
+      panel.innerHTML = '<div class="friends-panel-heading"><h3>我的好友</h3><button id="refreshFriends" type="button" class="button button-refresh">更新好友</button></div><p id="friendListStatus" class="friend-feedback" role="status" aria-live="polite"></p><div id="friendList"></div><div id="friendReceivedBookings"></div>';
+      const message = document.createElement('p'); message.id = 'friendStatus'; message.className = 'friend-feedback'; message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite');
       el('bindMemberReferral').before(controls, camera);
+      controls.after(message);
       tabs.friendsPanel.append(panel);
       scanner = window.FriendQRScanner.create(el('friendQrVideo'), {
         onStatus: status,
