@@ -110,6 +110,7 @@
     if (!profile || busy || window.MemberReferral?.isBusy()) return;
     const current = generation, entered = input().value;
     invalidate(); window.MemberReferral?.preview(''); busy = true;
+    status('正在查找好友…');
     const button = el('lookupFriend'); if (button) button.disabled = true;
     try {
       const code = window.FriendQRScanner.parseInvitation(entered);
@@ -118,9 +119,11 @@
       if (current !== generation || entered !== input().value) return;
       pendingCode = found.memberCode;
       window.MemberReferral?.preview(code, found.memberCode);
-      status(`確認好友：${found.displayName} · ${found.memberCode}。送出好友邀請後需等待對方接受；首次邀請獎勵可另外確認綁定。`);
+      status(`查找好友成功：${found.displayName} · ${found.memberCode}。送出好友邀請後需等待對方接受；首次邀請獎勵可另外確認綁定。`);
       el('confirmFriendRequest').hidden = false;
-    } catch (error) { if (current === generation && entered === input().value) status(error.message); }
+    } catch (error) {
+      if (current === generation && entered === input().value) status(`查找好友失敗：${error?.message || '請確認邀請碼或會員編號後重試。'}`);
+    }
     finally { if (current === generation) busy = false; if (button) button.disabled = false; }
   }
   function install() {

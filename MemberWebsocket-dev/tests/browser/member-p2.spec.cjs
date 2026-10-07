@@ -39,7 +39,7 @@ for(const surface of ['booking','event'])for(const [width,theme] of [[320,'light
 test('friend link needs lookup and explicit request; incoming invite accepts separately',async({page},info)=>{
  await page.goto(base+'/member/#friend=BBBB000000');await expect(page.locator('#memberReferralModal')).toBeVisible();if(await page.locator('#memberTourDismiss').isVisible())await page.locator('#memberTourDismiss').click();
  await expect(page.locator('#friendQr')).toBeVisible();expect(await page.locator('#friendQr').evaluate(c=>c.width)).toBe(192);await expect(page.locator('#memberReferralInviteCode')).toHaveValue('BBBB000000');expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
- await page.locator('#lookupFriend').click();await expect(page.locator('#confirmFriendRequest')).toBeVisible();await page.locator('#confirmFriendRequest').click();
+ await page.locator('#lookupFriend').click();await expect(page.locator('#friendStatus')).toContainText('查找好友成功：陳○ · CCCC');await expect(page.locator('#confirmFriendRequest')).toBeVisible();await page.locator('#confirmFriendRequest').click();
  await expect.poll(()=>page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(1);
  await page.locator('#memberReferralTabFriends').click();await expect(page.locator('#friendsPanel')).toBeVisible();
  await page.locator('#friendList button').filter({hasText:'接受'}).click();await expect(page.locator('#friendList')).toContainText('已成為好友');await info.attach('friends-panel',{body:await page.locator('#friendsPanel').screenshot(),contentType:'image/png'});
