@@ -204,3 +204,32 @@ test('late account A friend response cannot repaint account B',async()=>{
     assert.match(w.document.getElementById('friendList').textContent,/BBBB/);
   }finally{dom.window.close();}
 });
+
+test('legacy invite link keeps referral semantics instead of becoming an add-friend action',async()=>{
+  const {dom,w,calls}=await page(false,'https://example.test/member/#invite=BBBB000000');
+  try{
+    assert.equal(w.document.getElementById('memberReferralTabReward').getAttribute('aria-selected'),'true');
+    assert.equal(w.document.getElementById('friendLookupCode').value,'');
+    assert.equal(w.document.getElementById('memberReferralInviteCode').value,'#invite=BBBB000000');
+    w.document.getElementById('memberReferralForm').dispatchEvent(new w.Event('submit',{cancelable:true}));
+    await tick();
+    assert.equal(calls.filter(c=>c.action==='member.referral.bind').length,1);
+    assert.equal(calls.find(c=>c.action==='member.referral.bind').payload.inviteCode,'BBBB000000');
+    assert.equal(calls.some(c=>c.action==='member.friend.lookup'||c.action==='member.friend.request'),false);
+  }finally{dom.window.close();}
+});
+
+test('switching accounts clears add-friend input and pending confirmation',async()=>{
+  const {dom,w}=await page(false,'https://example.test/member/#friends');
+  try{
+    const friend=w.document.getElementById('friendLookupCode');
+    friend.value='PRIVATE-A';
+    friend.dispatchEvent(new w.Event('input',{bubbles:true}));
+    await w.MemberFriends.lookup();
+    w.dispatchEvent(new w.CustomEvent('member-profile-ready',{detail:{profile:{lineUserId:'verified-B',memberCode:'BBBB',inviteCode:'BBBB000000'}}}));
+    await tick();
+    assert.equal(friend.value,'');
+    assert.equal(w.document.getElementById('confirmFriendRequest').hidden,true);
+    assert.doesNotMatch(w.document.getElementById('friendStatus').textContent,/PRIVATE-A/);
+  }finally{dom.window.close();}
+});
