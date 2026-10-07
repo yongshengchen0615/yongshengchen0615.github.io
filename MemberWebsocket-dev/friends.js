@@ -522,6 +522,10 @@
       selectedCode = '';
       lockedRecipient = null;
       invalidate();
+      if (!booking && input()) {
+        input().value = '';
+        status('');
+      }
       el('friendList')?.replaceChildren();
       el('friendReceivedBookings')?.replaceChildren();
       for (const id of ['lookupFriend', 'confirmFriendRequest']) {
@@ -554,7 +558,9 @@
       const hash = new URLSearchParams(location.hash.slice(1));
       const search = new URLSearchParams(location.search);
       const friendIncoming = hash.get('friend');
-      const rewardIncoming = hash.get('reward') || hash.get('invite') || search.get('invite');
+      const rewardIncoming = hash.get('reward');
+      const legacyInvite = hash.get('invite') || search.get('invite');
+      const referralIncoming = rewardIncoming || legacyInvite;
 
       if (changed) {
         selectMemberTab('friends');
@@ -562,11 +568,17 @@
           input().value = friendIncoming.slice(0, 2048);
           input().dispatchEvent(new Event('input', { bubbles: true }));
         }
-        if (rewardIncoming) window.MemberReferral?.prefill?.(rewardIncoming);
+        if (referralIncoming) {
+          window.MemberReferral?.prefill?.(
+            legacyInvite && !rewardIncoming
+              ? '#invite=' + encodeURIComponent(legacyInvite)
+              : rewardIncoming
+          );
+        }
       }
 
-      if (changed && (location.hash === '#friends' || friendIncoming || rewardIncoming)) {
-        selectMemberTab(rewardIncoming && !friendIncoming ? 'reward' : 'friends');
+      if (changed && (location.hash === '#friends' || friendIncoming || referralIncoming)) {
+        selectMemberTab(referralIncoming && !friendIncoming ? 'reward' : 'friends');
         el('openMemberReferral')?.click();
       }
     }
