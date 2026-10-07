@@ -3,7 +3,7 @@
   // Frames and uploaded images stay in this browser. Decoding never navigates or writes.
   function parseInvitation(raw) {
     let code = String(raw || '').trim();
-    if (!code || code.length > 2048) throw new Error('請輸入會員編號、邀請碼或好友分享連結。');
+    if (!code || code.length > 2048) throw new Error('請輸入會員編號或好友分享連結。');
     if (/^https?:\/\//i.test(code)) {
       const url = new URL(code), member = new URL('../member/', location.href);
       if (url.origin !== member.origin || url.username || url.password ||
@@ -11,9 +11,9 @@
         throw new Error('這不是本站的好友邀請 QR Code 或連結。');
       }
       const hash = new URLSearchParams(url.hash.slice(1));
-      code = hash.get('friend') || hash.get('invite') || url.searchParams.get('invite') || '';
+      code = hash.get('friend') || '';
     }
-    if (!/^[A-Za-z0-9_-]{4,40}$/.test(code)) throw new Error('無法辨識邀請內容，請使用好友 QR Code、會員編號或邀請碼。');
+    if (!/^[A-Za-z0-9_-]{4,40}$/.test(code)) throw new Error('無法辨識好友內容，請使用好友 QR Code 或會員編號。');
     return code.toUpperCase();
   }
 
@@ -54,7 +54,7 @@
     async function start() {
       stop(); const current = generation; active = true;
       if (!navigator.mediaDevices?.getUserMedia) {
-        stop(); onStatus('此瀏覽器無法開啟相機，請使用 QR 圖片、貼上連結或輸入邀請碼。'); return;
+        stop(); onStatus('此瀏覽器無法開啟相機，請使用 QR 圖片、貼上好友連結或輸入會員編號。'); return;
       }
       onStatus('請允許使用相機，將好友 QR Code 對準鏡頭。');
       try {
@@ -67,7 +67,7 @@
         if (current !== generation) return;
         stop(); onStatus(error.name === 'NotAllowedError'
           ? '相機權限未開啟，請允許相機或改用 QR 圖片／貼上好友連結。'
-          : '無法啟動相機，請關閉其他相機程式，或改用 QR 圖片／邀請碼。');
+          : '無法啟動相機，請關閉其他相機程式，或改用 QR 圖片／會員編號。');
       }
     }
     async function readFile(file) {

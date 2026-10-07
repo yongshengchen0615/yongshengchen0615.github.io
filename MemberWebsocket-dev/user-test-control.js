@@ -3391,34 +3391,77 @@
   async function memberReferralBoundaryCase() {
     const profile = state.bootstrap?.profile || (await requestCore('user.member.bootstrap', {}))?.profile || {};
     const trigger = await waitFor(() => document.getElementById('openMemberReferral'), 3000);
-    if (!trigger) return fail('會員卡沒有好友邀請入口。', { trigger: true }, { trigger: false });
+    if (!trigger) return fail('會員卡沒有好友入口。', { trigger: true }, { trigger: false });
     trigger.click();
     const modal = await waitFor(() => {
       const node = document.getElementById('memberReferralModal');
       return node && !node.classList.contains('hidden') ? node : null;
     }, 2000);
-    const ownCode = String(profile.inviteCode || document.getElementById('memberReferralOwnCode')?.textContent || '').trim().toUpperCase();
-    const input = document.getElementById('memberReferralInviteCode');
-    const form = document.getElementById('memberReferralForm');
-    const copy = document.getElementById('copyMemberInviteCode');
-    const status = document.getElementById('friendStatus');
-    const validCode = /^[A-F0-9]{10}$/.test(ownCode);
-    let selfRejected = false;
-    if (modal && input && form && validCode) {
-      input.value = ownCode;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-      selfRejected = Boolean(await waitFor(() => /不可使用自己的邀請碼/.test(String(status?.textContent || '')), 1200));
+
+    const ownMemberCode = String(profile.memberCode || '').trim().toUpperCase();
+    const validMemberCode = /^[A-Z0-9_-]{4,40}$/.test(ownMemberCode);
+
+    const friendInput = document.getElementById('friendLookupCode');
+    const friendForm = document.getElementById('friendAddForm');
+    const friendStatus = document.getElementById('friendStatus');
+    let friendSelfRejected = false;
+    if (modal && friendInput && friendForm && validMemberCode) {
+      document.getElementById('memberReferralTabFriends')?.click();
+      friendInput.value = ownMemberCode;
+      friendInput.dispatchEvent(new Event('input', { bubbles: true }));
+      friendForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      friendSelfRejected = Boolean(await waitFor(
+        () => /不可使用自己的邀請碼或會員編號/.test(String(friendStatus?.textContent || '')),
+        1200
+      ));
     }
+
+    const rewardInput = document.getElementById('memberReferralInviteCode');
+    const rewardForm = document.getElementById('memberReferralForm');
+    const rewardStatus = document.getElementById('memberReferralStatus');
+    let rewardSelfRejected = false;
+    if (modal && rewardInput && rewardForm && validMemberCode) {
+      document.getElementById('memberReferralTabReward')?.click();
+      rewardInput.value = ownMemberCode;
+      rewardInput.dispatchEvent(new Event('input', { bubbles: true }));
+      rewardForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      rewardSelfRejected = Boolean(await waitFor(
+        () => /不可使用自己的邀請優惠碼或會員編號/.test(String(rewardStatus?.textContent || '')),
+        1200
+      ));
+    }
+
+    const friendCopy = document.getElementById('copyFriendInviteLink');
+    const rewardCopy = document.getElementById('copyMemberInviteCode');
     document.getElementById('closeMemberReferral')?.click();
     const closed = Boolean(!modal || await waitFor(() => modal.classList.contains('hidden'), 1000));
-    const actual = { modal: Boolean(modal), validCode, copyControl: Boolean(copy), selfRejected, closed };
+    const actual = {
+      modal: Boolean(modal),
+      validMemberCode,
+      friendCopyControl: Boolean(friendCopy),
+      rewardCopyControl: Boolean(rewardCopy),
+      friendSelfRejected,
+      rewardSelfRejected,
+      closed
+    };
     return Object.values(actual).every(Boolean)
-      ? pass('好友邀請入口、本人邀請碼、複製控制與自邀前端拒絕皆已納入 Browser E2E；此節點不建立永久邀請關係。', {
-          modal: true, validCode: true, copyControl: true, selfRejected: true, closed: true
+      ? pass('好友與邀請優惠已分流；好友自邀與優惠自綁皆被前端拒絕，兩種複製入口各自存在。', {
+          modal: true,
+          validMemberCode: true,
+          friendCopyControl: true,
+          rewardCopyControl: true,
+          friendSelfRejected: true,
+          rewardSelfRejected: true,
+          closed: true
         }, actual)
-      : fail('好友邀請 Browser E2E 契約至少一項不符合預期。', {
-          modal: true, validCode: true, copyControl: true, selfRejected: true, closed: true
+      : fail('好友／邀請優惠 Browser E2E 契約至少一項不符合預期。', {
+          modal: true,
+          validMemberCode: true,
+          friendCopyControl: true,
+          rewardCopyControl: true,
+          friendSelfRejected: true,
+          rewardSelfRejected: true,
+          closed: true
         }, actual);
   }
 

@@ -36,13 +36,14 @@ for(const surface of ['booking','event'])for(const [width,theme] of [[320,'light
  await page.locator('#memberTourSkip').click();await page.reload();await expect(page.locator('#memberTourDialog')).toBeHidden();
  await page.locator('#openMemberTour').evaluate(b=>b.click());await expect(page.locator('#memberTourDialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.locator('#memberTourDialog')).toBeHidden();await page.reload();await expect(page.locator('#memberTourDialog')).toBeHidden();expect(await page.evaluate(()=>(document.getElementById('app')||document.querySelector('.app-shell')).inert)).toBe(false);
 });
-test('friend link needs lookup and explicit request; incoming invite accepts separately',async({page},info)=>{
+test('friend link opens the friends tab; add-friend and reward remain separate',async({page},info)=>{
  await page.goto(base+'/member/#friend=BBBB000000');await expect(page.locator('#memberReferralModal')).toBeVisible();if(await page.locator('#memberTourDismiss').isVisible())await page.locator('#memberTourDismiss').click();
- await expect(page.locator('#friendQr')).toBeVisible();expect(await page.locator('#friendQr').evaluate(c=>c.width)).toBe(192);await expect(page.locator('#memberReferralInviteCode')).toHaveValue('BBBB000000');expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
- await page.locator('#lookupFriend').click();await expect(page.locator('#friendStatus')).toContainText('查找好友成功：陳○ · CCCC');await expect(page.locator('#confirmFriendRequest')).toBeVisible();await page.locator('#confirmFriendRequest').click();
- await expect.poll(()=>page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(1);
- await page.locator('#memberReferralTabFriends').click();await expect(page.locator('#friendsPanel')).toBeVisible();
- await page.locator('#friendList button').filter({hasText:'接受'}).click();await expect(page.locator('#friendList')).toContainText('已成為好友');await info.attach('friends-panel',{body:await page.locator('#friendsPanel').screenshot(),contentType:'image/png'});
+ await expect(page.locator('#memberReferralTabFriends')).toHaveAttribute('aria-selected','true');await expect(page.locator('#memberReferralFriendsTabPanel')).toBeVisible();await expect(page.locator('#memberReferralRewardTabPanel')).toBeHidden();
+ await expect(page.locator('#friendQr')).toBeVisible();expect(await page.locator('#friendQr').evaluate(c=>c.width)).toBe(192);await expect(page.locator('#friendLookupCode')).toHaveValue('BBBB000000');await expect(page.locator('#memberReferralInviteCode')).toHaveValue('');await expect(page.locator('#bindMemberReferral')).toBeDisabled();
+ expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
+ await page.locator('#lookupFriend').click();await expect(page.locator('#friendStatus')).toContainText('查找好友成功：陳○ · CCCC');await expect(page.locator('#confirmFriendRequest')).toBeVisible();await expect(page.locator('#bindMemberReferral')).toBeDisabled();
+ await page.locator('#confirmFriendRequest').click();await expect.poll(()=>page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(1);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind').length)).toBe(0);
+ await page.locator('#friendList button').filter({hasText:'接受'}).click();await expect(page.locator('#friendList')).toContainText('已成為好友');await info.attach('friends-panel',{body:await page.locator('#memberReferralFriendsTabPanel').screenshot(),contentType:'image/png'});
 });
 
 async function openFriends(page,tab='friends'){
@@ -50,54 +51,74 @@ async function openFriends(page,tab='friends'){
  await page.addInitScript(key=>localStorage.setItem(key,JSON.stringify({version:2,disabled:true,source:'explicit'})),key);
  await page.goto(base+'/member/#friends');await expect(page.locator('#memberReferralModal')).toBeVisible();if(await page.locator('#memberTourDismiss').isVisible())await page.locator('#memberTourDismiss').click();
  await expect(page.locator('#memberReferralTabFriends')).toHaveAttribute('aria-selected','true');await expect(page.locator('#memberReferralFriendsTabPanel')).toBeVisible();
- if(tab==='invite'){await page.locator('#memberReferralTabInvite').click();await expect(page.locator('#memberReferralTabInvite')).toHaveAttribute('aria-selected','true');await expect(page.locator('#memberReferralInviteTabPanel')).toBeVisible();}
+ if(tab==='reward'){await page.locator('#memberReferralTabReward').click();await expect(page.locator('#memberReferralTabReward')).toHaveAttribute('aria-selected','true');await expect(page.locator('#memberReferralRewardTabPanel')).toBeVisible();}
 }
 async function qrPng(page,url){
  return Buffer.from((await page.evaluate(url=>FriendQRCode.toDataURL(url,{width:512,margin:4}),url)).split(',')[1],'base64');
 }
-test('QR image performs real local decoding and lookup; friend and reward writes each require confirmation',async({page})=>{
- await openFriends(page,'invite');
- await expect(page.locator('#memberReferralModal #friendsPanel')).toHaveCount(1);await expect(page.locator('#friendCode')).toHaveCount(0);
- await page.locator('#friendQrFile').setInputFiles({name:'friend.png',mimeType:'image/png',buffer:await qrPng(page,base+'/member/#friend=BBBB000000')});
- await expect(page.locator('#memberReferralInviteCode')).toHaveValue('BBBB000000');await expect(page.locator('#confirmFriendRequest')).toBeVisible();await expect(page.locator('#bindMemberReferral')).toBeEnabled();
- expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')).map(c=>c.action))).toEqual(['member.friend.lookup']);
- await page.locator('#bindMemberReferral').click();await expect(page.locator('#memberReferralStatus')).toContainText('邀請人已獲得');await expect(page.locator('#memberReferralInviteCode')).toBeEnabled();
- expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind').length)).toBe(1);
- expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(0);
- await page.locator('#confirmFriendRequest').click();await expect.poll(()=>page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(1);
- await expect(page.locator('#bindMemberReferral')).toBeDisabled();
+
+test('friends tab groups invite-friend, add-friend and friend list without reward controls',async({page})=>{
+ await openFriends(page,'friends');
+ await expect(page.locator('#friendInviteSection')).toBeVisible();await expect(page.locator('#friendAddForm')).toBeVisible();await expect(page.locator('#friendsPanel')).toBeVisible();
+ await expect(page.locator('#memberReferralForm')).toBeHidden();await expect(page.locator('#memberReferralShare')).toBeHidden();
+ await expect(page.locator('#friendAddForm').locator('text=加好友')).toBeVisible();await expect(page.locator('#friendInviteSection').locator('text=邀請好友')).toBeVisible();
 });
-test('camera reads real QR frames and stops its video tracks after a lookup',async({page})=>{
- await openFriends(page,'invite');
+
+test('reward tab binds referral independently and never sends a friend request',async({page})=>{
+ await openFriends(page,'reward');
+ await expect(page.locator('#memberReferralInviteCode')).toBeVisible();await expect(page.locator('#friendAddForm')).toBeHidden();
+ await page.locator('#memberReferralInviteCode').fill('CCCC');await expect(page.locator('#bindMemberReferral')).toBeEnabled();await page.locator('#bindMemberReferral').click();
+ await expect(page.locator('#memberReferralStatus')).toContainText('邀請優惠綁定成功');expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind').length)).toBe(1);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(0);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.lookup').length)).toBe(0);
+});
+
+test('reward link opens reward tab and does not prefill add-friend input',async({page})=>{
+ const key='member-tour:'+require('node:crypto').createHash('sha256').update('QA-A').digest('hex');await page.addInitScript(key=>localStorage.setItem(key,JSON.stringify({version:2,disabled:true,source:'explicit'})),key);
+ await page.goto(base+'/member/#reward=CCCC');await expect(page.locator('#memberReferralModal')).toBeVisible();if(await page.locator('#memberTourDismiss').isVisible())await page.locator('#memberTourDismiss').click();
+ await expect(page.locator('#memberReferralTabReward')).toHaveAttribute('aria-selected','true');await expect(page.locator('#memberReferralInviteCode')).toHaveValue('CCCC');await expect(page.locator('#friendLookupCode')).toHaveValue('');
+ expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
+});
+
+test('QR image performs local friend lookup only; reward binding remains untouched',async({page})=>{
+ await openFriends(page,'friends');
+ await page.locator('#friendQrFile').setInputFiles({name:'friend.png',mimeType:'image/png',buffer:await qrPng(page,base+'/member/#friend=BBBB000000')});
+ await expect(page.locator('#friendLookupCode')).toHaveValue('BBBB000000');await expect(page.locator('#confirmFriendRequest')).toBeVisible();await expect(page.locator('#bindMemberReferral')).toBeDisabled();await expect(page.locator('#memberReferralInviteCode')).toHaveValue('');
+ expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')).map(c=>c.action))).toEqual(['member.friend.lookup']);
+ await page.locator('#confirmFriendRequest').click();await expect.poll(()=>page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(1);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind').length)).toBe(0);
+});
+
+test('camera reads real friend QR frames and stops its video tracks after lookup',async({page})=>{
+ await openFriends(page,'friends');
  await page.evaluate(async()=>{
   const canvas=document.createElement('canvas');await FriendQRCode.toCanvas(canvas,location.origin+'/member/#friend=BBBB000000',{width:512,margin:4});
   const stream=canvas.captureStream(10);window.qrCamera={stopped:0,requested:null,stream,canvas};
   for(const track of stream.getTracks()){const stop=track.stop.bind(track);track.stop=()=>{qrCamera.stopped++;stop();};}
   navigator.mediaDevices.getUserMedia=async options=>{qrCamera.requested=options;return stream;};
  });
- await page.locator('#scanFriendQr').click();await expect(page.locator('#memberReferralInviteCode')).toHaveValue('BBBB000000');await expect(page.locator('#confirmFriendRequest')).toBeVisible();
+ await page.locator('#scanFriendQr').click();await expect(page.locator('#friendLookupCode')).toHaveValue('BBBB000000');await expect(page.locator('#confirmFriendRequest')).toBeVisible();
  expect(await page.evaluate(()=>qrCamera.requested.audio)).toBe(false);expect(await page.evaluate(()=>qrCamera.stopped)).toBe(1);expect(await page.evaluate(()=>qrCamera.stream.getTracks().every(t=>t.readyState==='ended'))).toBe(true);
  await expect(page.locator('#friendQrScanner')).toBeHidden();expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')).map(c=>c.action))).toEqual(['member.friend.lookup']);
 });
-test('camera denial and late permission grant after closing leave manual lookup usable',async({page})=>{
- await openFriends(page,'invite');
+
+test('camera denial and late permission grant after closing leave manual friend lookup usable',async({page})=>{
+ await openFriends(page,'friends');
  await page.evaluate(()=>navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('denied','NotAllowedError');});
  await page.locator('#scanFriendQr').click();await expect(page.locator('#friendStatus')).toContainText('相機權限未開啟');await page.locator('#stopFriendQr').click();
  await page.evaluate(()=>{window.lateCameraStopped=0;navigator.mediaDevices.getUserMedia=()=>new Promise(resolve=>window.releaseQrCamera=()=>resolve({getTracks:()=>[{stop:()=>lateCameraStopped++}]}));});
  await page.locator('#scanFriendQr').click();await page.locator('#closeMemberReferral').click();await page.evaluate(()=>releaseQrCamera());await expect.poll(()=>page.evaluate(()=>lateCameraStopped)).toBe(1);
- await page.locator('#openMemberReferral').click();await page.locator('#memberReferralInviteCode').fill('BBBB000000');await page.locator('#lookupFriend').click();await expect(page.locator('#confirmFriendRequest')).toBeVisible();
+ await page.locator('#openMemberReferral').click();await page.locator('#friendLookupCode').fill('BBBB000000');await page.locator('#lookupFriend').click();await expect(page.locator('#confirmFriendRequest')).toBeVisible();
  expect(await page.evaluate(()=>p2Calls.filter(c=>/request|referral/.test(c.action)))).toHaveLength(0);
 });
-test('foreign QR cannot lookup, navigate or bind a reward',async({page})=>{
- await openFriends(page,'invite');const url=page.url();
+
+test('foreign friend QR cannot lookup, navigate or bind a reward',async({page})=>{
+ await openFriends(page,'friends');const url=page.url();
  await page.locator('#friendQrFile').setInputFiles({name:'foreign.png',mimeType:'image/png',buffer:await qrPng(page,'https://foreign.test/member/#friend=BBBB000000')});
  await expect(page.locator('#friendStatus')).toContainText('不是本站');expect(page.url()).toBe(url);await expect(page.locator('#bindMemberReferral')).toBeDisabled();expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
 });
-for(const [width,theme] of [[320,'light'],[390,'dark']])test('unified friends modal fits '+width+' '+theme+' and retains keyboard focus',async({page},info)=>{
- await page.setViewportSize({width,height:844});await page.addInitScript(theme=>document.addEventListener('DOMContentLoaded',()=>document.documentElement.dataset.theme=theme),theme);await openFriends(page,'invite');
- const bounds=await page.locator('.member-referral-dialog').boundingBox();expect(bounds.x).toBeGreaterThanOrEqual(0);expect(bounds.x+bounds.width).toBeLessThanOrEqual(width);
- expect(await page.locator('.member-referral-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true);
- await page.locator('#scanFriendQr').scrollIntoViewIfNeeded();await expect(page.locator('#scanFriendQr')).toBeVisible();await info.attach('unified-friends-mobile',{body:await page.screenshot(),contentType:'image/png'});
+
+for(const [width,theme] of [[320,'light'],[390,'dark']])test('separated friend and reward tabs fit '+width+' '+theme+' and retain keyboard focus',async({page},info)=>{
+ await page.setViewportSize({width,height:844});await page.addInitScript(theme=>document.addEventListener('DOMContentLoaded',()=>document.documentElement.dataset.theme=theme),theme);await openFriends(page,'friends');
+ const bounds=await page.locator('.member-referral-dialog').boundingBox();expect(bounds.x).toBeGreaterThanOrEqual(0);expect(bounds.x+bounds.width).toBeLessThanOrEqual(width);expect(await page.locator('.member-referral-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true);
+ await page.locator('#scanFriendQr').scrollIntoViewIfNeeded();await expect(page.locator('#scanFriendQr')).toBeVisible();await page.locator('#memberReferralTabReward').click();await expect(page.locator('#memberReferralForm')).toBeVisible();await info.attach('friends-reward-mobile',{body:await page.screenshot(),contentType:'image/png'});
  await page.locator('#closeMemberReferral').focus();await page.keyboard.press('Shift+Tab');expect(await page.evaluate(()=>document.getElementById('memberReferralModal').contains(document.activeElement))).toBe(true);
  await page.keyboard.press('Escape');await expect(page.locator('#memberReferralModal')).toBeHidden();await expect(page.locator('#openMemberReferral')).toBeFocused();
 });
