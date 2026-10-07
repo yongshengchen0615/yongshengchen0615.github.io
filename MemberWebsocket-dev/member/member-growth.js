@@ -192,7 +192,7 @@
     shareButton.textContent = '分享邀請優惠';
     shareRow.append(code, copy, shareButton);
     const shareHelp = document.createElement('small');
-    shareHelp.textContent = '把邀請優惠連結分享給尚未綁定推薦關係的會員。綁定成功後，邀請者獲得 1 張好友邀請票券；被邀請者不會取得這張獎勵票券。';
+    shareHelp.textContent = '把邀請優惠連結分享給尚未綁定推薦關係的會員。綁定成功後，邀請者會獲得 1 張好友邀請票券；被邀請者不會獲得此獎勵票券。';
     share.append(shareTitle, shareRow, shareHelp);
 
     const bind = document.createElement('form');
