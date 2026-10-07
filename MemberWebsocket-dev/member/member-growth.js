@@ -39,28 +39,42 @@
 
   function parseReferralValue(raw) {
     const text = String(raw || '').trim();
-    if (!text) throw new Error('請輸入邀請優惠碼或邀請人的會員編號。');
+    if (!text) throw new Error('請輸入邀請人的會員編號或邀請優惠連結。');
     let candidate = text;
+    let legacyInviteCode = false;
+
     const pickFromUrl = (url) => {
       if (url.origin !== location.origin) throw new Error('邀請優惠連結不是本站連結。');
       const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
-      return hash.get('reward') || hash.get('invite') || hash.get('friend') || url.searchParams.get('invite') || '';
+      if (hash.get('reward')) return { value: hash.get('reward'), legacy: false };
+      if (hash.get('invite')) return { value: hash.get('invite'), legacy: true };
+      if (hash.get('friend')) return { value: hash.get('friend'), legacy: false };
+      if (url.searchParams.get('invite')) return { value: url.searchParams.get('invite'), legacy: true };
+      return { value: '', legacy: false };
     };
+
     if (/^https?:\/\//i.test(text)) {
-      try { candidate = pickFromUrl(new URL(text)); }
-      catch (error) {
+      try {
+        const parsed = pickFromUrl(new URL(text));
+        candidate = parsed.value;
+        legacyInviteCode = parsed.legacy;
+      } catch (error) {
         if (error?.message === '邀請優惠連結不是本站連結。') throw error;
         throw new Error('邀請優惠連結格式不正確。');
       }
     } else if (text.startsWith('#')) {
       const hash = new URLSearchParams(text.slice(1));
-      candidate = hash.get('reward') || hash.get('invite') || hash.get('friend') || '';
+      if (hash.get('reward')) candidate = hash.get('reward');
+      else if (hash.get('invite')) { candidate = hash.get('invite'); legacyInviteCode = true; }
+      else if (hash.get('friend')) candidate = hash.get('friend');
+      else candidate = '';
     }
+
     try { candidate = decodeURIComponent(candidate); } catch (_) { /* keep raw candidate */ }
     candidate = String(candidate || '').trim().toUpperCase();
-    if (/^[A-F0-9]{10}$/.test(candidate)) return { inviteCode: candidate };
+    if (legacyInviteCode && /^[A-F0-9]{10}$/.test(candidate)) return { inviteCode: candidate };
     if (/^[A-Z0-9_-]{4,40}$/.test(candidate)) return { memberCode: candidate };
-    throw new Error('請輸入有效的邀請優惠碼或邀請人的會員編號。');
+    throw new Error('請輸入有效的邀請人會員編號或邀請優惠連結。');
   }
 
   function referralShareUrl() {
@@ -189,18 +203,18 @@
     bindTitle.textContent = '綁定邀請優惠';
     const bindLabel = document.createElement('label');
     bindLabel.setAttribute('for', 'memberReferralInviteCode');
-    bindLabel.textContent = '邀請優惠碼或邀請人的會員編號';
+    bindLabel.textContent = '邀請人的會員編號';
     const input = document.createElement('input');
     input.id = 'memberReferralInviteCode';
     input.type = 'text';
     input.maxLength = 2048;
     input.autocomplete = 'off';
     input.inputMode = 'text';
-    input.placeholder = '輸入優惠碼、會員編號或貼上邀請優惠連結';
+    input.placeholder = '輸入會員編號或貼上邀請優惠連結';
     input.setAttribute('aria-describedby', 'memberReferralBindHelp');
     const help = document.createElement('small');
     help.id = 'memberReferralBindHelp';
-    help.textContent = '這裡只處理邀請優惠，不會送出好友邀請。每位會員只能綁定一次，完成後不可改綁。';
+    help.textContent = '這裡只處理邀請優惠，不會送出好友邀請。每位會員只能綁定一次；既有舊版邀請連結仍可相容。';
     const submit = document.createElement('button');
     submit.id = 'bindMemberReferral';
     submit.type = 'submit';
