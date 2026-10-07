@@ -645,10 +645,10 @@ html[data-theme] :is(#pointsView, #bookingView) .ui-ticket[data-card-style].is-s
 html[data-theme] #pointsView .ui-ticket[data-card-style] .member-ticket-footer { border-top-color:rgba(255,250,243,.24); }
 
 
-/* Availability state: preserve the original point-card ticket design and only remove its colour when unavailable. */
+/* Availability state: preserve the original point-card ticket theme and visibly gray it out without replacing it with a gray theme. */
 html[data-theme] #pointsView .ui-ticket.locked,
 html[data-theme] #bookingView .ui-ticket.is-unavailable {
-  filter: grayscale(1);
+  filter: grayscale(.68) brightness(.92);
 }
 html[data-theme] #pointsView .ui-ticket.locked .ticket-checkbox-action,
 html[data-theme] #bookingView .ui-ticket.is-unavailable .booking-benefit-select {
