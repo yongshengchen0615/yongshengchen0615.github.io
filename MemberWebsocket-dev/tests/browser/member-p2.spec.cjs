@@ -94,7 +94,7 @@ test('foreign QR cannot lookup, navigate or bind a reward',async({page})=>{
  await expect(page.locator('#friendStatus')).toContainText('不是本站');expect(page.url()).toBe(url);await expect(page.locator('#bindMemberReferral')).toBeDisabled();expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
 });
 for(const [width,theme] of [[320,'light'],[390,'dark']])test('unified friends modal fits '+width+' '+theme+' and retains keyboard focus',async({page},info)=>{
- await page.setViewportSize({width,height:844});await page.addInitScript(theme=>document.addEventListener('DOMContentLoaded',()=>document.documentElement.dataset.theme=theme),theme);await openFriends(page);
+ await page.setViewportSize({width,height:844});await page.addInitScript(theme=>document.addEventListener('DOMContentLoaded',()=>document.documentElement.dataset.theme=theme),theme);await openFriends(page,'invite');
  const bounds=await page.locator('.member-referral-dialog').boundingBox();expect(bounds.x).toBeGreaterThanOrEqual(0);expect(bounds.x+bounds.width).toBeLessThanOrEqual(width);
  expect(await page.locator('.member-referral-dialog').evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBe(true);
  await page.locator('#scanFriendQr').scrollIntoViewIfNeeded();await expect(page.locator('#scanFriendQr')).toBeVisible();await info.attach('unified-friends-mobile',{body:await page.screenshot(),contentType:'image/png'});
