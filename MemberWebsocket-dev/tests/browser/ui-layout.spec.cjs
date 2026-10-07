@@ -48,7 +48,7 @@ for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`shar
    await page.locator('#copyMemberInviteCode').click();await expect(page.locator('#friendStatus')).toContainText('已複製');await info.attach(`friends-${width}-${theme}`,{body:await page.locator('.member-referral-dialog').screenshot(),contentType:'image/png'});await page.keyboard.press('Escape');expect(await page.locator('.app-shell').evaluate(e=>e.inert)).toBe(false);
   }
   if(surface==='points'||surface==='booking'){
-   const card=page.locator('.ui-ticket').first();await expect(card).toBeVisible();await fits(card);await expect(card.locator('.is-source')).toContainText(item.cardTitle);await expect(card.locator('.is-cost')).toContainText('5 點');
+   const card=page.locator(surface==='booking'?'#bookingBenefitsList .ui-ticket':'#pointsView .ui-ticket').first();await expect(card).toBeVisible();await fits(card);await expect(card.locator('.is-source')).toContainText(item.cardTitle);await expect(card.locator('.is-cost')).toContainText('5 點');
    const style=await card.evaluate(e=>{const s=getComputedStyle(e);return {background:s.backgroundColor,color:s.color,radius:s.borderRadius,padding:s.padding};});if(surface==='points')ticketStyle=style;else expect(style).toEqual(ticketStyle);
    if(surface==='booking'){
     await expect(page.locator('.booking-contact-fieldset #friendBookingRecipient')).toBeVisible();await page.locator('#friendBookingRecipient').selectOption('FRIEND-00002');expect(await page.evaluate(()=>MemberFriends.selected())).toBe('FRIEND-00002');

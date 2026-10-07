@@ -19,6 +19,7 @@
 .member-referral-dialog .friend-actions button {flex:1 1 150px;min-height:44px;}
 #friendQrScanner {border-radius:16px;padding:12px;background:var(--theme-surface-muted);}
 #friendQrScanner[hidden] {display:none;}
+#friendQrFile[hidden],#confirmFriendRequest[hidden] {display:none;}
 #friendQrVideo {display:block;width:100%;aspect-ratio:4/3;object-fit:contain;border-radius:12px;background:#111;}
 #friendQrScanner p,#friendStatus {margin:10px 0;line-height:1.6;color:var(--theme-text-muted);}
 #friendStatus:empty {display:none;}
@@ -32,5 +33,7 @@
 .friend-link-actions button {min-height:44px;white-space:normal;}
 .friend-link-actions small {line-height:1.6;}
 .friend-copy-buffer {position:fixed;opacity:0;width:1px;height:1px;inset:0;pointer-events:none;}
-.member-referral-code-row {overflow-wrap:anywhere;}
+.member-referral-section {grid-template-columns:minmax(0,1fr);}
+.member-referral-code-row {min-width:0;overflow-wrap:anywhere;}
+.member-invite-code {min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;}
 .member-referral-dialog .friends-panel {border-radius:var(--ui-radius-panel);}
