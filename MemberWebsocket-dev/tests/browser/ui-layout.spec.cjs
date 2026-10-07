@@ -38,14 +38,15 @@ test.beforeAll(async()=>{
  });await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;
 });
 test.afterAll(async()=>{await admin.close();await new Promise(r=>server.close(r));});
-async function fits(locator){const b=await locator.evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,view:innerWidth,overflow:el.scrollWidth-el.clientWidth}));expect(b.left).toBeGreaterThanOrEqual(-1);expect(b.right).toBeLessThanOrEqual(b.view+1);expect(b.overflow).toBeLessThanOrEqual(1);}
+async function fits(locator){const b=await locator.evaluate(el=>{const rect=el.getBoundingClientRect(),style=getComputedStyle(el);return {left:rect.left,right:rect.right,view:innerWidth,overflow:el.scrollWidth-el.clientWidth,clipsOverflow:['hidden','clip'].includes(style.overflowX)};});expect(b.left).toBeGreaterThanOrEqual(-1);expect(b.right).toBeLessThanOrEqual(b.view+1);if(!b.clipsOverflow)expect(b.overflow).toBeLessThanOrEqual(1);}
 async function capture(target,info,name,options={}){const file=info.outputPath(name+'.png');await target.screenshot({...options,animations:'disabled',path:file});await info.attach(name,{path:file,contentType:'image/png'});}
 for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`shared layouts ${width} ${theme}`,async({page},info)=>{
  await page.setViewportSize({width,height:900});await page.emulateMedia({reducedMotion:'reduce'});await page.route('https://**',r=>r.abort());const errors=[];page.on('pageerror',e=>errors.push(e.message));let ticketStyle;
  for(const surface of surfaces){
   await page.goto(`${base}/${surface}/?theme=${theme}`);await expect(page.locator(`#${surface}View`)).toBeVisible();await fits(page.locator('.topbar'));
   if(surface==='member'){
-   await page.locator('#openMemberReferral').click();await expect(page.locator('#memberReferralModal')).toBeVisible();await fits(page.locator('.member-referral-dialog'));await expect(page.locator('#memberReferralOwnCode')).toContainText('MEMBER-00001');await expect(page.locator('#friendShareUrl')).toHaveCount(0);
+   await page.locator('#openMemberReferral').click();await expect(page.locator('#memberReferralModal')).toBeVisible();await fits(page.locator('.member-referral-dialog'));await expect(page.locator('#memberReferralTabFriends')).toHaveAttribute('aria-selected','true');await expect(page.locator('#friendsPanel')).toBeVisible();await expect(page.locator('#friendShareUrl')).toHaveCount(0);
+   await page.locator('#memberReferralTabInvite').click();await expect(page.locator('#memberReferralTabInvite')).toHaveAttribute('aria-selected','true');await expect(page.locator('#memberReferralOwnCode')).toContainText('MEMBER-00001');
    await page.locator('#copyMemberInviteCode').click();await expect(page.locator('#friendStatus')).toContainText('已複製');await capture(page.locator('.member-referral-dialog'),info,`friends-${width}-${theme}`);await page.keyboard.press('Escape');expect(await page.locator('.app-shell').evaluate(e=>e.inert)).toBe(false);
   }
   if(surface==='points'||surface==='booking'){

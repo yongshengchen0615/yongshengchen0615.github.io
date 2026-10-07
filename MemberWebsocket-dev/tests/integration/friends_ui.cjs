@@ -16,6 +16,11 @@ test('all invite entrances populate a safe lookup; request needs explicit confir
  const {dom,w,calls}=await page();try{
   assert.match(w.MemberFriends.invitationUrl(),/#friend=AAAA$/);assert.equal(w.document.getElementById('friendShareUrl'),null);
   assert.equal(w.document.getElementById('memberReferralInviteCode').value,'BBBB000000');assert.equal(calls.filter(c=>!c.action.endsWith('list')).length,0);assert.equal(w.document.querySelectorAll('#friendsPanel').length,1);assert.equal(w.document.getElementById('memberReferralModal').contains(w.document.getElementById('friendsPanel')),true);assert.equal(w.document.getElementById('openMemberReferral').textContent,'好友與邀請');
+  const friendTab=w.document.getElementById('memberReferralTabFriends'),inviteTab=w.document.getElementById('memberReferralTabInvite');
+  assert.equal(w.document.querySelectorAll('#memberReferralSubtabs [role="tab"]').length,2);assert.equal(w.document.getElementById('friendsPanel').parentElement.id,'memberReferralFriendsTabPanel');assert.equal(w.document.getElementById('memberReferralShare').parentElement.id,'memberReferralInviteTabPanel');
+  assert.equal(inviteTab.getAttribute('aria-selected'),'true');assert.equal(w.document.getElementById('memberReferralInviteTabPanel').hidden,false);assert.equal(w.document.getElementById('memberReferralFriendsTabPanel').hidden,true);
+  friendTab.click();assert.equal(friendTab.getAttribute('aria-selected'),'true');assert.equal(w.document.getElementById('memberReferralFriendsTabPanel').hidden,false);assert.equal(w.document.getElementById('memberReferralInviteTabPanel').hidden,true);
+  inviteTab.click();assert.equal(inviteTab.getAttribute('aria-selected'),'true');
   w.document.getElementById('memberReferralForm').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();
   assert.equal(calls.at(-1).action,'member.friend.lookup');assert.equal(w.document.getElementById('confirmFriendRequest').hidden,false);
   w.document.getElementById('confirmFriendRequest').click();await tick();assert.equal(calls.some(c=>c.action==='member.friend.request'&&c.payload.memberCode==='CCCC'),true);
