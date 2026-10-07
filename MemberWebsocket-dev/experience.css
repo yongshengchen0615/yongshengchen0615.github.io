@@ -480,3 +480,125 @@ html[data-theme] :where(
     transform: none !important;
   }
 }
+
+/* Shared layout and state patterns. Existing IDs, events and transactions stay with callers. */
+:root {
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-6: 24px;
+  --ui-content-width: 1200px;
+}
+html[data-theme] .app-shell {
+  max-width: var(--ui-content-width);
+  padding-inline: max(var(--ui-space-4), env(safe-area-inset-left), env(safe-area-inset-right));
+}
+html[data-theme] :where(.topbar, .section-heading, .workspace-heading, .booking-benefits-heading) > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+html[data-theme] :where(.section-heading, .booking-benefits-heading) { gap: var(--ui-space-3); flex-wrap: wrap; }
+html[data-theme] :where(.panel, .booking-card, .booking-accessible-panel, .member-referral-section, .friends-panel) {
+  min-width: 0;
+  border-color: var(--theme-border);
+  border-radius: var(--ui-radius-panel);
+}
+html[data-theme] :where(.state-view, .empty-state, .ticket-empty, .accessible-admin-empty) {
+  color: var(--theme-text-muted);
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+html[data-theme] :where(.form-message, .member-growth-status, .ticket-overview-error, #friendStatus) {
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  border-radius: var(--ui-radius-sm);
+}
+html[data-theme] :where(.form-message, .member-growth-status).error,
+html[data-theme] .ticket-overview-error { color: var(--theme-danger-text); background: var(--theme-danger-soft); }
+html[data-theme] :where(.form-message, .member-growth-status).success { color: var(--theme-positive-text); background: var(--theme-positive-soft); }
+html[data-theme] :where(.booking-admin-status, .accessible-admin-status-pill, .booking-ticket-status, .ticket-state, .slot-unit) {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+html[data-theme] :where(.booking-admin-actions, .booking-admin-modal-actions, .modal-actions, .booking-modal-actions, .friend-actions) {
+  gap: var(--ui-space-2);
+  flex-wrap: wrap;
+}
+html[data-theme] :where(.booking-admin-actions, .booking-admin-modal-actions, .modal-actions, .friend-actions) button {
+  min-height: var(--ui-control-height);
+  max-width: 100%;
+  white-space: normal;
+}
+html[data-theme] :where(.booking-admin-form, .booking-admin-settings-form, .modal-form, .member-referral-section) label {
+  gap: var(--ui-space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+html[data-theme] :where(input, select, textarea):not([type="checkbox"]):not([type="radio"]) { min-width: 0; max-width: 100%; }
+html[data-theme] :where(input[type="checkbox"], input[type="radio"]) { flex-shrink: 0; accent-color: var(--theme-accent); }
+html[data-theme] :where(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid var(--theme-focus-ring); outline-offset: 2px; }
+
+/* One status filter pattern for standard and accessible review. */
+html[data-theme] :is(#bookingPanel .booking-admin-queue-toolbar .booking-admin-filter, .accessible-admin-history-tabs) {
+  display: flex; align-items: center; flex-wrap: nowrap; gap: var(--ui-space-2);
+  width: 100%; max-width: 100%; padding: 5px;
+  border: 1px solid var(--theme-border); border-radius: var(--ui-radius-md);
+  background: var(--theme-surface-muted); overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch;
+}
+html[data-theme] :is(#bookingPanel .booking-admin-queue-toolbar .booking-admin-filter, .accessible-admin-history-tabs)::-webkit-scrollbar { display: none; }
+html[data-theme] :is(#bookingPanel .booking-admin-queue-toolbar .booking-admin-filter-button, .accessible-admin-history-tab) {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: 0 0 auto;
+  min-height: var(--ui-control-height); padding: 8px 12px; border: 1px solid transparent;
+  border-radius: var(--ui-radius-sm); color: var(--theme-text-muted); background: transparent;
+  font: inherit; font-size: 13px; font-weight: 850; white-space: nowrap; box-shadow: none; cursor: pointer;
+}
+html[data-theme] :is(#bookingPanel .booking-admin-queue-toolbar .booking-admin-filter-button, .accessible-admin-history-tab).active {
+  border-color: var(--theme-border); background: var(--theme-surface-raised); color: var(--theme-text); box-shadow: var(--theme-shadow);
+}
+html[data-theme] .accessible-admin-history-tab b { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px; background: var(--theme-surface); font-size: 11px; }
+html[data-theme] .accessible-admin-history-tab.active b { background: var(--ui-primary); color: var(--ui-primary-contrast); }
+html[data-theme] .accessible-admin-history-tabs { margin-bottom: var(--ui-space-3); }
+html[data-theme] :is(#bookingPanel .booking-admin-booking, .accessible-admin-queue-card) {
+  min-width: 0; padding: var(--ui-space-4); border: 1px solid var(--theme-border);
+  border-radius: var(--ui-radius-md); background: var(--theme-surface-raised);
+}
+
+/* The same ticket card and definition list in points, standard booking and large-print booking. */
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket {
+  display: flex; flex-direction: column; gap: var(--ui-space-2); min-width: 0; height: 100%;
+  padding: var(--ui-space-4); border: 1px solid var(--theme-border-strong); border-radius: var(--ui-radius-lg);
+  color: var(--theme-text); background: var(--theme-surface-raised); box-shadow: var(--theme-shadow); filter: none; opacity: 1;
+}
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket::before { content: none; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket :is(h3, h4) { margin: 0; color: var(--theme-text); font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket :is(p, small, .ticket-state) { margin: 0; color: var(--theme-text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket :is(.member-ticket-type, .booking-benefit-meta) { align-self: start; color: var(--theme-accent); background: var(--theme-accent-soft); border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 800; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket.is-selected { border-color: var(--theme-accent); box-shadow: 0 0 0 1px var(--theme-accent); }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket.is-reserved { border-color: var(--theme-warning-text); }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket :is(.member-ticket-footer, .booking-benefit-select) { order: 2; margin-top: auto; display: flex; align-items: center; gap: var(--ui-space-2); flex-wrap: wrap; }
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket :is(.ticket-checkbox-action, .booking-benefit-select) {
+  min-height: var(--ui-control-height); color: var(--theme-text); background: var(--theme-surface-muted);
+  border: 1px solid var(--theme-border); border-radius: var(--ui-radius-sm); padding: 8px 10px; white-space: normal;
+}
+html[data-theme] :is(#pointsView, #bookingView) .ui-ticket :is(.ticket-checkbox-action, .booking-benefit-select):has(input:disabled) { opacity: .7; cursor: not-allowed; }
+html[data-theme] :is(#pointsView, #bookingView) .ticket-cost-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-2); margin: 0; }
+html[data-theme] :is(#pointsView, #bookingView) .ticket-cost-card { min-width: 0; padding: 10px; border: 1px solid var(--theme-border); border-radius: var(--ui-radius-sm); background: var(--theme-surface-muted); }
+html[data-theme] :is(#pointsView, #bookingView) .ticket-cost-card.is-source { grid-column: 1 / -1; }
+html[data-theme] :is(#pointsView, #bookingView) .ticket-cost-card dt { color: var(--theme-text-muted); font-size: 11px; line-height: 1.5; }
+html[data-theme] :is(#pointsView, #bookingView) .ticket-cost-card dd { margin: 4px 0 0; color: var(--theme-text); font-size: 14px; font-weight: 850; line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  html[data-theme] :where(.topbar, .account-menu) { max-width: 100%; }
+  html[data-theme] :where(.section-heading, .booking-benefits-heading) { align-items: start; }
+  html[data-theme] :where(.booking-card, .booking-accessible-panel) { padding: var(--ui-space-4); }
+  html[data-theme] :where(.accessible-admin-queue-card, .booking-admin-booking-heading) { flex-wrap: wrap; }
+  html[data-theme] :where(.booking-benefit-group-grid, .ticket-overview-group) { grid-template-columns: minmax(0, 1fr); }
+}
+
+html[data-theme] .booking-accessible-mode #bookingView .ui-ticket :is(h3,h4) {font-size:20px;}
+html[data-theme] .booking-accessible-mode #bookingView .ui-ticket :is(p,small) {font-size:16px;}
+html[data-theme] .booking-accessible-mode #bookingView .ticket-cost-card dt {font-size:14px;}
+html[data-theme] .booking-accessible-mode #bookingView .ticket-cost-card dd {font-size:18px;}

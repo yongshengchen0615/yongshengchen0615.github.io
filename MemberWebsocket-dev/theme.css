@@ -1925,12 +1925,12 @@ html[data-theme="dark"] #pointsView .card-tab[aria-selected="true"] {
   border-color: var(--card-style-accent, var(--theme-border-strong));
 }
 
-html[data-theme="dark"] #pointsView .ticket-overview-group .member-ticket[data-card-style] {
+html[data-theme="dark"] #pointsView .ticket-overview-group .member-ticket[data-card-style]:not(.ui-ticket) {
   color: #fffaf3;
   background: var(--card-style-background, var(--card-style-surface, #282016));
 }
 
-html[data-theme="dark"] #pointsView .ticket-overview-group .member-ticket[data-card-style] :where(
+html[data-theme="dark"] #pointsView .ticket-overview-group .member-ticket[data-card-style]:not(.ui-ticket) :where(
   h3,
   .ticket-cost-card dd,
   .ticket-checkbox-action

@@ -9,6 +9,7 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 const core = read('admin/booking-panel-core.js');
 const cancellation = read('admin/booking-cancellation-sync.js');
 const css = read('admin/booking-panel.css');
+const shared = read('experience.css');
 const index = read('admin/index.html');
 
 test('standard booking status filters keep accessible-review UI parity', () => {
@@ -29,9 +30,10 @@ test('standard booking status filters keep accessible-review UI parity', () => {
 
   assert.match(css, /standard booking status navigation parity with accessible review 20261005/);
   assert.match(css, /#bookingPanel \.booking-admin-queue-toolbar\{[\s\S]*grid-template-columns:minmax\(0,1fr\)/);
-  assert.match(css, /#bookingPanel \.booking-admin-queue-toolbar \.booking-admin-filter\{[\s\S]*background:var\(--theme-surface-muted,#f3f6f2\)/);
-  assert.match(css, /#bookingPanel \.booking-admin-queue-toolbar \.booking-admin-filter-button\.active\{[\s\S]*background:var\(--theme-surface-raised,#fff\)/);
-  assert.match(css, /overflow-x:auto/);
-  assert.match(css, /-webkit-overflow-scrolling:touch/);
+  assert.match(shared, /booking-admin-filter, \.accessible-admin-history-tabs/);
+  assert.match(shared, /background: var\(--theme-surface-muted\)/);
+  assert.match(shared, /background: var\(--theme-surface-raised\)/);
+  assert.match(shared, /overflow-x: auto/);
+  assert.match(shared, /-webkit-overflow-scrolling: touch/);
   assert.match(index, /booking-panel\.css\?v=booking-standard-filter-parity-20261005-1/);
 });

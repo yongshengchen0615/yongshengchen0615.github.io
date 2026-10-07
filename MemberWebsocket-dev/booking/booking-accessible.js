@@ -29,11 +29,14 @@
     const tickets = (Array.isArray(items) ? items : []).filter(item => ['points','event'].includes(item.kind) && item.selectable === true && !item.reservedForBooking);
     tickets.forEach(item => {
       const card = document.createElement('article');
+      card.className = 'ui-ticket';
       const title = document.createElement('h4'); title.textContent = String(item.title || '可用票券');
       const status = document.createElement('p'); status.textContent = item.claimRequired ? '符合領取資格・尚未領取' : '目前持有・可供核對使用';
       const condition = document.createElement('p'); condition.textContent = String(item.conditionLabel || item.subtitle || '依票券使用條件核對');
       const expiry = document.createElement('p'); expiry.textContent = item.endsOn ? `有效至 ${item.endsOn}` : '依票券有效期限使用';
-      card.append(title,status,condition,expiry); host.append(card);
+      card.append(title,status,condition,expiry);
+      if (item.kind === 'points') card.append(window.MemberUI.pointTicketDetails(item));
+      host.append(card);
     });
     if (el('bookingAccessibleTicketsStatus')) el('bookingAccessibleTicketsStatus').textContent = tickets.length ? `目前有 ${tickets.length} 項可用／可領取票券。` : '目前沒有可用票券。';
   }

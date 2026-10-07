@@ -716,54 +716,7 @@
 .booking-admin-modal#accessibleAdminModal .accessible-admin-review-layout{touch-action:pan-y}
 
 
-.accessible-admin-history-tabs{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  margin-bottom:12px;
-  padding:5px;
-  border:1px solid rgba(23,53,46,.09);
-  border-radius:13px;
-  background:var(--theme-surface-muted,#f3f6f2);
-  overflow-x:auto;
-  scrollbar-width:none
-}
-.accessible-admin-history-tabs::-webkit-scrollbar{display:none}
-.accessible-admin-history-tab{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:7px;
-  flex:0 0 auto;
-  min-height:40px;
-  padding:8px 12px;
-  border:1px solid transparent;
-  border-radius:10px;
-  background:transparent;
-  color:var(--theme-text-muted,#607068);
-  font:inherit;
-  font-size:13px;
-  font-weight:850;
-  cursor:pointer;
-  white-space:nowrap
-}
-.accessible-admin-history-tab b{
-  display:grid;
-  place-items:center;
-  min-width:24px;
-  height:24px;
-  padding:0 6px;
-  border-radius:999px;
-  background:rgba(23,53,46,.08);
-  font-size:11px
-}
-.accessible-admin-history-tab.active{
-  border-color:rgba(23,53,46,.10);
-  background:var(--theme-surface-raised,#fff);
-  color:var(--theme-text,#17352e);
-  box-shadow:0 3px 10px rgba(23,53,46,.06)
-}
-.accessible-admin-history-tab.active b{background:var(--theme-accent,#df6b4d);color:#fff}
+/* Status filters share experience.css with standard booking. */
 .accessible-admin-record-card{align-items:flex-start}
 .accessible-admin-record-summary{
   display:grid;

@@ -89,7 +89,7 @@ async function resolveIdentity(supabase: SupabaseClient, body: Json, clientType:
 async function requireMember(supabase: SupabaseClient, identity: Identity): Promise<any> {
   const result = await supabase
     .from("members")
-    .select("id,line_user_id,display_name,member_code,status,membership_status,invite_code")
+    .select("id,line_user_id,display_name,member_code,status,membership_status,invite_code,is_test_account")
     .eq("line_user_id", identity.lineUserId)
     .maybeSingle();
   if (result.error) throw new ApiError(500, "DATABASE_ERROR", "會員資料暫時無法讀取。");
@@ -178,10 +178,21 @@ async function lineOfficialAccount(supabase: SupabaseClient): Promise<Json> {
   };
 }
 
-async function referralBind(supabase: SupabaseClient, identity: Identity, body: Json): Promise<Json> {
+async function referralBind(supabase: SupabaseClient, identity: Identity, body: Json, member: any): Promise<Json> {
+  let inviteCode = asText(body.inviteCode, 20);
+  if (body.memberCode) {
+    const memberCode = asText(body.memberCode, 41).toUpperCase();
+    if (!/^[A-Z0-9_-]{4,40}$/.test(memberCode)) throw new ApiError(400, "INVALID_INVITE_CODE", "請輸入有效的會員編號。");
+    const inviter = await supabase.from("members").select("invite_code")
+      .eq("member_code", memberCode).eq("status", "active").eq("membership_status", "active")
+      .eq("is_test_account", member.is_test_account).maybeSingle();
+    if (inviter.error) throw new ApiError(500, "DATABASE_ERROR", "邀請資料暫時無法讀取。");
+    if (!inviter.data?.invite_code) throw new ApiError(404, "INVITE_CODE_NOT_FOUND", "找不到此會員的邀請資料。");
+    inviteCode = inviter.data.invite_code;
+  }
   const result = await supabase.rpc("bind_member_referral", {
     p_invitee_line_user_id: identity.lineUserId,
-    p_invite_code: asText(body.inviteCode, 20),
+    p_invite_code: inviteCode,
     p_request_id: asText(body.requestId, 120),
   });
   if (result.error) throw mapDatabaseError(result.error);
@@ -267,7 +278,7 @@ Deno.serve(async (request: Request) => {
       data=r.data as Json;
     }
     else if (action === "event.today-usable") data = await todayUsable(supabase, identity);
-    else if (action === "member.referral.bind") data = await referralBind(supabase, identity, body);
+    else if (action === "member.referral.bind") data = await referralBind(supabase, identity, body, member);
     else if (action === "member.line.official-account") data = await lineOfficialAccount(supabase);
     else if (action === "points.transfer.options") data = await transferOptions(supabase, member);
     else if (action === "points.transfer.receiver") data = await transferReceiver(supabase, identity, body);

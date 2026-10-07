@@ -43,7 +43,7 @@ test('accessible node drives production mode UI and restores each member prefere
       w.BookingBenefits={getItems:()=>items,syncNow:()=>{w.document.getElementById('bookingBenefits').dataset.state='ready';w.document.getElementById('bookingBenefitsList').setAttribute('aria-busy','false');w.dispatchEvent(new w.CustomEvent('booking:benefits-loaded',{detail:{items}}));}};
       w.BookingReceipts={openAccessible:()=>cameraCalls++,refresh:async()=>w.dispatchEvent(new w.CustomEvent('booking:receipts-updated',{detail:{submissions:[]}}))};
       w.BookingSystem={request:async()=>({submissions:[]})};
-      w.eval(read('booking/booking-accessible.js'));await tick();
+      w.eval(read('ui-components.js'));w.eval(read('booking/booking-accessible.js'));await tick();
       w.dispatchEvent(new w.CustomEvent('booking:member-loaded',{detail:{profile:{lineUserId:'test:feature-node'}}}));
       const node=userProbe(w);
       const result=await node.bookingAccessibleModeCase();
@@ -80,7 +80,7 @@ test('ticket rule node tests real any/all selection rejection without claiming a
       {kind:'event',id:'EV',selectionId:'',selectable:true,claimRequired:true,requiredServiceIds:['BODY','FACE'],requiredServiceMatchMode:'all',title:'QA event'}
     ];
     w.BookingSystem={bookingBenefits:async()=>({items,eventTicketMaxPerDay:0,pointTicketMaxPerRedemption:0}),claimEventTicket:async()=>{claims++;return{};}};
-    w.eval(read('booking/booking-benefits.js'));w.BookingBenefits.start({},'fixture');await tick();
+    w.eval(read('ui-components.js'));w.eval(read('booking/booking-benefits.js'));w.BookingBenefits.start({},'fixture');await tick();
     const node=userProbe(w),result=await node.bookingTicketRulesCase();
     assert.equal(result.status,'passed',JSON.stringify(result));
     assert.equal(result.actual.serviceChecks.length,2);assert.equal(claims,0);

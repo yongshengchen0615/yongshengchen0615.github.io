@@ -317,7 +317,7 @@
         const serviceBlocked = selectableKinds.has(item.kind) && !serviceRequirementMet(item);
 
         const card = document.createElement('article');
-        card.className = `booking-benefit${isSelected ? ' is-selected' : ''}`;
+        card.className = `booking-benefit ui-ticket${isSelected ? ' is-selected' : ''}`;
         card.dataset.benefitKind = item.kind;
 
         const meta = document.createElement('p');
@@ -378,6 +378,10 @@
           card.append(meta, title, copy, expires, condition, choose);
         } else {
           card.append(meta, title, copy, expires, condition);
+        }
+
+        if (item.kind === 'points') {
+          card.insertBefore(window.MemberUI.pointTicketDetails(item), card.querySelector('.booking-benefit-select'));
         }
 
         if (!selectable && item.disabledReason) {
