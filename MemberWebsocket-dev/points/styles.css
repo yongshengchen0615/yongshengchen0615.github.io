@@ -136,14 +136,14 @@ button { line-height: 1.35; }
 .active-card[data-card-style="peach"], .card-tab[data-card-style="peach"], .member-ticket[data-card-style="peach"] { --card-style-surface: #78383b; --card-style-background: linear-gradient(135deg, #78383b 0%, #b75f4f 55%, #5d3038 100%); --card-style-accent: #ffd0bd; }
 .active-card[data-card-style] { background: var(--card-style-background, var(--card-style-surface, var(--ink))); }
 
-/* Unavailable is a state, never a separate gray theme: render the configured preset first, then grayscale it. */
+/* Unavailable is a state, never a separate gray theme: keep the configured preset visible and only tone it down. */
 .active-card.is-unavailable[data-card-style],
-.card-tab.is-unavailable[aria-selected="true"][data-card-style],
-.member-ticket.locked[data-card-style] {
+.card-tab.is-unavailable[aria-selected="true"][data-card-style] {
   filter: grayscale(1);
 }
 .member-ticket.locked[data-card-style] {
   background: var(--card-style-background, var(--card-style-surface, var(--ink)));
+  filter: grayscale(.68) brightness(.92);
 }
 
 .login-loading { width: min(100%, 280px); min-height: calc(100vh - max(24px, env(safe-area-inset-top)) - max(42px, env(safe-area-inset-bottom))); min-height: calc(100dvh - max(24px, env(safe-area-inset-top)) - max(42px, env(safe-area-inset-bottom))); margin-inline: auto; justify-items: stretch; gap: 12px; text-align: center; }
