@@ -45,7 +45,8 @@ for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`shar
  for(const surface of surfaces){
   await page.goto(`${base}/${surface}/?theme=${theme}`);await expect(page.locator(`#${surface}View`)).toBeVisible();await fits(page.locator('.topbar'));
   if(surface==='member'){
-   await page.locator('#openMemberReferral').click();await expect(page.locator('#memberReferralModal')).toBeVisible();await fits(page.locator('.member-referral-dialog'));await expect(page.locator('#memberReferralOwnCode')).toContainText('MEMBER-00001');await expect(page.locator('#friendShareUrl')).toHaveCount(0);
+   await page.locator('#openMemberReferral').click();await expect(page.locator('#memberReferralModal')).toBeVisible();await fits(page.locator('.member-referral-dialog'));await expect(page.locator('#memberReferralTabFriends')).toHaveAttribute('aria-selected','true');await expect(page.locator('#friendsPanel')).toBeVisible();await expect(page.locator('#friendShareUrl')).toHaveCount(0);
+   await page.locator('#memberReferralTabInvite').click();await expect(page.locator('#memberReferralTabInvite')).toHaveAttribute('aria-selected','true');await expect(page.locator('#memberReferralOwnCode')).toContainText('MEMBER-00001');
    await page.locator('#copyMemberInviteCode').click();await expect(page.locator('#friendStatus')).toContainText('已複製');await capture(page.locator('.member-referral-dialog'),info,`friends-${width}-${theme}`);await page.keyboard.press('Escape');expect(await page.locator('.app-shell').evaluate(e=>e.inert)).toBe(false);
   }
   if(surface==='points'||surface==='booking'){
