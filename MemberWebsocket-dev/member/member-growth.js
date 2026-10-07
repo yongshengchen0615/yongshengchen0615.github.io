@@ -48,7 +48,6 @@
       const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
       if (hash.get('reward')) return { value: hash.get('reward'), legacy: false };
       if (hash.get('invite')) return { value: hash.get('invite'), legacy: true };
-      if (hash.get('friend')) return { value: hash.get('friend'), legacy: false };
       if (url.searchParams.get('invite')) return { value: url.searchParams.get('invite'), legacy: true };
       return { value: '', legacy: false };
     };
@@ -66,7 +65,6 @@
       const hash = new URLSearchParams(text.slice(1));
       if (hash.get('reward')) candidate = hash.get('reward');
       else if (hash.get('invite')) { candidate = hash.get('invite'); legacyInviteCode = true; }
-      else if (hash.get('friend')) candidate = hash.get('friend');
       else candidate = '';
     }
 
