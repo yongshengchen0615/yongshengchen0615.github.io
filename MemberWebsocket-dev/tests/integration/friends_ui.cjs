@@ -3,7 +3,7 @@ const {JSDOM}=require('jsdom');const fs=require('node:fs');const path=require('n
 const source=fs.readFileSync(path.resolve(__dirname,'../../friends.js'),'utf8');
 const tick=()=>new Promise(r=>setTimeout(r,20));
 async function page(booking=false){
- const dom=new JSDOM('<main id="'+(booking?'bookingView':'memberView')+'"><div id="memberPass"></div><p id="bookingNotice"></p></main>',{pretendToBeVisual:true,runScripts:'outside-only',url:'https://example.test/member/#friend=BBBB000000'});
+ const dom=new JSDOM('<main id="'+(booking?'bookingView':'memberView')+'"><div id="memberPass"></div><p id="bookingNotice"></p><fieldset class="booking-contact-fieldset"><div id="bookingRecipientHost"></div></fieldset></main>',{pretendToBeVisual:true,runScripts:'outside-only',url:'https://example.test/member/#friend=BBBB000000'});
  const w=dom.window,calls=[];let friends=[{memberCode:'BBBB',displayName:'王○',status:'pending',incoming:true}],release;
  const session={config:{supabaseUrl:'https://example.test',supabasePublishableKey:'public'},idToken:'verified'};
  const request=async(_c,_t,_k,action,payload)=>{calls.push({action,payload});if(action.endsWith('list'))return {friends,receivedBookings:[]};if(action.endsWith('lookup'))return {memberCode:'CCCC',displayName:'陳○'};if(action.endsWith('accept'))friends=friends.map(f=>({...f,status:'accepted'}));return {status:'pending'};};
@@ -14,7 +14,7 @@ async function page(booking=false){
 }
 test('all invite entrances populate a safe lookup; request needs explicit confirmation; acceptance is separate',async()=>{
  const {dom,w,calls}=await page();try{
-  assert.match(w.document.getElementById('friendShareUrl').value,/#friend=AAAA000000$/);
+  assert.match(w.MemberFriends.invitationUrl(),/#friend=AAAA$/);assert.equal(w.document.getElementById('friendShareUrl'),null);
   assert.equal(w.document.getElementById('memberReferralInviteCode').value,'BBBB000000');assert.equal(calls.filter(c=>!c.action.endsWith('list')).length,0);assert.equal(w.document.querySelectorAll('#friendsPanel').length,1);assert.equal(w.document.getElementById('memberReferralModal').contains(w.document.getElementById('friendsPanel')),true);assert.equal(w.document.getElementById('openMemberReferral').textContent,'好友與邀請');
   w.document.getElementById('memberReferralForm').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();
   assert.equal(calls.at(-1).action,'member.friend.lookup');assert.equal(w.document.getElementById('confirmFriendRequest').hidden,false);
@@ -26,6 +26,7 @@ test('all invite entrances populate a safe lookup; request needs explicit confir
 test('booking lists only accepted friends and editing fixes the original recipient',async()=>{
  const {dom,w,setFriends,ready}=await page(true);try{
   assert.equal(w.document.querySelector('#friendBookingRecipient').options.length,1);
+  assert.equal(w.document.getElementById('friendBookingRecipient').closest('.booking-contact-fieldset')!==null,true);
   setFriends([{memberCode:'BBBB',displayName:'王○',status:'accepted'}]);ready();await tick();
   const select=w.document.getElementById('friendBookingRecipient');select.value='BBBB';select.dispatchEvent(new w.Event('change'));assert.equal(w.MemberFriends.selected(),'BBBB');
   w.MemberFriends.lock('BBBB','王○');await tick();assert.equal(select.disabled,true);assert.equal(select.value,'BBBB');
@@ -78,5 +79,18 @@ test('an old reward response cannot update the new account or leave its controls
   resolve({rewardExpiresOn:'PRIVATE-A'});await tick();
   assert.doesNotMatch(w.document.getElementById('memberReferralStatus').textContent,/PRIVATE-A|綁定成功/);assert.equal(w.document.getElementById('memberReferralInviteCode').disabled,false);
   w.document.getElementById('memberReferralInviteCode').value='CCCC000000';await w.MemberFriends.lookup();assert.equal(w.document.getElementById('bindMemberReferral').disabled,false);
+ }finally{dom.window.close();}
+});
+
+test('member number lookup enables only explicit referral confirmation and preserves copy/share fallback',async()=>{
+ const {dom,w,calls}=await page();try {
+  const input=w.document.getElementById('memberReferralInviteCode');input.value='CCCC';input.dispatchEvent(new w.Event('input'));
+  await w.MemberFriends.lookup();assert.equal(w.document.getElementById('bindMemberReferral').disabled,false);assert.equal(calls.some(c=>c.action==='member.referral.bind'),false);
+  w.document.getElementById('bindMemberReferral').click();await tick();assert.equal(calls.filter(c=>c.action==='member.referral.bind').length,1);assert.equal(calls.find(c=>c.action==='member.referral.bind').payload.memberCode,'CCCC');
+  let copied='';Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async text=>{copied=text;}},configurable:true});
+  w.document.getElementById('copyMemberInviteCode').click();await tick();assert.match(copied,/#friend=AAAA$/);assert.match(w.document.getElementById('friendStatus').textContent,/已複製/);assert.equal(w.document.getElementById('friendShareUrl'),null);
+  w.document.getElementById('shareFriendLink').click();await tick();assert.match(w.document.getElementById('friendStatus').textContent,/已複製/);
+  Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async()=>{throw new Error('denied');}},configurable:true});w.document.execCommand=()=>false;
+  await w.MemberFriends.copyInvitationLink();assert.match(w.document.getElementById('friendStatus').textContent,/無法複製/);assert.equal(w.document.querySelector('.friend-copy-buffer'),null);
  }finally{dom.window.close();}
 });

@@ -358,17 +358,6 @@
     return container;
   }
 
-  function createCostCard(label, value, modifier = '') {
-    const row = document.createElement('div');
-    row.className = `ticket-cost-card${modifier ? ` ${modifier}` : ''}`;
-    const term = document.createElement('dt');
-    term.textContent = label;
-    const detail = document.createElement('dd');
-    detail.textContent = value;
-    row.append(term, detail);
-    return row;
-  }
-
   function render() {
     if (!state.snapshot || !ensureUi() || !groups) return;
 
@@ -439,7 +428,7 @@
         }
 
         const item = document.createElement('article');
-        item.className = `member-ticket${offer.baseCanUse ? ' is-ready' : ' locked'}${offer.reservedForBooking ? ' is-reserved' : ''}${isSelected ? ' is-selected' : ''}`;
+        item.className = `member-ticket ui-ticket${offer.baseCanUse ? ' is-ready' : ' locked'}${offer.reservedForBooking ? ' is-reserved' : ''}${isSelected ? ' is-selected' : ''}`;
         item.dataset.cardStyle = safeCardStyle(offer.cardStyleKey);
 
         const type = document.createElement('span');
@@ -456,13 +445,7 @@
         method.className = 'member-ticket-method';
         method.textContent = `使用方式：${offer.usageMethod || '達標後請向店員出示本券'}`;
 
-        const cost = document.createElement('dl');
-        cost.className = 'ticket-cost-cards';
-        cost.append(
-          createCostCard('兌換需扣', `${points(offer.thresholdStamps)} 點`, 'is-cost'),
-          createCostCard('目前可用', `${offer.cardStamps} 點`, 'is-balance'),
-          createCostCard('扣點來源', offer.cardTitle, 'is-source')
-        );
+        const cost = window.MemberUI.pointTicketDetails({ cardTitle: offer.cardTitle, pointCost: offer.thresholdStamps, pointBalance: offer.cardStamps });
 
         const footer = document.createElement('div');
         footer.className = 'member-ticket-footer';

@@ -15,7 +15,7 @@ test('accessible mode remembers preference, exposes eligible tickets safely and 
     let opens=0,refreshes=0;
     w.BookingReceipts={openAccessible:()=>opens++,refresh:()=>refreshes++};
     w.BookingBenefits={getItems:()=>[],syncNow:()=>{}};
-    w.eval(read('booking/booking-accessible.js'));
+    w.eval(read('ui-components.js'));w.eval(read('booking/booking-accessible.js'));
     await tick();
     w.dispatchEvent(new w.CustomEvent('booking:member-loaded',{detail:{profile:{lineUserId:'test:member'}}}));
     const toggle=w.document.getElementById('bookingAccessibleToggle');
@@ -50,7 +50,7 @@ test('mode preferences restore per member, preserve drafts and ignore invalid or
     for(const [key,value] of Object.entries(initial)) w.localStorage.setItem(key,value);
     if(unavailable) Object.defineProperty(w,'localStorage',{get(){throw new Error('storage unavailable');}});
     w.BookingReceipts={refresh:()=>{}}; w.BookingBenefits={getItems:()=>[]};
-    w.eval(read('booking/booking-accessible.js')); await tick();
+    w.eval(read('ui-components.js'));w.eval(read('booking/booking-accessible.js')); await tick();
     return dom;
   };
   const load=(w,id)=>w.dispatchEvent(new w.CustomEvent('booking:member-loaded',{detail:{profile:{lineUserId:id}}}));

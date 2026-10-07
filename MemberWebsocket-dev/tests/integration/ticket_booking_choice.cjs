@@ -9,7 +9,7 @@ test('refresh preserves a valid choice and removes an outdated booking',()=>{con
 test('booking titles render as text without injecting markup',()=>{const {dom,choice,api}=fixture();try{api.mount(choice,[booking('A','<img src=x onerror="alert(1)">')]);assert.equal(choice.querySelectorAll('img').length,0);assert.match(choice.textContent,/<img/);assert.equal(choice.querySelector('select').getAttribute('aria-label'),'本次使用的預約');}finally{dom.window.close();}});
 async function pointFixture(eligibleBookings){
  const dom=new JSDOM('<main id="ticketList"></main>',{runScripts:'outside-only',url:'https://qa.local/'}),w=dom.window,calls=[];
- w.eval(source);w.eval(fs.readFileSync(path.join(__dirname,'../../points/pointcard-ticket-overview.js'),'utf8'));
+ w.eval(fs.readFileSync(path.join(__dirname,'../../ui-components.js'),'utf8'));w.eval(source);w.eval(fs.readFileSync(path.join(__dirname,'../../points/pointcard-ticket-overview.js'),'utf8'));
  w.fetch=async(_url,options)=>{const payload=JSON.parse(options.body);calls.push(payload);return {ok:payload.operation==='member.settings.get',json:async()=>payload.operation==='member.settings.get'?{ok:true,data:{maxTicketsPerRedemption:0}}:{ok:false,error:{code:'API_RESPONSE_UNCERTAIN',message:'QA uncertain'}}};};
  await w.PointCardTicketOverview.initialize({config:{supabaseUrl:'https://fixture.supabase.co',supabasePublishableKey:'fixture'},idToken:'fixture'});
  const card={cardId:'CARD',title:'QA Card',status:'active',stamps:20,rewards:[{thresholdStamps:5,ticketTemplateId:'template'}]};

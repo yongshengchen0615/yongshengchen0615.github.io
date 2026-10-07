@@ -11,6 +11,7 @@ function fixture(load, claim = async (config, token, eventTicketId) => ({ ticket
   const w = dom.window;
   w.BookingSystem = { bookingBenefits: load, claimEventTicket: claim };
   w.confirm = () => true;
+  w.eval(fs.readFileSync(path.join(root, 'ui-components.js'), 'utf8'));
   w.eval(fs.readFileSync(path.join(root, 'booking/booking-benefits.js'), 'utf8'));
   const el = id => w.document.getElementById(id);
   return { w, el, close: () => w.close(), start: () => w.BookingBenefits.start({}, 'fixture') };

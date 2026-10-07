@@ -9,7 +9,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 test('all primary surfaces load the shared experience layer', () => {
   for (const entry of ['admin', 'member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(path.join(entry, 'index.html'));
-    assert.match(html, /\.\.\/experience\.css\?v=lumen-experience-20260924-1/, entry);
+    assert.match(html, /\.\.\/experience\.css\?v=ui-consolidation-20261007-1/, entry);
   }
 });
 

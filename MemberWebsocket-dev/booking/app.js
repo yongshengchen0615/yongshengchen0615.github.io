@@ -175,7 +175,6 @@
     const maxAdvanceDays = Number(settings.maxAdvanceDays || 0);
     const labels = [hours];
     if (settings.workStartTime && settings.workEndTime && settings.workEndTime < settings.workStartTime) labels.push('隔日結束');
-    labels.push(`每 ${Number(settings.slotIntervalMinutes || 30)} 分鐘切分`);
     if (advanceDays > 0) labels.push(`提前 ${advanceDays} 天`);
     if (maxAdvanceDays > 0) labels.push(`可預約 ${maxAdvanceDays} 天內`);
     els.workHoursBadge.textContent = labels.join(' · ');
