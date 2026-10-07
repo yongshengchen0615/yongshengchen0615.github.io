@@ -315,10 +315,14 @@
         const pointLimitBlocked = item.kind === 'points' && hasLimit(pointTicketMaxPerRedemption) && !isSelected && selectedPointCount() >= pointTicketMaxPerRedemption;
         const pointBudgetBlocked = item.kind === 'points' && !isSelected && !pointBudget(item).affordable;
         const serviceBlocked = selectableKinds.has(item.kind) && !serviceRequirementMet(item);
+        const pointUnavailable = item.kind === 'points'
+          && !isSelected
+          && (!selectable || pointBudgetBlocked || serviceBlocked);
 
         const card = document.createElement('article');
-        card.className = `booking-benefit ui-ticket${isSelected ? ' is-selected' : ''}`;
+        card.className = `booking-benefit ui-ticket${isSelected ? ' is-selected' : ''}${pointUnavailable ? ' is-unavailable' : ''}`;
         card.dataset.benefitKind = item.kind;
+        if (pointUnavailable) card.setAttribute('aria-disabled', 'true');
         if (item.kind === 'points') card.dataset.cardStyle = window.MemberUI.pointCardStyleKey(item.cardStyleKey);
 
         const meta = document.createElement('p');
