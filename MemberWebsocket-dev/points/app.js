@@ -169,6 +169,11 @@
     return detail && detail.card ? { ...summary, ...detail.card } : summary;
   }
 
+  function isCardUnavailable(card) {
+    const status = String(card && card.status || 'active').trim().toLowerCase();
+    return Boolean(card && card.expired) || status !== 'active';
+  }
+
   function assertCompleteCardsBootstrap() {
     const incomplete = state.cards.some((card) => {
       const cardId = String(card && card.cardId || '');
@@ -216,10 +221,13 @@
     els.emptyView.classList.toggle('hidden', hasCards);
     els.activeCardView.classList.toggle('hidden', !hasCards);
 
-    els.cardTabs.replaceChildren(...state.cards.map((card) => {
+    els.cardTabs.replaceChildren(...state.cards.map((summary) => {
+      const detail = state.cardDetails[String(summary.cardId || '')];
+      const card = detail && detail.card ? { ...summary, ...detail.card } : summary;
+      const unavailable = isCardUnavailable(card);
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'card-tab';
+      button.className = `card-tab${unavailable ? ' is-unavailable' : ''}`;
       button.dataset.cardId = card.cardId;
       button.dataset.cardStyle = safeCardStyle(card.styleKey);
       button.setAttribute('role', 'tab');
@@ -260,21 +268,29 @@
       ? card.rewards.length
       : Math.max(0, Number(card.rewardCount || 0));
 
+    const unavailable = isCardUnavailable(card);
+    const cardStatus = String(card.status || 'active').trim().toLowerCase();
+
     els.activeCardView.dataset.cardStyle = safeCardStyle(card.styleKey);
     els.activeCardView.dataset.cardId = String(card.cardId || '');
+    els.activeCardView.classList.toggle('is-unavailable', unavailable);
     els.activeCardView.style.setProperty('--card-accent', safeAccent(card.accent));
     setConfiguredText(els.activeCardTitle, card.title || '集點卡');
     els.activeCardStatus.textContent = card.expired
       ? '已超過期限'
-      : card.status === 'archived'
+      : cardStatus === 'archived'
         ? '已停止集點'
-        : '進行中';
+        : unavailable
+          ? '目前不可使用'
+          : '進行中';
     els.progressCount.textContent = String(stamps);
     els.progressMessage.textContent = card.expired
       ? '這張集點卡已超過使用期限'
-      : card.status === 'archived'
+      : cardStatus === 'archived'
         ? '這張卡已停止集點'
-        : reservedStamps > 0
+        : unavailable
+          ? '這張集點卡目前不可使用'
+          : reservedStamps > 0
           ? `目前可用 ${stamps} 點；另有 ${reservedStamps} 點已預約使用，將於服務完成時自動核銷。`
           : '點數會持續累積，達標後可於下方票券總覽選擇使用。';
     els.remainingMessage.textContent = ticketOfferCount
@@ -292,7 +308,7 @@
       totalStamps,
       reservedStamps,
       expiresOn: card.expiryMode === 'date' ? String(card.expiresOn || '') : '',
-      transferEligible: !card.expired && card.status !== 'archived'
+      transferEligible: !unavailable
     } }));
   }
 
