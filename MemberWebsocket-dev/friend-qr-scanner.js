@@ -17,7 +17,7 @@
     return code.toUpperCase();
   }
 
-  function create(video, { onResult, onStatus }) {
+  function create(video, { onResult, onStatus, parseValue = parseInvitation, label = '好友' }) {
     let generation = 0, stream = null, timer = null, active = false;
     const canvas = document.createElement('canvas');
     const stop = () => {
@@ -30,14 +30,14 @@
       canvas.width = Math.max(1, Math.round(width * ratio));
       canvas.height = Math.max(1, Math.round(height * ratio));
       const context = canvas.getContext('2d', { willReadFrequently: true });
-      if (!context || typeof window.FriendQRDecode !== 'function') throw new Error('掃描元件未載入，請重新整理或直接貼上好友連結。');
+      if (!context || typeof window.FriendQRDecode !== 'function') throw new Error(`掃描元件未載入，請重新整理或直接貼上${label}連結。`);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
       return window.FriendQRDecode(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' })?.data || '';
     }
     function accept(raw) {
-      const code = parseInvitation(raw);
-      stop(); onResult(code);
+      const value = parseValue(raw);
+      stop(); onResult(value);
     }
     function scan(current) {
       if (!active || current !== generation) return;
@@ -54,19 +54,19 @@
     async function start() {
       stop(); const current = generation; active = true;
       if (!navigator.mediaDevices?.getUserMedia) {
-        stop(); onStatus('此瀏覽器無法開啟相機，請使用 QR 圖片、貼上好友連結或輸入會員編號。'); return;
+        stop(); onStatus(`此瀏覽器無法開啟相機，請使用 QR 圖片、貼上${label}連結或輸入會員編號。`); return;
       }
-      onStatus('請允許使用相機，將好友 QR Code 對準鏡頭。');
+      onStatus(`請允許使用相機，將${label} QR Code 對準鏡頭。`);
       try {
         const granted = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
         if (!active || current !== generation || document.hidden) { granted.getTracks().forEach(track => track.stop()); return; }
         stream = granted; video.srcObject = stream; await video.play();
         if (!active || current !== generation) return;
-        onStatus('正在掃描，請將 QR Code 放在畫面中央。'); scan(current);
+        onStatus(`正在掃描，請將${label} QR Code 放在畫面中央。`); scan(current);
       } catch (error) {
         if (current !== generation) return;
         stop(); onStatus(error.name === 'NotAllowedError'
-          ? '相機權限未開啟，請允許相機或改用 QR 圖片／貼上好友連結。'
+          ? `相機權限未開啟，請允許相機或改用 QR 圖片／貼上${label}連結。`
           : '無法啟動相機，請關閉其他相機程式，或改用 QR 圖片／會員編號。');
       }
     }

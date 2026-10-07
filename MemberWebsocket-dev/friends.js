@@ -81,6 +81,7 @@
       if (panel) panel.hidden = !active;
     }
     if (selected !== 'friends') stopScan();
+    if (selected !== 'reward') window.MemberReferral?.stopScan?.();
     if (focus) el(selected === 'reward' ? 'memberReferralTabReward' : 'memberReferralTabFriends')?.focus();
   }
 

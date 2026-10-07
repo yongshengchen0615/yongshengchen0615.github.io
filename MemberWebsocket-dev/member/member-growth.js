@@ -11,6 +11,19 @@
     previewCode: '',
     previewMemberCode: '',
   };
+  let referralScanner = null;
+
+  function stopReferralScan() {
+    referralScanner?.stop();
+    const scanner = document.getElementById('memberReferralQrScanner');
+    if (scanner) scanner.hidden = true;
+  }
+
+  function referralScanStatus(message) {
+    const text = String(message || '');
+    const isError = /無法|未開啟|不是本站|格式不正確|未找到|過大|請選擇/.test(text);
+    showReferralStatus(text, isError, isError ? 'error' : 'info');
+  }
 
   function requestId(prefix) {
     const value = window.crypto?.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2);
@@ -172,6 +185,15 @@
     share.id = 'memberReferralShare';
     const shareTitle = document.createElement('strong');
     shareTitle.textContent = '分享邀請優惠';
+    const shareBody = document.createElement('div');
+    shareBody.className = 'friend-sharing';
+    const qr = document.createElement('canvas');
+    qr.id = 'memberReferralQr';
+    qr.className = 'friend-qr';
+    qr.hidden = true;
+    qr.setAttribute('aria-label', '邀請優惠 QR Code');
+    const shareActions = document.createElement('div');
+    shareActions.className = 'friend-link-actions';
     const shareRow = document.createElement('div');
     shareRow.className = 'member-referral-code-row';
     const code = document.createElement('code');
@@ -190,8 +212,10 @@
     shareButton.textContent = '分享邀請優惠';
     shareRow.append(code, copy, shareButton);
     const shareHelp = document.createElement('small');
-    shareHelp.textContent = '把邀請優惠連結分享給尚未綁定推薦關係的會員。綁定成功後，邀請者會獲得 1 張好友邀請票券；被邀請者不會獲得此獎勵票券。';
-    share.append(shareTitle, shareRow, shareHelp);
+    shareHelp.textContent = '可直接出示 QR Code，或分享邀請優惠連結給尚未綁定推薦關係的會員。綁定成功後，邀請者會獲得 1 張好友邀請票券；被邀請者不會獲得此獎勵票券。';
+    shareActions.append(shareRow, shareHelp);
+    shareBody.append(qr, shareActions);
+    share.append(shareTitle, shareBody);
 
     const bind = document.createElement('form');
     bind.id = 'memberReferralForm';
@@ -213,6 +237,41 @@
     const help = document.createElement('small');
     help.id = 'memberReferralBindHelp';
     help.textContent = '這裡只處理邀請優惠，不會送出好友邀請。每位會員只能綁定一次；既有舊版邀請連結仍可相容。';
+    const scanActions = document.createElement('div');
+    scanActions.className = 'friend-actions';
+    const scan = document.createElement('button');
+    scan.id = 'scanMemberReferralQr';
+    scan.type = 'button';
+    scan.className = 'button button-refresh';
+    scan.textContent = '掃描 QR Code';
+    const upload = document.createElement('button');
+    upload.id = 'uploadMemberReferralQr';
+    upload.type = 'button';
+    upload.className = 'button button-refresh';
+    upload.textContent = '選擇 QR 圖片';
+    const file = document.createElement('input');
+    file.id = 'memberReferralQrFile';
+    file.type = 'file';
+    file.accept = 'image/png,image/jpeg,image/webp';
+    file.hidden = true;
+    scanActions.append(scan, upload, file);
+    const camera = document.createElement('section');
+    camera.id = 'memberReferralQrScanner';
+    camera.hidden = true;
+    const video = document.createElement('video');
+    video.id = 'memberReferralQrVideo';
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('aria-label', '邀請優惠 QR Code 相機預覽');
+    const cameraHelp = document.createElement('p');
+    cameraHelp.textContent = '將完整的邀請優惠 QR Code 放在畫面中央。影像只在目前裝置辨識。';
+    const stopScan = document.createElement('button');
+    stopScan.id = 'stopMemberReferralQr';
+    stopScan.type = 'button';
+    stopScan.className = 'button button-refresh';
+    stopScan.textContent = '關閉相機';
+    camera.append(video, cameraHelp, stopScan);
     const submit = document.createElement('button');
     submit.id = 'bindMemberReferral';
     submit.type = 'submit';
@@ -224,7 +283,7 @@
     status.className = 'member-growth-status hidden';
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    bind.append(bindTitle, bindLabel, input, help, submit, status);
+    bind.append(bindTitle, bindLabel, input, help, scanActions, camera, submit, status);
 
     dialog.append(heading, description, share, bind);
     modal.append(dialog);
@@ -233,6 +292,7 @@
     const shell = document.querySelector('.app-shell');
     let previousInert = null;
     const closeModal = () => {
+      stopReferralScan();
       if (shell && previousInert !== null) { shell.inert = previousInert; previousInert = null; }
       modal.classList.add('hidden');
       window.dispatchEvent(new Event('member-referral:closed'));
@@ -270,12 +330,51 @@
     });
 
     input.addEventListener('input', () => {
+      stopReferralScan();
       if (!state.binding && !state.bound) state.referralRequestId = '';
       submit.disabled = state.binding || state.bound || !input.value.trim();
       showReferralStatus('');
     });
     copy.addEventListener('click', () => void copyReferralLink());
     shareButton.addEventListener('click', () => void shareReferralLink());
+
+    if (window.FriendQRScanner?.create) {
+      referralScanner = window.FriendQRScanner.create(video, {
+        label: '邀請優惠',
+        parseValue: parseReferralValue,
+        onStatus: referralScanStatus,
+        onResult: referral => {
+          stopReferralScan();
+          input.value = referral.memberCode
+            ? referral.memberCode
+            : '#invite=' + encodeURIComponent(referral.inviteCode || '');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          showReferralStatus('已辨識邀請優惠 QR Code，請確認資料後再綁定。', false, 'success');
+          input.focus();
+        },
+      });
+      scan.addEventListener('click', () => {
+        if (state.binding || state.bound) return;
+        camera.hidden = false;
+        void referralScanner.start();
+      });
+      stopScan.addEventListener('click', () => {
+        stopReferralScan();
+        scan.focus();
+      });
+      upload.addEventListener('click', () => {
+        if (!state.binding && !state.bound) file.click();
+      });
+      file.addEventListener('change', event => {
+        const selected = event.target.files?.[0];
+        event.target.value = '';
+        stopReferralScan();
+        void referralScanner.readFile(selected);
+      });
+    } else {
+      scan.disabled = true;
+      upload.disabled = true;
+    }
 
     bind.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -355,6 +454,15 @@
       const button = document.getElementById(id);
       if (button) button.disabled = !code;
     }
+
+    const canvas = document.getElementById('memberReferralQr');
+    if (!canvas) return;
+    canvas.hidden = true;
+    const url = referralShareUrl();
+    if (!url || !window.FriendQRCode) return;
+    canvas.hidden = false;
+    window.FriendQRCode.toCanvas(canvas, url, { width: 192, margin: 2 })
+      .catch(() => { canvas.hidden = true; });
   }
 
   async function sendJoinCompletionMessage() {
@@ -380,6 +488,7 @@
   window.addEventListener('member-profile-ready', (event) => {
     const next = event?.detail?.profile || {};
     if (state.profile?.lineUserId !== next.lineUserId) {
+      stopReferralScan();
       state.generation++;
       state.binding = false;
       state.bound = false;
@@ -394,9 +503,15 @@
     renderInviteCode(state.profile);
     void sendJoinCompletionMessage();
   });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopReferralScan();
+  });
+  window.addEventListener('pagehide', stopReferralScan);
+
   window.MemberReferral = {
     ensureUi: ensureReferralUi,
     close: () => document.getElementById('closeMemberReferral')?.click(),
+    stopScan: stopReferralScan,
     isBusy: () => state.binding,
     prefill: (value) => {
       const input = document.getElementById('memberReferralInviteCode');

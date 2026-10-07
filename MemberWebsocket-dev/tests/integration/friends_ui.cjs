@@ -60,6 +60,10 @@ test('friends tab owns add-friend and invite-friend flows; reward UI is a separa
     assert.equal(w.document.getElementById('friendInviteSection').closest('#memberReferralFriendsTabPanel')!==null,true);
     assert.equal(w.document.getElementById('memberReferralForm').closest('#memberReferralRewardTabPanel')!==null,true);
     assert.equal(w.document.getElementById('bindMemberReferral').disabled,true);
+    assert.ok(w.document.getElementById('memberReferralQr'));
+    assert.ok(w.document.getElementById('scanMemberReferralQr'));
+    assert.ok(w.document.getElementById('uploadMemberReferralQr'));
+    assert.ok(w.document.getElementById('memberReferralQrScanner'));
 
     w.document.getElementById('friendAddForm').dispatchEvent(new w.Event('submit',{cancelable:true}));
     await tick();

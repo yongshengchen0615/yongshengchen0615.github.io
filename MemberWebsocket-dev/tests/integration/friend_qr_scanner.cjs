@@ -76,3 +76,20 @@ test('file validation rejects oversized, unsupported, empty and foreign QR image
   p.data.fill(255);await f.scanner.readFile({type:'image/png',size:100});assert.match(f.statuses.at(-1),/未找到 QR Code/);
  }finally{f.dom.window.close();}
 });
+
+
+test('shared scanner can decode a referral QR with a purpose-specific parser without accepting it as a friend QR',async()=>{
+ const f=fixture();try{
+  const video=f.w.document.createElement('video'),results=[],statuses=[];
+  const scanner=f.w.FriendQRScanner.create(video,{
+   label:'邀請優惠',onStatus:value=>statuses.push(value),onResult:value=>results.push(value),
+   parseValue:raw=>{const url=new f.w.URL(raw);const value=new f.w.URLSearchParams(url.hash.slice(1)).get('reward')||'';if(!/^[A-Za-z0-9_-]{4,40}$/.test(value))throw new Error('邀請優惠 QR Code 格式不正確。');return value.toUpperCase();}
+  });
+  const p=pixels(f.w,'https://example.test/MemberWebsocket-dev/member/#reward=CCCC000000');
+  f.w.HTMLCanvasElement.prototype.getContext=()=>({drawImage:()=>{},getImageData:()=>p});
+  f.w.createImageBitmap=async()=>({width:p.width,height:p.height,close:()=>{}});
+  await scanner.readFile({type:'image/png',size:3000});
+  assert.deepEqual(results,['CCCC000000']);
+  assert.throws(()=>f.w.FriendQRScanner.parseInvitation('https://example.test/MemberWebsocket-dev/member/#reward=CCCC000000'));
+ }finally{f.dom.window.close();}
+});
