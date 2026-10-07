@@ -10,7 +10,7 @@ test.beforeAll(async()=>{
   if(surfaces.includes(surface)&&u.pathname===`/${surface}/`){
    let html=fs.readFileSync(path.join(root,surface,'index.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
    const scripts=['ui-components.js','dialog-accessibility.js',...(surface==='member'?['vendor/friend-qrcode.js','vendor/friend-qr-decoder.js','friend-qr-scanner.js','member/member-growth.js','friends.js']:surface==='booking'?['booking/booking-benefits.js','booking/booking-accessible.js','friends.js']:surface==='points'?['points/pointcard-ticket-overview.js']:[])];
-   html=html.replace('</body>',`<script src="/layout-fixture.js?surface=${surface}"></script>`+scripts.map(s=>`<script src="/${s}"></script>`).join('')+`<script>window.addEventListener('DOMContentLoaded',window.initLayout);</script></body>`);
+   html=html.replace('</body>',`<script src="/layout-fixture.js?surface=${surface}"></script>`+scripts.map(s=>`<script src="/${s}"></script>`).join('')+'</body>');
    res.writeHead(200,{'Content-Type':'text/html'});res.end(html);return;
   }
   if(u.pathname==='/layout-fixture.js'){
@@ -20,7 +20,7 @@ test.beforeAll(async()=>{
     const request=async(_c,_t,_k,action,payload)=>{layoutCalls.push({action,payload});return action.endsWith('list')?{friends:[{memberCode:'FRIEND-00002',displayName:'陳○',status:'accepted'}]}:action.endsWith('lookup')?{memberCode:'FRIEND-00002',displayName:'陳○'}:{status:'pending'};};
     window.MemberSystem={getSession:()=>({config,idToken:'fixture'}),request};window.fetch=async(_u,o)=>({ok:true,json:async()=>({ok:true,data:o?await request(null,null,null,JSON.parse(o.body).action||'settings',{}):{}})});
     if('${v}'==='booking')window.BookingSystem={getSession:()=>({config,idToken:'fixture'}),bookingBenefits:async()=>({items:[${JSON.stringify(item)}]})};window.BookingReceipts={refresh:async()=>{},openAccessible(){}};
-    window.initLayout=async()=>{
+    window.addEventListener('DOMContentLoaded',async()=>{
      document.getElementById('loadingView')?.classList.add('hidden');document.getElementById('${v}View').classList.remove('hidden');document.documentElement.dataset.theme=new URL(location.href).searchParams.get('theme');
      document.querySelector('.account-menu>span')?.replaceChildren('測試會員・長姓名排版驗證');
      if('${v}'==='member')window.dispatchEvent(new CustomEvent('member-profile-ready',{detail:{profile}}));
@@ -31,7 +31,7 @@ test.beforeAll(async()=>{
      if('${v}'==='points'){
       await PointCardTicketOverview.initialize({config,idToken:'fixture'});PointCardTicketOverview.renderSnapshot({cards:[{cardId:'CARD-1',title:'身體舒緩集點卡・來源名稱換行測試',stamps:10,status:'active',expiryMode:'unlimited',rewards:[{thresholdStamps:5,rewardTitle:'全身舒緩優惠券・長名稱換行測試'}]}],cardDetails:{'CARD-1':{tickets:[{ticketId:'PT-1',ticketTitle:'全身舒緩優惠券・長名稱換行測試',thresholdStamps:5,status:'available',eligibleBookings:[{bookingId:'BOOK-1'}]}]}}});
      }
-    };`);return;
+    });`);return;
   }
   const file=path.resolve(root,'.'+u.pathname);if(!file.startsWith(root+path.sep)||!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);res.end();return;}
   res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'application/octet-stream'});res.end(fs.readFileSync(file));
