@@ -29,7 +29,7 @@ test.beforeAll(async()=>{
       document.getElementById('appointmentPanel').classList.remove('hidden');
      }
      if('${v}'==='points'){
-      await PointCardTicketOverview.initialize({config,idToken:'fixture'});PointCardTicketOverview.renderSnapshot({cards:[{cardId:'CARD-1',title:'身體舒緩集點卡・來源名稱換行測試',stamps:10,status:'active',expiryMode:'unlimited',rewards:[{thresholdStamps:5,rewardTitle:'全身舒緩優惠券・長名稱換行測試'}]}],cardDetails:{'CARD-1':{tickets:[{ticketId:'PT-1',ticketTitle:'全身舒緩優惠券・長名稱換行測試',thresholdStamps:5,status:'available',eligibleBookings:[{bookingId:'BOOK-1'}]}]}}});
+      await PointCardTicketOverview.initialize({config,idToken:'fixture'});PointCardTicketOverview.renderSnapshot({cards:[{cardId:'CARD-1',title:'身體舒緩集點卡・來源名稱換行測試',stamps:10,status:'active',expiryMode:'unlimited',rewards:[{thresholdStamps:5,rewardTitle:'全身舒緩優惠券・長名稱換行測試'}]}],cardDetails:{'CARD-1':{tickets:[{ticketId:'PT-1',ticketType:'coupon',ticketTitle:'全身舒緩優惠券・長名稱換行測試',ticketDescription:'完成服務後由店員核對使用條件。',usageMethod:'向店員出示票券',thresholdStamps:5,status:'available',eligibleBookings:[{bookingId:'BOOK-1'}]}]}}});
      }
     });`);return;
   }
@@ -39,9 +39,9 @@ test.beforeAll(async()=>{
 });
 test.afterAll(async()=>{await admin.close();await new Promise(r=>server.close(r));});
 async function fits(locator){const b=await locator.evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,view:innerWidth,overflow:el.scrollWidth-el.clientWidth}));expect(b.left).toBeGreaterThanOrEqual(-1);expect(b.right).toBeLessThanOrEqual(b.view+1);expect(b.overflow).toBeLessThanOrEqual(1);}
-async function capture(target,info,name,options={}){const file=info.outputPath(name+'.png');await target.screenshot({...options,path:file});await info.attach(name,{path:file,contentType:'image/png'});}
+async function capture(target,info,name,options={}){const file=info.outputPath(name+'.png');await target.screenshot({...options,animations:'disabled',path:file});await info.attach(name,{path:file,contentType:'image/png'});}
 for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`shared layouts ${width} ${theme}`,async({page},info)=>{
- await page.setViewportSize({width,height:900});await page.route('https://**',r=>r.abort());const errors=[];page.on('pageerror',e=>errors.push(e.message));let ticketStyle;
+ await page.setViewportSize({width,height:900});await page.emulateMedia({reducedMotion:'reduce'});await page.route('https://**',r=>r.abort());const errors=[];page.on('pageerror',e=>errors.push(e.message));let ticketStyle;
  for(const surface of surfaces){
   await page.goto(`${base}/${surface}/?theme=${theme}`);await expect(page.locator(`#${surface}View`)).toBeVisible();await fits(page.locator('.topbar'));
   if(surface==='member'){
@@ -60,9 +60,12 @@ for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`shar
   }
   await page.evaluate(()=>scrollTo(0,0));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await capture(page,info,`${surface}-${width}-${theme}`,{fullPage:true});
  }
- await page.goto(admin.base+'/admin/?run='+info.testId);await expect(page.locator('#adminView')).toBeVisible();await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
- for(const id of ['membersTab','cardsTab','eventsTab','calendarTab','integrationTab','bookingTab']){
-  const tab=page.locator('#'+id);if(await tab.count())await tab.click();await fits(page.locator('#adminView>.topbar'));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.goto(admin.base+'/admin/?run='+info.testId);await expect(page.locator('#adminView')).toBeVisible();await expect(page.locator('#syncStatus')).toContainText('已完整同步');await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
+ for(const id of ['membersTab','cardsTab','eventsTab','calendarTab','operationsHubTab','bookingTab']){
+  const tab=page.locator('#'+id);await expect(tab).toBeVisible();await tab.click();await expect(tab).toHaveAttribute('aria-selected','true');await expect(page.locator('#'+await tab.getAttribute('aria-controls'))).toBeVisible();
+  if(id==='operationsHubTab')await expect(page.locator('#integrationHubFreshness')).toContainText('同步於');
+  if(id==='bookingTab')await expect(page.locator('#bookingAdminSyncStatus')).toContainText('已同步');
+  await fits(page.locator('#adminView>.topbar'));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await capture(page,info,`admin-${id}-${width}-${theme}`,{fullPage:true});
  }
- await capture(page,info,`admin-booking-${width}-${theme}`,{fullPage:true});expect(errors).toEqual([]);
+ expect(admin.sessions.get(info.testId).unexpected).toEqual([]);expect(errors).toEqual([]);
 });
