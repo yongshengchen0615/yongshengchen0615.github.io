@@ -26,11 +26,11 @@ test('real vendored QR encoder and decoder round-trip a same-site invitation',()
   assert.equal(f.w.FriendQRScanner.parseInvitation(value),'BBBB000000');
  }finally{f.dom.window.close();}
 });
-test('parser accepts member codes and exact member links, rejects foreign, credential and invalid contents',()=>{
+test('parser accepts member codes and friend links but rejects referral links and invalid contents',()=>{
  const f=fixture();try{
   const parse=f.w.FriendQRScanner.parseInvitation;
-  for(const value of [' abcd1234 ','https://example.test/MemberWebsocket-dev/member/#invite=abcd1234','https://example.test/MemberWebsocket-dev/member/index.html?invite=abcd1234'])assert.equal(parse(value),'ABCD1234');
-  for(const value of ['','abc','javascript:alert(1)','//other.test/member/','https://other.test/MemberWebsocket-dev/member/#friend=ABCD1234','https://example.test/MemberWebsocket-dev/admin/#friend=ABCD1234','https://user:secret@example.test/MemberWebsocket-dev/member/#friend=ABCD1234','https://example.test/MemberWebsocket-dev/member/#friend=bad%20code','https://example.test/MemberWebsocket-dev/member/','X'.repeat(2049)])assert.throws(()=>parse(value));
+  for(const value of [' abcd1234 ','https://example.test/MemberWebsocket-dev/member/#friend=abcd1234'])assert.equal(parse(value),'ABCD1234');
+  for(const value of ['','abc','javascript:alert(1)','https://example.test/MemberWebsocket-dev/member/#invite=abcd1234','https://example.test/MemberWebsocket-dev/member/index.html?invite=abcd1234','https://example.test/MemberWebsocket-dev/member/#reward=abcd1234','//other.test/member/','https://other.test/MemberWebsocket-dev/member/#friend=ABCD1234','https://example.test/MemberWebsocket-dev/admin/#friend=ABCD1234','https://user:secret@example.test/MemberWebsocket-dev/member/#friend=ABCD1234','https://example.test/MemberWebsocket-dev/member/#friend=bad%20code','https://example.test/MemberWebsocket-dev/member/','X'.repeat(2049)])assert.throws(()=>parse(value));
  }finally{f.dom.window.close();}
 });
 test('a late camera grant after close stops every track and never plays',async()=>{
