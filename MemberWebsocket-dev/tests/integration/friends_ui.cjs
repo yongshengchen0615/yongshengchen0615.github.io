@@ -233,3 +233,25 @@ test('switching accounts clears add-friend input and pending confirmation',async
     assert.doesNotMatch(w.document.getElementById('friendStatus').textContent,/PRIVATE-A/);
   }finally{dom.window.close();}
 });
+
+test('friend and reward links cannot cross workflows',async()=>{
+  const {dom,w,calls}=await page(false,'https://example.test/member/#friends');
+  try{
+    const friend=w.document.getElementById('friendLookupCode');
+    friend.value='https://example.test/member/#reward=CCCC';
+    friend.dispatchEvent(new w.Event('input',{bubbles:true}));
+    await w.MemberFriends.lookup();
+    assert.match(w.document.getElementById('friendStatus').textContent,/^查找好友失敗：/);
+    assert.equal(w.document.getElementById('confirmFriendRequest').hidden,true);
+
+    w.document.getElementById('memberReferralTabReward').click();
+    const reward=w.document.getElementById('memberReferralInviteCode');
+    reward.value='https://example.test/member/#friend=CCCC';
+    reward.dispatchEvent(new w.Event('input',{bubbles:true}));
+    w.document.getElementById('memberReferralForm').dispatchEvent(new w.Event('submit',{cancelable:true}));
+    await tick();
+    assert.match(w.document.getElementById('memberReferralStatus').textContent,/邀請優惠/);
+    assert.equal(w.document.getElementById('memberReferralStatus').classList.contains('error'),true);
+    assert.equal(calls.some(c=>c.action==='member.friend.request'||c.action==='member.referral.bind'),false);
+  }finally{dom.window.close();}
+});
