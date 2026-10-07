@@ -21,8 +21,10 @@ test('all invite entrances populate a safe lookup; request needs explicit confir
   assert.equal(inviteTab.getAttribute('aria-selected'),'true');assert.equal(w.document.getElementById('memberReferralInviteTabPanel').hidden,false);assert.equal(w.document.getElementById('memberReferralFriendsTabPanel').hidden,true);
   friendTab.click();assert.equal(friendTab.getAttribute('aria-selected'),'true');assert.equal(w.document.getElementById('memberReferralFriendsTabPanel').hidden,false);assert.equal(w.document.getElementById('memberReferralInviteTabPanel').hidden,true);
   inviteTab.click();assert.equal(inviteTab.getAttribute('aria-selected'),'true');
+  const inviteFeedback=w.document.getElementById('friendStatus'),friendsFeedback=w.document.getElementById('friendListStatus');
+  assert.equal(inviteFeedback.closest('#memberReferralInviteTabPanel')!==null,true);assert.equal(friendsFeedback.closest('#memberReferralFriendsTabPanel')!==null,true);
   w.document.getElementById('memberReferralForm').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick();
-  assert.equal(calls.at(-1).action,'member.friend.lookup');assert.match(w.document.getElementById('friendStatus').textContent,/查找好友成功：陳○ · CCCC/);assert.equal(w.document.getElementById('confirmFriendRequest').hidden,false);
+  assert.equal(calls.at(-1).action,'member.friend.lookup');assert.match(inviteFeedback.textContent,/查找好友成功：陳○ · CCCC/);assert.equal(inviteFeedback.dataset.state,'success');assert.equal(w.document.getElementById('confirmFriendRequest').hidden,false);
   w.document.getElementById('confirmFriendRequest').click();await tick();assert.equal(calls.some(c=>c.action==='member.friend.request'&&c.payload.memberCode==='CCCC'),true);
   [...w.document.querySelectorAll('#friendList button')].find(b=>b.textContent==='接受').click();await tick();assert.match(w.document.getElementById('friendList').textContent,/已成為好友/);
   assert.equal(calls.some(c=>/referral|ticket|points/.test(c.action)),false);
@@ -34,11 +36,13 @@ test('friend lookup failure always reports an explicit failure message and keeps
   field.value='AAAA';field.dispatchEvent(new w.Event('input'));
   await w.MemberFriends.lookup();
   assert.match(w.document.getElementById('friendStatus').textContent,/^查找好友失敗：不可使用自己的邀請碼或會員編號。$/);
+  assert.equal(w.document.getElementById('friendStatus').dataset.state,'error');
   assert.equal(w.document.getElementById('confirmFriendRequest').hidden,true);
   w.MemberSystem.request=async(_c,_t,_k,action)=>{if(action.endsWith('lookup'))throw new Error('找不到符合的好友。');return {friends:[],receivedBookings:[]};};
   field.value='ZZZZ000000';field.dispatchEvent(new w.Event('input'));
   await w.MemberFriends.lookup();
   assert.match(w.document.getElementById('friendStatus').textContent,/^查找好友失敗：找不到符合的好友。$/);
+  assert.equal(w.document.getElementById('friendStatus').dataset.state,'error');
   assert.equal(w.document.getElementById('confirmFriendRequest').hidden,true);
  }finally{dom.window.close();}
 });
