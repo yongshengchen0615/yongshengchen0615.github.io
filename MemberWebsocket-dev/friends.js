@@ -62,6 +62,7 @@
   }
 
   function stopScan() {
+    window.QRScanDialog?.close(el('friendQrScanner'));
     scanner?.stop();
     if (el('friendQrScanner')) el('friendQrScanner').hidden = true;
   }
@@ -255,7 +256,7 @@
       const camera = document.createElement('section');
       camera.id = 'friendQrScanner';
       camera.hidden = true;
-      camera.innerHTML = '<video id="friendQrVideo" autoplay muted playsinline aria-label="好友 QR Code 相機預覽"></video><p>將完整 QR Code 放在畫面中央。影像只在目前裝置辨識。</p><button id="stopFriendQr" type="button" class="button button-refresh">關閉相機</button>';
+      camera.innerHTML = '<video id="friendQrVideo" autoplay muted playsinline aria-label="好友 QR Code 相機預覽"></video><p id="friendQrScanStatus" role="status" aria-live="polite">將完整 QR Code 放在畫面中央。影像只在目前裝置辨識。</p><button id="friendQrScanImage" type="button" class="button button-refresh">選擇 QR 圖片</button><button id="stopFriendQr" type="button" class="button button-refresh">關閉相機</button>';
 
       const message = document.createElement('p');
       message.id = 'friendStatus';
@@ -271,7 +272,7 @@
       tabs.friendsPanel.append(inviteSection, addForm, camera, message, panel);
 
       scanner = window.FriendQRScanner.create(el('friendQrVideo'), {
-        onStatus: status,
+        onStatus: message => { if (el('friendQrScanStatus')) el('friendQrScanStatus').textContent = message; status(message); },
         onResult: code => {
           stopScan();
           input().value = code;
@@ -287,13 +288,19 @@
       input().addEventListener('input', invalidate);
       el('scanFriendQr').addEventListener('click', () => {
         if (busy) return;
-        camera.hidden = false;
-        void scanner.start();
+        if (!window.QRScanDialog?.open(camera, {
+          title: '掃描好友 QR Code', opener: el('scanFriendQr'),
+          start: () => scanner.start(), stop: () => scanner.stop()
+        })) {
+          camera.hidden = false;
+          void scanner.start();
+        }
       });
       el('stopFriendQr').addEventListener('click', () => {
         stopScan();
         el('scanFriendQr').focus();
       });
+      el('friendQrScanImage').addEventListener('click', () => el('uploadFriendQr').click());
       el('uploadFriendQr').addEventListener('click', () => {
         if (!busy) el('friendQrFile').click();
       });

@@ -258,7 +258,7 @@ Deno.serve(async (request: Request) => {
       member: new Set(["member.referral.bind","member.line.official-account","member.friend.list","member.friend.lookup","member.friend.request","member.friend.accept","member.friend.remove","member.friend.block"]),
       booking:new Set(["member.friend.list"]),
       event: new Set(["event.today-usable"]),
-      points: new Set(["points.transfer.options","points.transfer.receiver","points.transfer.create"]),
+      points: new Set(["points.transfer.options","points.transfer.receiver","points.transfer.create","member.friend.list"]),
     };
     if (!["member","event","points","booking"].includes(clientType) || !allowed[clientType]?.has(action)) {
       throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
