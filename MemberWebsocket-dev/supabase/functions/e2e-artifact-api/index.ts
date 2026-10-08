@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 
 type Json = Record<string, unknown>;
 
@@ -60,30 +61,17 @@ function adminChannelId(): string {
   return value;
 }
 async function verifyAdminIdentity(idToken: string): Promise<{ lineUserId: string }> {
-  const token = asText(idToken, 10_000);
-  if (!token) throw new ApiError(401, "AUTH_REQUIRED", "需要管理端 LINE 登入。");
-  let verifyResponse: Response;
-  try {
-    verifyResponse = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: token, client_id: adminChannelId() }),
-    });
-  } catch {
-    throw new ApiError(503, "LINE_AUTH_UNAVAILABLE", "LINE 身分驗證服務暫時無法使用。");
-  }
-  let payload: Json = {};
-  try { payload = await verifyResponse.json(); } catch {}
-  const sub = asText(payload.sub, 120);
-  if (!verifyResponse.ok || !sub) throw new ApiError(401, "AUTH_INVALID", "管理端 LINE 登入已失效，請重新登入。");
-  return { lineUserId: sub };
+  const identity = await verifyLineIdTokenContract({
+    idToken: asText(idToken, 10_000), expectedChannelId: adminChannelId(),
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
+  return { lineUserId: identity.lineUserId };
 }
 async function authorizeAdmin(supabase: any, identity: { lineUserId: string }): Promise<void> {
-  const result = await supabase.from("admins").select("id,role,status").eq("line_user_id", identity.lineUserId).maybeSingle();
-  if (result.error) throw new ApiError(503, "ADMIN_CHECK_FAILED", "目前無法確認管理員權限。");
-  if (!result.data || result.data.role !== "admin" || result.data.status !== "active") {
-    throw new ApiError(403, "ADMIN_REQUIRED", "此 LINE 帳號沒有管理員權限。");
-  }
+  await requireActiveAdminContract({
+    supabase, identity: { lineUserId: identity.lineUserId, displayName: '' },
+    createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
+  });
 }
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));

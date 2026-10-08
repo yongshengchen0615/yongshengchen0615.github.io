@@ -73,6 +73,9 @@
     } else {
       idToken = await freshBookingSignIn(config);
     }
+    if (idToken && !(window.TestModeClient?.getSessionToken?.())) {
+      await window.BookingSystem.claimBrowserSession(config, 'booking', idToken);
+    }
     if (typeof window.BookingSystem.startPresence === 'function') {
       await window.BookingSystem.startPresence(config, 'booking', idToken);
     }

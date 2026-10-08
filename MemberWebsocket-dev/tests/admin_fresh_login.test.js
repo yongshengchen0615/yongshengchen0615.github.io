@@ -19,8 +19,14 @@ function harness({ url = entry, storage = new Map(), loggedIn = true, inClient =
   logoutNoop = false, initFails = false } = {}) {
   const calls = [];
   const location = { href: url };
+  const local = new Map();
   const window = {
     location, crypto: webcrypto, setTimeout, clearTimeout,
+    localStorage: {
+      getItem(key) { return local.get(key) || null; },
+      setItem(key, value) { local.set(key, value); },
+      removeItem(key) { local.delete(key); },
+    },
     sessionStorage: {
       getItem(key) { if (storageBlocked) throw Error('Blocked'); return storage.get(key) || null; },
       setItem(key, value) { if (storageBlocked) throw Error('Blocked'); storage.set(key, value); },
@@ -44,7 +50,14 @@ function harness({ url = entry, storage = new Map(), loggedIn = true, inClient =
       getIDToken() { calls.push(['token']); return token; },
     },
   };
-  vm.runInNewContext(source, { window, document: { title: 'Admin', querySelector: () => ({}) }, URL });
+  const fetch = async () => ({
+    status: 200,
+    ok: true,
+    text: async () => JSON.stringify({ ok: true, data: { state: 'claimed' } }),
+  });
+  vm.runInNewContext(source, {
+    window, fetch, AbortController, document: { title: 'Admin', querySelector: () => ({}) }, URL,
+  });
   return { calls, storage, location, signIn: () => window.MemberSystem.signIn(config, 'admin') };
 }
 
@@ -124,7 +137,7 @@ for (const option of ['logoutFails', 'logoutNoop']) {
 }
 
 test('LIFF client uses initialized LINE identity without unsupported login redirects', async () => {
-  const h = harness({ inClient: true, storageBlocked: true });
+  const h = harness({ inClient: true, storageBlocked: false });
   assert.equal(await h.signIn(), 'fixture-id-token');
   assert.deepEqual(h.calls.map(([name]) => name), ['init', 'token']);
   await assert.rejects(harness({ inClient: true, loggedIn: false }).signIn(), { code: 'AUTH_REQUIRED' });
