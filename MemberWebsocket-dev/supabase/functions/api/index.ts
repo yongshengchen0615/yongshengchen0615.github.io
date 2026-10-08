@@ -2049,6 +2049,16 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       p_line_user_id:identity.lineUserId,p_token_hash:await sha256(asText(body.idToken,10000)),
     });
     if (result.error) throw mapDatabaseError(result.error);
+    if (result.data === true) {
+      const audit = await supabase.from("audit_logs").insert({
+        audit_id:requestId("AUD"),actor_line_user_id:identity.lineUserId,
+        actor_role:action.startsWith("admin.") ? "admin" : "member",
+        action:"LOGIN_SESSION_LOGOUT",target_type:"member",
+        target_id:identity.lineUserId,result:"success",
+        detail:{clientType:clientTypeForAction(action)},
+      });
+      if (audit.error) console.error("session logout audit unavailable",audit.error.code);
+    }
     return { revoked: result.data === true };
   }
   const presence = presenceActionInfo(action);
