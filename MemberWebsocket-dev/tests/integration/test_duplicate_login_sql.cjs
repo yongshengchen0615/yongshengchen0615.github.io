@@ -8,8 +8,12 @@ const migration = fs.readFileSync(
   path.join(__dirname, '../../supabase/migrations/20261008083358_test_account_duplicate_login_setting.sql'),
   'utf8',
 );
+const takeoverMigration = fs.readFileSync(
+  path.join(__dirname, '../../supabase/migrations/20261008170000_test_login_takeover_single_session.sql'),
+  'utf8',
+);
 
-test('only active virtual test members can share sessions when admin setting permits', async () => {
+test('new virtual test login always revokes existing same-surface sessions', async () => {
   const db = new PGlite();
   try {
     await db.exec(`
@@ -40,7 +44,8 @@ test('only active virtual test members can share sessions when admin setting per
       CREATE TABLE public.member_presence_sessions (
         member_id uuid NOT NULL REFERENCES public.members(id),
         surface text NOT NULL, offline_at timestamptz,
-        last_seen_at timestamptz NOT NULL
+        last_seen_at timestamptz NOT NULL,
+        offline_reason text, updated_at timestamptz
       );
       CREATE OR REPLACE FUNCTION public.admin_save_maintenance_test_access(
         p_maintenance_enabled boolean, p_allow_pc_test_login boolean,
@@ -63,6 +68,7 @@ test('only active virtual test members can share sessions when admin setting per
       GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO service_role;
     `);
     await db.exec(migration);
+    await db.exec(takeoverMigration);
     const members = {
       test: '11111111-1111-4111-8111-111111111111',
       formal: '22222222-2222-4222-8222-222222222222',
@@ -82,7 +88,7 @@ test('only active virtual test members can share sessions when admin setting per
       [maintenance, true, true, 'maintenance', 'admin', count, allowDuplicate],
     );
     const sessions = () => db.query(`
-      SELECT token_hash,revoked_at FROM public.test_login_sessions
+      SELECT token_hash,revoked_at,revoked_reason FROM public.test_login_sessions
        WHERE member_id=$1 AND surface='member' ORDER BY created_at,id
     `, [members.test]);
 
@@ -92,16 +98,29 @@ test('only active virtual test members can share sessions when admin setting per
     await assert.rejects(login('b'), /TEST_SURFACE_ALREADY_ACTIVE/);
     assert.equal((await sessions()).rows.length, 1);
 
-    // Admin enables coexistence in the database, not via login payload.
+    // The legacy toggle enables takeover, not coexistence.
     await save(true);
+    await db.query(
+      "INSERT INTO public.member_presence_sessions(member_id,surface,last_seen_at) VALUES ($1,'member',now())",
+      [members.test],
+    );
     await login('b');
+    let current = (await sessions()).rows;
+    assert.equal(current.filter(row => row.revoked_at === null).length, 1);
+    assert.equal(current.find(row => row.revoked_at === null).token_hash, 'b'.repeat(64));
+    assert.equal(current.find(row => row.token_hash === 'a'.repeat(64)).revoked_reason, 'replaced_by_new_login');
+    const oldPresence = await db.query("SELECT offline_at, offline_reason FROM public.member_presence_sessions WHERE member_id=$1", [members.test]);
+    assert.ok(oldPresence.rows[0].offline_at);
+    assert.equal(oldPresence.rows[0].offline_reason, 'replaced_by_new_login');
     await login('c');
-    assert.equal((await sessions()).rows.filter(row => row.revoked_at === null).length, 3);
+    current = (await sessions()).rows;
+    assert.equal(current.filter(row => row.revoked_at === null).length, 1);
+    assert.equal(current.find(row => row.token_hash === 'b'.repeat(64)).revoked_reason, 'replaced_by_new_login');
     // Cross-surface tests do not depend on the same-surface policy.
     await login('d', members.test, 'points');
     await assert.rejects(login('e', members.formal), /TEST_ACCOUNT_UNAVAILABLE/);
 
-    // Switching OFF revokes all but newest per member/surface.
+    // Switching OFF preserves exactly the newest session and blocks a second login.
     await save(false);
     const after = (await sessions()).rows;
     assert.equal(after.filter(row => row.revoked_at === null).length, 1);
