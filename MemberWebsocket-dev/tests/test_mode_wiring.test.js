@@ -25,7 +25,7 @@ test('admin exposes only maintenance and device login controls', () => {
   assert.match(html, /id="testModeMobileLoginBadge"/);
   assert.match(html, /id="testModeMaintenanceMessage"/);
   assert.match(html, /id="testModeAddAccountCount"/);
-  assert.match(html, /test-mode\.js\?v=duplicate-test-login-20261008-1/);
+  assert.match(html, /test-mode\.js\?v=test-login-takeover-20261008-2/);
   assert.match(html, /test-mode\.css\?v=test-mode-ui-20260920-3/);
   assert.match(app, /switchPanel\('testMode'\)/);
   assert.match(testMode, /admin\.test-mode\.save/);
