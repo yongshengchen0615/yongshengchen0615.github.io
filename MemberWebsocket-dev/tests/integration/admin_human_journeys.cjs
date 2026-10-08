@@ -31,7 +31,7 @@ class Locator {
   async getAttribute(key){return eventually(()=>this.one().getAttribute(key));}
 }
 class Page {
-  constructor(){this.routes=[];this.listeners={};}
+  constructor(){this.routes=[];this.listeners={};this.keyboard={press:async key=>{const w=this.dom.window;w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));await pause();}};}
   on(event,fn){this.listeners[event]=fn;}
   async route(pattern,fn){this.routes.push([pattern,fn]);}
   locator(selector){return new Locator(this,()=>[...this.dom.window.document.querySelectorAll(selector)]);}
@@ -56,6 +56,8 @@ class Page {
       w.fetch=request;w.Request=Request;w.Response=Response;w.AbortController=AbortController;
       w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
       w.HTMLElement.prototype.scrollIntoView=function(){};
+      // JSDOM supplies no layout; model visibility only, with Chromium testing real geometry.
+      w.HTMLElement.prototype.getClientRects=function(){return visible(this)?[{}]:[];};
       w.confirm=()=>true;w.alert=()=>{};w.isSecureContext=true;let clipboard='';w.navigator.clipboard={writeText:async text=>{clipboard=text;},readText:async()=>clipboard};
       w.CSS={escape:value=>String(value).replace(/[^a-zA-Z0-9_-]/g,c=>'\\'+c)};
       w.addEventListener('error',e=>page.listeners.pageerror?.({message:e.message}));
