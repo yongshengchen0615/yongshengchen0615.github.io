@@ -18,6 +18,7 @@
   let presenceContext = null;
   let presenceHooksBound = false;
   let presenceHeartbeatTimer = null;
+  let isTerminatingAccess = false;
   const PRESENCE_HEARTBEAT_MS = 30_000;
   const PRESENCE_RESUME_SIGNAL_MS = 60_000;
 
@@ -140,9 +141,37 @@
     } else {
       idToken = await lineSignIn(config, surface);
     }
+    if (idToken && !(window.TestModeClient?.getSessionToken?.())) {
+      await claimBrowserSession(config, surface, idToken);
+    }
     sessions.set(surface, Object.freeze({ config, idToken: String(idToken || '') }));
     if (surface !== 'admin') await startPresence(config, surface, idToken);
     return idToken;
+  }
+
+  const LOGIN_BROWSER_KEY = 'member-login-browser-v1';
+  const LOGIN_REGISTERED_KEY = 'member-login-registered-v1';
+
+  function browserLoginKey() {
+    try {
+      let key = window.localStorage.getItem(LOGIN_BROWSER_KEY);
+      if (!key) {
+        key = window.crypto.randomUUID() + window.crypto.randomUUID();
+        window.localStorage.setItem(LOGIN_BROWSER_KEY, key);
+      }
+      if (!/^[a-f0-9-]{72}$/.test(key)) throw new Error('invalid browser key');
+      return key;
+    } catch (_) {
+      throw clientError('AUTH_STORAGE_UNAVAILABLE', '無法安全保存登入連線，請允許本網站使用瀏覽器儲存空間。');
+    }
+  }
+
+  async function claimBrowserSession(config, surface, idToken) {
+    const browserKey = browserLoginKey();
+    const mode = window.localStorage.getItem(LOGIN_REGISTERED_KEY) === '1' ? 'resume' : 'login';
+    const action = surface === 'admin' ? 'admin.session.claim' : 'user.' + surface + '.session.claim';
+    await sendRequest(config, surface, idToken, action, { browserKey, mode });
+    window.localStorage.setItem(LOGIN_REGISTERED_KEY, '1');
   }
 
   function getSession(surface) {
@@ -402,7 +431,7 @@
   }
 
   function request(config, clientType, idToken, action, payload = {}) {
-    const isWrite = WRITE_ACTIONS.includes(action) || ['admin.settings.copy','admin.ticket-visibility.save','member.friend.request','member.friend.accept','member.friend.remove','member.friend.block'].includes(action);
+    const isWrite = action.endsWith('.session.claim') || action.endsWith('.session.logout') || WRITE_ACTIONS.includes(action) || ['admin.settings.copy','admin.ticket-visibility.save','member.friend.request','member.friend.accept','member.friend.remove','member.friend.block'].includes(action);
     if (isWrite) {
       pendingReads.clear();
       return sendRequest(config, clientType, idToken, action, payload).finally(() => pendingReads.clear());
@@ -440,7 +469,7 @@
     if (!SUPABASE_FUNCTION_PATTERN.test(endpoint) || endpoint.includes('REPLACE_')) {
       throw clientError('CONFIG_ERROR', '此功能的 Supabase Edge Function URL 尚未設定。');
     }
-    const isWrite = WRITE_ACTIONS.includes(action) || ['admin.settings.copy','admin.ticket-visibility.save','member.friend.request','member.friend.accept','member.friend.remove','member.friend.block'].includes(action);
+    const isWrite = action.endsWith('.session.claim') || action.endsWith('.session.logout') || WRITE_ACTIONS.includes(action) || ['admin.settings.copy','admin.ticket-visibility.save','member.friend.request','member.friend.accept','member.friend.remove','member.friend.block'].includes(action);
     const timeoutMs = isWrite ? WRITE_TIMEOUT_MS : isFullBootstrap(clientType, action, payload) ? BOOTSTRAP_TIMEOUT_MS : READ_TIMEOUT_MS;
     const attempts = isWrite ? 1 : 2;
     const deadline = Date.now() + timeoutMs;
@@ -473,7 +502,7 @@
           const error = clientError(data && data.error && data.error.code || 'API_ERROR', data && data.error && data.error.message || '資料服務拒絕此請求。');
           error.status = Number(data && data.status || fetched.response.status || 0);
           error.details = data && data.error && data.error.details || null;
-          if (error.code === 'SESSION_REVOKED' || error.code === 'SYSTEM_MAINTENANCE') {
+          if (['SESSION_REVOKED', 'SESSION_REPLACED', 'SYSTEM_MAINTENANCE'].includes(error.code)) {
             terminateAccessSession(error.code, error.message);
           }
           throw error;
@@ -681,6 +710,11 @@
   }
 
   function terminateAccessSession(code, message) {
+    if (isTerminatingAccess) return;
+    isTerminatingAccess = true;
+    for (const entry of realtimeSubscriptions.values()) {
+      try { entry.unsubscribe(); } catch (_) {}
+    }
     pendingReads.clear();
     sessions.clear();
     clearPresenceHeartbeat();
@@ -689,7 +723,7 @@
       try { window.TestModeClient.clearSession(); } catch (_) {}
     }
 
-    const isRevoked = code === 'SESSION_REVOKED';
+    const isRevoked = code === 'SESSION_REVOKED' || code === 'SESSION_REPLACED';
     const notice = isRevoked
       ? (String(message || '').trim() || '您的登入工作階段已由管理員強制結束，請重新登入。')
       : (String(message || '').trim() || '系統目前維護中，將關閉此頁面。');
@@ -717,7 +751,16 @@
 
   async function logout() {
     try {
+      const active = [...sessions.entries()].find(([_, value]) => value && value.idToken);
+      if (active) {
+        const [surface, value] = active;
+        try {
+          await sendRequest(value.config, surface, value.idToken,
+            surface === 'admin' ? 'admin.session.logout' : 'user.' + surface + '.session.logout', {});
+        } catch (_) {}
+      }
       try { await withTimeout(stopPresence('logout', true), 1200, '上下線紀錄逾時。'); } catch (_) {}
+      try { window.localStorage.removeItem(LOGIN_REGISTERED_KEY); window.localStorage.removeItem(LOGIN_BROWSER_KEY); } catch (_) {}
       sessions.clear();
       if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') window.TestModeClient.clearSession();
       if (window.liff && window.liff.isLoggedIn()) window.liff.logout();
