@@ -261,12 +261,14 @@
     const allowed = new Set(['image/jpeg','image/png','image/webp','image/heic','image/heif']);
     if (!allowed.has(String(file.type || '').toLowerCase())) {
       state.selectedFile = null;
+      if (capture) { capture.disabled = false; capture.textContent = '重新開啟相機'; }
       setMessage('請使用 JPG、PNG、WebP、HEIC 或 HEIF 圖片。', true);
       if (submit) submit.disabled = true;
       return;
     }
     if (file.size < 1 || file.size > 5 * 1024 * 1024) {
       state.selectedFile = null;
+      if (capture) { capture.disabled = false; capture.textContent = '重新開啟相機'; }
       setMessage('收據圖片不可超過 5 MB。', true);
       if (submit) submit.disabled = true;
       return;
@@ -289,7 +291,8 @@
     reader.onerror = () => {
       if (generation !== state.photoGeneration) return;
       state.selectedFile = null;
-      setMessage('無法讀取這張圖片，請重新拍攝。', true);
+      if (capture) { capture.disabled = false; capture.textContent = '重新開啟相機'; }
+      setMessage('無法讀取這張圖片，請重新選擇或拍攝。', true);
       if (submit) submit.disabled = true;
     };
     reader.readAsDataURL(file);
@@ -338,6 +341,8 @@
     if (state.busy) return;
     stopCamera();
     resetModalState();
+    const capture = document.getElementById('bookingReceiptCapture');
+    if (capture) { capture.disabled = false; capture.textContent = '重新開啟相機'; }
     setMessage('已移除尚未送出的收據圖片；預約與已選票券不受影響。');
   }
 
@@ -386,7 +391,8 @@
     const submit = document.getElementById('bookingReceiptSubmit');
     const cancel = document.getElementById('bookingReceiptCancel');
     const close = document.getElementById('bookingReceiptClose');
-    [submit, cancel, close].forEach((button) => { if (button) button.disabled = true; });
+    const imageInput = document.getElementById('bookingReceiptFile');
+    [submit, cancel, close, imageInput].forEach((button) => { if (button) button.disabled = true; });
 
     const file = state.selectedFile;
     const requestId = state.requestId || (state.requestId = newRequestId());
@@ -436,7 +442,7 @@
       });
       window.setTimeout(() => {
         state.busy = false;
-        [submit, cancel, close].forEach((button) => { if (button) button.disabled = false; });
+        [submit, cancel, close, imageInput].forEach((button) => { if (button) button.disabled = false; });
         if (retake) retake.disabled = false;
         closeModal();
         void refreshListAndDecorate();
@@ -455,7 +461,7 @@
     } finally {
       if (!submitted) {
         state.busy = false;
-        [submit, cancel, close].forEach((button) => { if (button) button.disabled = false; });
+        [submit, cancel, close, imageInput].forEach((button) => { if (button) button.disabled = false; });
         if (retake) retake.disabled = false;
       }
     }
