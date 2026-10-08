@@ -15,6 +15,7 @@
     cameraStream: null,
     cameraReady: false,
     cameraGeneration: 0,
+    opener: null,
     photoGeneration: 0,
     busy: false,
     listLoading: false,
@@ -59,7 +60,11 @@
           <div class="booking-receipt-camera-actions">
             <button id="bookingReceiptCapture" class="button button-dark" type="button" disabled>啟動相機中…</button>
             <button id="bookingReceiptRetake" class="button button-outline hidden" type="button">重新拍攝</button>
+            <button id="bookingReceiptDiscard" class="button button-outline hidden" type="button">移除照片</button>
           </div>
+          <label class="booking-receipt-file-label" for="bookingReceiptFile">或選擇現有收據圖片（JPG／PNG／WebP／HEIC／HEIF，最多 5 MB）
+            <input id="bookingReceiptFile" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" aria-label="選擇收據圖片">
+          </label>
         </div>
         <div id="bookingReceiptPreviewWrap" class="booking-receipt-preview hidden">
           <img id="bookingReceiptPreview" alt="本次收據預覽">
@@ -77,6 +82,14 @@
     modal.querySelector('#bookingReceiptCancel').addEventListener('click', closeModal);
     modal.querySelector('#bookingReceiptCapture').addEventListener('click', captureFrame);
     modal.querySelector('#bookingReceiptRetake').addEventListener('click', retakePhoto);
+    modal.querySelector('#bookingReceiptDiscard').addEventListener('click', discardPhoto);
+    modal.querySelector('#bookingReceiptFile').addEventListener('change', event => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (state.busy || !file) return;
+      stopCamera();
+      acceptFile(file);
+    });
     modal.querySelector('#bookingReceiptSubmit').addEventListener('click', submitReceipt);
     modal.addEventListener('click', (event) => {
       if (event.target === modal && !state.busy) closeModal();
@@ -111,6 +124,8 @@
     const submit = document.getElementById('bookingReceiptSubmit');
     const capture = document.getElementById('bookingReceiptCapture');
     const retake = document.getElementById('bookingReceiptRetake');
+    const discard = document.getElementById('bookingReceiptDiscard');
+    discard?.classList.add('hidden');
     if (preview) preview.removeAttribute('src');
     if (meta) meta.textContent = '';
     if (wrap) wrap.classList.add('hidden');
@@ -136,12 +151,18 @@
     stopCamera();
     resetModalState();
     document.getElementById('bookingReceiptModal')?.classList.add('hidden');
+    document.body.classList.remove('booking-receipt-modal-open');
+    const opener = state.opener;
+    state.opener = null;
+    if (opener?.isConnected && opener.getClientRects().length) opener.focus({ preventScroll: true });
     state.selectedBookingId = '';
     state.selectedExpectedUpdatedAt = '';
   }
 
   function openModal(bookingId, expectedUpdatedAt, accessible = false, options = {}) {
     const modal = ensureModal();
+    window.dispatchEvent(new Event('booking:receipt-dialog-opening'));
+    state.opener = document.activeElement;
     resetModalState();
     state.accessible = accessible;
     document.getElementById('bookingReceiptTitle').textContent = accessible ? '拍收據，請管理員登記' : '拍攝收據並送出審核';
@@ -151,6 +172,7 @@
     state.selectedBookingId = String(bookingId || '');
     state.selectedExpectedUpdatedAt = String(expectedUpdatedAt || '');
     modal.classList.remove('hidden');
+    document.body.classList.add('booking-receipt-modal-open');
     if (options?.skipCamera !== true) void startCamera();
   }
 
@@ -184,7 +206,7 @@
     if (!navigator.mediaDevices?.getUserMedia) {
       capture.disabled = false;
       capture.textContent = '重新嘗試開啟相機';
-      setMessage('此瀏覽器無法使用相機拍攝。請改用支援相機權限的瀏覽器或裝置。', true);
+      setMessage('此瀏覽器無法使用相機，請改用選擇收據圖片功能。', true);
       return;
     }
 
@@ -211,7 +233,7 @@
       console.warn('booking receipt camera unavailable', error);
       capture.disabled = false;
       capture.textContent = '重新嘗試開啟相機';
-      setMessage('無法開啟相機。請允許相機權限後再試；此流程不支援從檔案或相簿選擇圖片。', true);
+      setMessage('無法開啟相機。請允許相機權限後再試，或選擇收據圖片。', true);
     }
   }
 
@@ -226,6 +248,9 @@
     const submit = document.getElementById('bookingReceiptSubmit');
     const capture = document.getElementById('bookingReceiptCapture');
     const retake = document.getElementById('bookingReceiptRetake');
+    const discard = document.getElementById('bookingReceiptDiscard');
+    wrap?.classList.add('hidden');
+    discard?.classList.add('hidden');
 
     if (!file) {
       wrap?.classList.add('hidden');
@@ -257,8 +282,9 @@
       if (submit) submit.disabled = false;
       capture?.classList.add('hidden');
       retake?.classList.remove('hidden');
+      discard?.classList.remove('hidden');
       stopCamera();
-      setMessage('照片已拍攝。確認清楚可辨識後送出，管理端核對前預約不會完成。');
+      setMessage('收據圖片已準備好。確認清楚可辨識後送出；管理端核對前不會完成預約。');
     };
     reader.onerror = () => {
       if (generation !== state.photoGeneration) return;
@@ -308,6 +334,13 @@
     }, 'image/jpeg', 0.88);
   }
 
+  function discardPhoto() {
+    if (state.busy) return;
+    stopCamera();
+    resetModalState();
+    setMessage('已移除尚未送出的收據圖片；預約與已選票券不受影響。');
+  }
+
   function retakePhoto() {
     if (state.busy) return;
     state.photoGeneration += 1;
@@ -320,6 +353,8 @@
     const submit = document.getElementById('bookingReceiptSubmit');
     const capture = document.getElementById('bookingReceiptCapture');
     const retake = document.getElementById('bookingReceiptRetake');
+    const discard = document.getElementById('bookingReceiptDiscard');
+    discard?.classList.add('hidden');
     wrap?.classList.add('hidden');
     preview?.removeAttribute('src');
     if (meta) meta.textContent = '';
@@ -516,6 +551,13 @@
   window.addEventListener('pagehide', () => {
     state.photoGeneration += 1;
     stopCamera();
+  });
+  window.addEventListener('qr-scan-dialog:opening', () => {
+    if (!document.getElementById('bookingReceiptModal')?.classList.contains('hidden') && !state.busy) closeModal();
+  });
+  window.addEventListener('member:access-ended', () => {
+    state.busy = false;
+    closeModal();
   });
   window.addEventListener('booking:bookings-rendered', () => { void refreshListAndDecorate(); });
   window.addEventListener('pageshow', () => {
