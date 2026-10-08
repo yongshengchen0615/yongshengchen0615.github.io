@@ -227,3 +227,13 @@ test('API authorization resolves membership/tier from identity and rejects disab
  for(const item of result.items.filter(x=>x.kind!=='points')){assert.equal(item.statusLabel,'需升級');assert.notEqual(item.selectable,true);assert.match(item.subtitle,/金級/);}
  const downgraded=await loadBookingBenefits(database({event_ticket_settings:[{id:1,visibility_policy:'eligible_only'}],event_tickets:[{id:'event',status:'active',allowed_tier_keys:['gold']}],calendar_items:[]}),member,'silver',today);assert.equal(downgraded.items.filter(x=>x.kind==='event').length,0);
  });
+
+test('booking ticket metadata carries the global claimed count without exposing other owners', async () => {
+  const { loadBookingBenefits } = await modulePromise;
+  const result = await loadBookingBenefits(database({ event_ticket_claims: [{ event_ticket_id: 'event', member_id: 'other', status: 'used' }] }), member, 'silver', today);
+  const event = result.items.find(item => item.kind === 'event');
+  assert.equal(event.quota, 2);
+  assert.equal(event.claimedCount, 1);
+  assert.equal(event.selectionId, '');
+  assert.equal(JSON.stringify(event).includes('other'), false);
+});
