@@ -33,3 +33,9 @@
   .booking-benefits { padding: 14px; margin: 14px 0; }
   .booking-benefit-group-grid { grid-template-columns: 1fr; }
 }
+
+.booking-benefit.event-ticket {padding:24px;gap:13px;border-radius:21px;min-height:286px;background:var(--theme-surface);}
+.booking-benefit.event-ticket h3 {font-size:clamp(23px,4vw,32px);}
+.booking-benefit.event-ticket.is-selected {outline:2px solid var(--theme-accent);outline-offset:2px;}
+.booking-benefit.event-ticket .booking-benefit-select {padding-top:10px;border-top:1px solid var(--theme-border);}
+@media(max-width:650px){.booking-benefit.event-ticket{padding:19px;min-height:0;}}

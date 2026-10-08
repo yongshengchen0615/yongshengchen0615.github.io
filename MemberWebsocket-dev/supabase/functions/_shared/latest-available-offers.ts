@@ -245,11 +245,11 @@ export async function loadLatestEventOffers(
   tierKey: string,
   strict: boolean,
   includeTierPreview = false,
-): Promise<Array<CurrentEventOffer & { eventTicketId: string; startsOn: string; endsOn: string; allowedTierKeys: string[] }>> {
+): Promise<Array<CurrentEventOffer & { eventTicketId: string; startsOn: string; endsOn: string; allowedTierKeys: string[]; description: string; accent: string; ticketType: string; quota: number | null; fixedTicketTemplateId: string }>> {
   const today = taipeiDate();
   const eventsResult = await supabase
     .from("event_tickets")
-    .select("id,event_ticket_id,title,ticket_type,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id,requires_location,required_service_ids,required_service_match_mode")
+    .select("id,event_ticket_id,title,description,accent,ticket_type,status,starts_on,ends_on,quota,allowed_tier_keys,fixed_ticket_template_id,requires_location,required_service_ids,required_service_match_mode")
     .eq("status", "active")
     .is("deleted_at", null);
   if (eventsResult.error) {
@@ -288,6 +288,8 @@ export async function loadLatestEventOffers(
     const event: any = eventById.get(offer.eventId);
     return {
       ...offer,
+      description: text(event?.description), accent: text(event?.accent), ticketType: text(event?.ticket_type),
+      quota: event?.quota ?? null, fixedTicketTemplateId: text(event?.fixed_ticket_template_id),
       allowedTierKeys:Array.isArray(event?.allowed_tier_keys)?event.allowed_tier_keys:[],
       eventTicketId: text(event?.event_ticket_id),
       startsOn: text(event?.starts_on),

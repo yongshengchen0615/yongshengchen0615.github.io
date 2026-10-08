@@ -223,7 +223,7 @@
       const panel = document.createElement('section');
       panel.id = 'friendsPanel';
       panel.className = 'friends-panel booking-recipient';
-      panel.innerHTML = '<label>服務對象<select id="friendBookingRecipient"><option value="">本人</option></select></label><p>好友接受邀請後可代約單人服務。票券由建立者選用自己的票券；完成服務後，好友取得正常點數與服務分鐘，代約者取得每種已設定集點規則的服務類型 1 點及一半服務分鐘（不足 1 分鐘向下取整）。</p><a href="../member/#friends">管理好友</a><button id="refreshFriends" type="button" class="button button-refresh">更新好友</button><p id="friendStatus" class="friend-feedback" role="status" aria-live="polite"></p>';
+      panel.innerHTML = '<div class="booking-recipient-heading"><label for="friendBookingRecipient">服務對象</label><div class="booking-recipient-actions"><a href="../member/#friends" target="_blank" rel="noopener" class="button button-refresh" aria-label="管理好友（另開視窗，保留預約資料）">管理好友 ↗</a><button id="refreshFriends" type="button" class="button button-refresh">更新好友</button></div></div><select id="friendBookingRecipient" aria-describedby="friendStatus"><option value="">本人</option></select><details class="booking-recipient-help"><summary>代好友預約說明</summary><p>好友接受邀請後可代約單人服務。票券由建立者選用自己的票券；完成服務後，好友取得正常點數與服務分鐘，代約者取得每種已設定集點規則的服務類型 1 點及一半服務分鐘（不足 1 分鐘向下取整）。</p></details><p id="friendStatus" class="friend-feedback" role="status" aria-live="polite"></p>';
       (el('bookingRecipientHost') || el('bookingNotice')?.parentElement)?.append(panel);
       el('friendBookingRecipient').addEventListener('change', event => {
         selectedCode = event.target.value;
@@ -391,6 +391,7 @@
       const result = await request('list');
       if (current !== generation) return;
 
+      let recipientRemoved = false;
       if (booking) {
         const select = el('friendBookingRecipient');
         if (lockedRecipient) {
@@ -411,6 +412,8 @@
         }
         selectedCode = Array.from(select.options).some(option => option.value === previous) ? previous : '';
         select.value = selectedCode;
+        recipientRemoved = Boolean(previous && previous !== selectedCode);
+        if (recipientRemoved) status('原服務對象已不在有效好友名單中，已改為本人；請重新確認服務對象。', 'error');
       } else {
         const list = el('friendList');
         list.replaceChildren();
@@ -480,8 +483,8 @@
       }
 
       panel.dataset.state = (result.friends || []).length ? 'ready' : 'empty';
-      if (showLoading) {
-        status('好友資料已更新。', 'success', booking ? 'action' : 'friends');
+      if (showLoading && !recipientRemoved) {
+        status(booking && el('friendBookingRecipient').options.length === 1 ? '目前沒有可代約好友，本次為本人預約。' : '好友資料已更新。', 'success', booking ? 'action' : 'friends');
       }
     } catch (error) {
       if (current === generation) {
@@ -499,6 +502,8 @@
       if (current !== generation && profile) void refresh();
     }
   }
+
+  window.addEventListener('focus', () => { if (booking && profile && !document.hidden) void refresh(); });
 
   function ready(event) {
     const next = event.detail?.profile;

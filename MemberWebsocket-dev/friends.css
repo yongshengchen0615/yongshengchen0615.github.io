@@ -56,3 +56,13 @@
 .friends-panel-heading h3 {margin:0;}
 .friends-panel-heading .button {flex:0 0 auto;}
 @media(max-width:560px){.friend-subtabs{position:sticky;top:58px;z-index:1;}.friends-panel-heading{align-items:flex-start;}.friends-panel-heading .button{min-width:96px;}}
+
+.booking-recipient-heading {display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;min-width:0;}
+.booking-recipient .booking-recipient-heading label {margin:0;font-weight:800;}
+.booking-recipient-actions {display:flex;flex-wrap:wrap;gap:8px;min-width:0;}
+.booking-recipient-actions .button {display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;text-decoration:none;white-space:normal;font:inherit;font-size:13px;}
+.booking-recipient-help {margin-top:12px;font-size:12px;color:var(--theme-text-muted);line-height:1.6;}
+.booking-recipient-help summary {cursor:pointer;min-height:32px;}
+.booking-recipient-help p {margin:6px 0;}
+.booking-recipient :is(a,button,summary):focus-visible {outline:3px solid var(--theme-focus-ring);outline-offset:3px;}
+@media(max-width:420px){.booking-recipient-heading{align-items:flex-start;}.booking-recipient-actions{width:100%;}.booking-recipient-actions .button{flex:1;}}

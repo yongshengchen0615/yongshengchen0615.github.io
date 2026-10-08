@@ -210,6 +210,8 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         const requiredServiceRequirementLabel = requiredServiceRequirementLabelFor(requiredServiceIds, requiredServiceMatchMode);
         return {
           kind: 'event', id: offer.eventTicketId, title: offer.title,
+          description: offer.description, accent: offer.accent, ticketType: offer.ticketType, quota: offer.quota,
+          allowedTierKeys: offer.allowedTierKeys, fixedTicketTemplateId: offer.fixedTicketTemplateId,
           subtitle: visibility.locked ? visibility.lockReason : offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
           statusLabel: visibility.locked ? '需升級' : offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
           selectable: visibility.tierEligible && !offer.requiresLocation,

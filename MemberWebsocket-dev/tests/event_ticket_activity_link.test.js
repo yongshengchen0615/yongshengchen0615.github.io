@@ -5,6 +5,7 @@ const read = (path) => fs.readFileSync(path, 'utf8');
 
 const adminHtml = read('MemberWebsocket-dev/admin/index.html');
 const eventHtml = read('MemberWebsocket-dev/event/index.html');
+const eventUI = read('MemberWebsocket-dev/event-ticket-ui.js');
 const eventApp = read('MemberWebsocket-dev/event/app.js');
 const calendarSync = read('MemberWebsocket-dev/admin/grant-automation.js');
 const adminApp = read('MemberWebsocket-dev/admin/app.js');
@@ -26,10 +27,10 @@ assert.match(eventHtml, /<script src="\.\/app\.js\?v=[^"<>]+" defer><\/script>/)
 assert.ok(!eventHtml.includes('batch-redemption.js'));
 assert.ok(!eventHtml.includes('batch-redemption.css'));
 assert.ok(!eventHtml.includes('activity-link.js'));
-assert.ok(eventApp.includes("type.textContent = fixed ? '固定票券'"));
-assert.ok(eventApp.includes("fixed ? '發放方式' : '限量張數'"));
+assert.ok(eventUI.includes("options.fixed ? '固定票券'"));
+assert.ok(eventUI.includes("options.fixed ? '發放方式' : '限量張數'"));
 assert.ok(eventApp.includes('eventTicketQuotaText(ticket)'));
-assert.ok(eventApp.includes('系統自動發放'));
+assert.ok(eventUI.includes('系統自動發放'));
 assert.ok(eventApp.includes('normalizeFixedOffers'));
 assert.ok(eventApp.includes('autoOpenFromCalendar'));
 assert.ok(eventApp.includes("source') !== 'event-ticket-calendar'"));
