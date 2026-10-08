@@ -41,11 +41,13 @@
     closeButton.textContent = '關閉';
     closeButton.setAttribute('aria-label', '關閉 QR 掃描視窗');
     heading.append(label, closeButton);
+    const originalParent = panel.parentNode;
+    const originalNext = panel.nextSibling;
     card.append(heading, panel);
     overlay.append(card);
     active = {
       overlay, panel, opener, stop,
-      parent: panel.parentNode, next: panel.nextSibling,
+      parent: originalParent, next: originalNext,
       originalOverflow: document.body.style.overflow
     };
     panel.hidden = false;
