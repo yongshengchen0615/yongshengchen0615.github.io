@@ -23,8 +23,10 @@ test('member 360 overview exposes status, metrics, and primary actions', () => {
   assert.match(app, /is-disabled/);
   assert.match(app, /\['會員等級'/);
   assert.match(app, /\['累積服務時間'/);
-  assert.doesNotMatch(app, /grant\.textContent = '＋ 發放權益'/);
-  assert.match(app, /edit\.textContent = '編輯會員'/);
+  assert.match(app, /statusAction\.textContent = '狀態'/);
+  assert.match(app, /grantAction\.textContent = '＋ 發放'/);
+  assert.match(app, /state\.memberRecords\.childOpener = statusAction/);
+  assert.match(app, /state\.memberRecords\.childOpener = grantAction/);
 });
 
 test('member 360 summary tiles work as direct activity filters', () => {
