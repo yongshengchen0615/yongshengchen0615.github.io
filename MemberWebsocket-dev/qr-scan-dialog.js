@@ -24,6 +24,7 @@
   function open(panel, { title = '掃描 QR Code', opener = document.activeElement, start, stop } = {}) {
     if (!panel || typeof start !== 'function' || typeof stop !== 'function') return false;
     close();
+    window.dispatchEvent(new Event('qr-scan-dialog:opening'));
     const overlay = document.createElement('div');
     overlay.className = 'qr-scan-dialog-overlay';
     overlay.setAttribute('role', 'dialog');
@@ -76,5 +77,6 @@
   window.addEventListener('pagehide', close);
   window.addEventListener('member-system:session-revoked', () => close());
   window.addEventListener('member:access-ended', () => close());
+  window.addEventListener('booking:receipt-dialog-opening', () => close());
   window.QRScanDialog = { open, close, isOpen: panel => Boolean(active && (!panel || panel === active.panel)) };
 })();

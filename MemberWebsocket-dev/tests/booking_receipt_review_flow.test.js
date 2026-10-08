@@ -7,17 +7,19 @@ function read(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 }
 
-test('member receipt flow opens the camera instead of a visible file picker', () => {
+test('member receipt camera and bounded image picker share secure admin-review submission', () => {
   const source = read('booking/booking-receipt.js');
   assert.match(source, /navigator\.mediaDevices\?\.getUserMedia/);
   assert.match(source, /facingMode:\s*\{\s*ideal:\s*'environment'\s*\}/);
   assert.match(source, /bookingReceiptCamera/);
   assert.match(source, /captureFrame/);
-  assert.doesNotMatch(source, /type="file"/);
-  assert.doesNotMatch(source, /<input[^>]+id="bookingReceiptFile"/);
-  assert.doesNotMatch(source, /getElementById\('bookingReceiptFile'\)/);
-  assert.doesNotMatch(source, /拍攝或選擇收據圖片/);
-  assert.match(source, /此流程不支援從檔案或相簿選擇圖片/);
+  assert.match(source, /id="bookingReceiptFile" type="file"/);
+  assert.match(source, /acceptFile\(file\)/);
+  assert.match(source, /bookingReceiptDiscard/);
+  assert.match(source, /file\.size > 5 \* 1024 \* 1024/);
+  assert.match(source, /此瀏覽器無法使用相機，請改用選擇收據圖片功能/);
+  assert.match(source, /uploadToSignedUrl/);
+  assert.match(source, /user\.booking\.receipt\.finalize/);
 });
 
 test('member receipt submission waits for admin review', () => {

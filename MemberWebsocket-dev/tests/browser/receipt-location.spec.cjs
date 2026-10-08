@@ -167,3 +167,47 @@ test('GPS out of range keeps ticket usable and a new in-range fix can retry',asy
   await expect(page.locator('#ticketModalResult')).toBeVisible();expect(runs.get('gps-range').redeem).toHaveLength(2);
   const attempts=runs.get('gps-range').redeem;expect(attempts[0].bookingId).toBe('00000000-0000-4000-8000-000000000001');expect(attempts[0].requestId).toBe(attempts[1].requestId);
 });
+
+
+test('accessible receipt image fallback supports preview, discard, and one signed upload after camera denial',async({page})=>{
+  const run='receipt-image-picker';
+  await open(page,run,'camera-denied',true);
+  await expect(page.locator('#bookingReceiptMessage')).toContainText('選擇收據圖片');
+  const uploadFile={name:'receipt.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL1WQAAAABJRU5ErkJggg==','base64')};
+  await page.locator('#bookingReceiptFile').setInputFiles(uploadFile);
+  await expect(page.locator('#bookingReceiptPreview')).toHaveAttribute('src',/^data:image\/png/);
+  await expect(page.locator('#bookingReceiptSubmit')).toBeEnabled();
+  await page.locator('#bookingReceiptDiscard').click();
+  await expect(page.locator('#bookingReceiptSubmit')).toBeDisabled();
+  expect(runs.get(run).prepare).toHaveLength(0);
+  await page.locator('#bookingReceiptFile').setInputFiles(uploadFile);
+  await expect(page.locator('#bookingReceiptSubmit')).toBeEnabled();
+  await page.locator('#bookingReceiptSubmit').click();
+  await expect(page.locator('#bookingReceiptModal')).toBeHidden();
+  const state=runs.get(run);
+  expect(state.prepare).toHaveLength(1);
+  expect(state.finalize).toHaveLength(1);
+  expect(state.uploads).toHaveLength(1);
+  expect(state.prepare[0].mimeType).toBe('image/png');
+  expect(state.uploads[0].type).toBe('image/png');
+  expect(state.status).toBe('awaiting_review');
+});
+
+test('invalid receipt images are rejected; cancel preserves all business records',async({page})=>{
+  const run='receipt-file-invalid';
+  await open(page,run,'camera-denied',true);
+  await expect(page.locator('.app-shell')).toHaveAttribute('inert','');
+  await page.locator('#bookingReceiptFile').setInputFiles({name:'bad.pdf',mimeType:'application/pdf',buffer:Buffer.from('not an image')});
+  await expect(page.locator('#bookingReceiptMessage')).toContainText('JPG');
+  await expect(page.locator('#bookingReceiptSubmit')).toBeDisabled();
+  await page.locator('#bookingReceiptFile').setInputFiles({name:'huge.jpg',mimeType:'image/jpeg',buffer:Buffer.alloc(5*1024*1024+1,255)});
+  await expect(page.locator('#bookingReceiptMessage')).toContainText('5 MB');
+  await expect(page.locator('#bookingReceiptSubmit')).toBeDisabled();
+  await page.locator('#bookingReceiptCancel').click();
+  await expect(page.locator('#bookingReceiptModal')).toBeHidden();
+  await expect(page.locator('body')).not.toHaveClass(/booking-receipt-modal-open/);
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('inert','');
+  expect(runs.get(run).prepare).toHaveLength(0);
+  expect(runs.get(run).finalize).toHaveLength(0);
+  expect(runs.get(run).uploads).toHaveLength(0);
+});
