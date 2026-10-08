@@ -56,7 +56,7 @@
     return Array.isArray(account.activeSurfaces) && account.activeSurfaces.includes(surface);
   }
 
-  function renderAccountOptions(select, accounts, surface) {
+  function renderAccountOptions(select, accounts, surface, allowDuplicateTestLogin = false) {
     const previous = String(select.value || '');
     const enabledIds = [];
     select.replaceChildren();
@@ -64,10 +64,11 @@
       const option = document.createElement('option');
       option.value = String(account.memberId || '');
       const inUse = surfaceInUse(account, surface);
-      option.disabled = inUse;
-      option.textContent = [account.displayName, account.memberCode, inUse ? '此用戶端已登入' : '可登入'].filter(Boolean).join('｜');
+      const unavailable = inUse && !allowDuplicateTestLogin;
+      option.disabled = unavailable;
+      option.textContent = [account.displayName, account.memberCode, inUse ? (allowDuplicateTestLogin ? '已登入 · 可重複登入' : '此用戶端已登入') : '可登入'].filter(Boolean).join('｜');
       select.append(option);
-      if (!inUse && option.value) enabledIds.push(option.value);
+      if (!unavailable && option.value) enabledIds.push(option.value);
     }
     if (previous && enabledIds.includes(previous)) select.value = previous;
     else if (enabledIds.length) select.value = enabledIds[0];
@@ -259,7 +260,7 @@
     return String(navigator.platform || '') === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1;
   }
 
-  function selector(config, surface, accounts) {
+  function selector(config, surface, accounts, allowDuplicateTestLogin = false) {
     return new Promise((resolve) => {
       const existing = document.getElementById('testModeAccountModal');
       if (existing) existing.remove();
@@ -293,7 +294,8 @@
       select.id = 'testModeAccountSelect';
       select.setAttribute('aria-label', '選擇測試帳號');
       let currentAccounts = Array.isArray(accounts) ? accounts.slice() : [];
-      const enabledCount = renderAccountOptions(select, currentAccounts, surface);
+      let duplicateLoginAllowed = allowDuplicateTestLogin === true;
+      const enabledCount = renderAccountOptions(select, currentAccounts, surface, duplicateLoginAllowed);
       label.append(select);
 
       const message = document.createElement('p');
@@ -318,7 +320,8 @@
         try {
           const result = await post(config, { action: 'test-mode.accounts', clientType: surface });
           currentAccounts = Array.isArray(result.accounts) ? result.accounts : [];
-          const count = renderAccountOptions(select, currentAccounts, surface);
+          duplicateLoginAllowed = result.allowDuplicateTestLogin === true;
+          const count = renderAccountOptions(select, currentAccounts, surface, duplicateLoginAllowed);
           if (!count) message.textContent = '目前所有測試帳號都已在此用戶端登入；關閉既有視窗後會自動恢復可選。';
           else if (/所有測試帳號/.test(message.textContent || '')) message.textContent = '';
         } catch (_) {
@@ -404,7 +407,7 @@
       throw clientError('NO_TEST_ACCOUNTS', '目前尚未建立可登入的測試帳號。', 409);
     }
 
-    const selection = await selector(config, surface, accounts);
+    const selection = await selector(config, surface, accounts, accountsResult.allowDuplicateTestLogin === true);
     try {
       const login = await post(config, {
         action: 'test-mode.login',
