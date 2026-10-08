@@ -639,5 +639,5 @@
     return { config: presenceContext.config, idToken: currentPresenceIdToken(presenceContext) };
   }
 
-  window.BookingSystem = { loadConfig, signIn, startPresence, getSession, request, memberProfile, bookingBenefits, claimEventTicket, sendMemberChatMessage, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
+  window.BookingSystem = { loadConfig, signIn, startPresence, claimBrowserSession, getSession, request, memberProfile, bookingBenefits, claimEventTicket, sendMemberChatMessage, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
 })();
