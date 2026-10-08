@@ -198,6 +198,9 @@ function presenceActionInfo(action: string): { clientType: ClientType; surface: 
 }
 
 function clientTypeForAction(action: string): ClientType {
+  const memberSession = /^user\.(member|points|event|calendar|booking)\.session\.(claim|logout)$/.exec(action);
+  if (memberSession) return memberSession[1] as ClientType;
+  if (action === "admin.session.claim" || action === "admin.session.logout") return "admin";
   const presence = presenceActionInfo(action);
   if (presence) return presence.clientType;
   if (action === "user.member.bootstrap" || action === "user.member.profile.save" || action === "user.member.terms.accept") return "member";
@@ -231,10 +234,11 @@ function channelIdFor(clientType: ClientType): string {
   return value;
 }
 
-async function verifyLineIdToken(idToken: string, clientType: ClientType): Promise<{ lineUserId: string; displayName: string }> {
+async function verifyLineIdToken(idToken: string, clientType: ClientType, allowLoginClaim = false): Promise<{ lineUserId: string; displayName: string; issuedAtMs: number }> {
   return await verifyLineIdTokenContract({
     idToken,
     expectedChannelId: channelIdFor(clientType),
+    allowLoginClaim,
     createError: (status, code, message, details = null) => new ApiError(status, code, message, details),
   });
 }
@@ -1993,7 +1997,70 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
   };
 }
 
-async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string }, action: string, body: Json): Promise<Json> {
+async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string; issuedAtMs?: number }, action: string, body: Json): Promise<Json> {
+  if (/^(?:admin|user\.(?:member|points|event|calendar|booking))\.session\.claim$/.test(action)) {
+    if (action.startsWith("admin.")) {
+      await authorizeAdmin(supabase, identity);
+    } else {
+      // A disabled account must not displace its previously connected browser.
+      // Missing member rows are legitimate before first-time onboarding.
+      const member = await supabase.from("members")
+        .select("status").eq("line_user_id",identity.lineUserId).maybeSingle();
+      if (member.error) throw mapDatabaseError(member.error);
+      if (member.data && member.data.status !== "active") {
+        throw new ApiError(403, "MEMBER_DISABLED", "此會員目前已停用。");
+      }
+    }
+    const browserKey = requireText(body.browserKey, "瀏覽器登入識別", 120);
+    if (!/^[a-f0-9-]{72}$/.test(browserKey)) throw new ApiError(400, "INVALID_LOGIN_KEY", "瀏覽器登入識別不正確。");
+    const mode = asText(body.mode, 10);
+    if (mode !== "login" && mode !== "resume") throw new ApiError(400, "INVALID_LOGIN_MODE", "登入模式不正確。");
+    const result = await supabase.rpc("member_login_claim", {
+      p_line_user_id: identity.lineUserId,
+      p_browser_hash: await sha256(browserKey),
+      p_token_hash: await sha256(asText(body.idToken, 10000)),
+      p_issued_at_ms: identity.issuedAtMs || 0,
+      p_mode: mode,
+    });
+    if (result.error) throw mapDatabaseError(result.error);
+    if (result.data === "session_replaced") throw new ApiError(401, "SESSION_REPLACED", "此帳號已在其他裝置登入，您已被登出。");
+    if (!["claimed", "resumed", "replaced"].includes(String(result.data))) {
+      throw new ApiError(503, "LOGIN_CLAIM_FAILED", "目前無法建立登入連線。");
+    }
+    if (result.data !== "resumed") {
+      const audit = await supabase.from("audit_logs").insert({
+        audit_id: requestId("AUD"),actor_line_user_id:identity.lineUserId,
+        actor_role:action.startsWith("admin.") ? "admin" : "member",
+        action:result.data === "replaced" ? "LOGIN_SESSION_REPLACED" : "LOGIN_SESSION_CREATED",
+        target_type:"member",target_id:identity.lineUserId,result:"success",
+        detail:{ clientType:clientTypeForAction(action) },
+      });
+      if (audit.error) console.error("login session audit unavailable",audit.error.code);
+    }
+    if (result.data === "replaced") {
+      await supabase.from("realtime_events").insert(
+        ["member","points","event","calendar","booking","admin"].map(scope => ({scope,event_type:"member.login.replaced"})),
+      );
+    }
+    return { state:String(result.data) };
+  }
+  if (/^(?:admin|user\.(?:member|points|event|calendar|booking))\.session\.logout$/.test(action)) {
+    const result = await supabase.rpc("member_login_logout",{
+      p_line_user_id:identity.lineUserId,p_token_hash:await sha256(asText(body.idToken,10000)),
+    });
+    if (result.error) throw mapDatabaseError(result.error);
+    if (result.data === true) {
+      const audit = await supabase.from("audit_logs").insert({
+        audit_id:requestId("AUD"),actor_line_user_id:identity.lineUserId,
+        actor_role:action.startsWith("admin.") ? "admin" : "member",
+        action:"LOGIN_SESSION_LOGOUT",target_type:"member",
+        target_id:identity.lineUserId,result:"success",
+        detail:{clientType:clientTypeForAction(action)},
+      });
+      if (audit.error) console.error("session logout audit unavailable",audit.error.code);
+    }
+    return { revoked: result.data === true };
+  }
   const presence = presenceActionInfo(action);
   if (presence) {
     const sessionId = requireText(body.sessionId,"上線紀錄識別",80);
@@ -2728,7 +2795,7 @@ async function handleRequest(request: Request): Promise<Response> {
       }
     }
 
-    let identity: { lineUserId: string; displayName: string };
+    let identity: { lineUserId: string; displayName: string; issuedAtMs?: number };
     if (clientType !== "admin" && testSessionToken) {
       try {
         const testIdentity = await resolveTestSession(supabase,testSessionToken);
@@ -2738,7 +2805,7 @@ async function handleRequest(request: Request): Promise<Response> {
         throw error;
       }
     } else {
-      identity = await verifyLineIdToken(idToken,clientType);
+      identity = await verifyLineIdToken(idToken,clientType,action.endsWith(".session.claim"));
     }
     await consumeRateLimit(supabase,identity.lineUserId,action,body);
     const data = await handleAction(supabase,identity,action,body);
