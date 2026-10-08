@@ -461,7 +461,7 @@ Deno.serve(async (request: Request) => {
         }
         throw new ApiError(503, "TEST_SESSION_CREATE_FAILED", "目前無法建立測試登入。");
       }
-      await emitTestModeEvent(supabase, "test_mode.session.started");
+      // Session creation RPC commits the takeover and realtime notification atomically.
 
       await auditTestAccount(supabase, member, "test_mode.session.start", "member", member.id, {
         memberCode: member.member_code,

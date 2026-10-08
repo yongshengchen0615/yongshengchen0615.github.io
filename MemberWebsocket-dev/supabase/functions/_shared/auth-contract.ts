@@ -6,8 +6,9 @@ export async function verifyLineIdTokenContract(args: {
   idToken: string;
   expectedChannelId: string;
   createError: ErrorFactory;
+  allowLoginClaim?: boolean;
 }): Promise<ContractIdentity> {
-  const { idToken, expectedChannelId, createError } = args;
+  const { idToken, expectedChannelId, createError, allowLoginClaim = false } = args;
   if (!idToken) throw createError(401, "AUTH_REQUIRED", "請先使用 LINE 登入。");
 
   let response: Response;
@@ -73,6 +74,30 @@ export async function verifyLineIdTokenContract(args: {
   );
   if (!canBypassUserRestrictions && revokedAtMs > 0 && identity.issuedAtMs <= revokedAtMs) {
     throw createError(401, "SESSION_REVOKED", "您的登入工作階段已結束，請重新登入。");
+  }
+
+  // A verified LINE ID token identifies a person, not a revocable application
+  // connection. Once a browser has claimed a session, ONLY its registered token
+  // fingerprints may authorize requests. Older deployments' unclaimed sessions
+  // remain compatible until the first successful claim for that LINE identity.
+  if (!allowLoginClaim) {
+    const sessionResult = await supabase.from("member_login_sessions")
+      .select("line_user_id").eq("line_user_id", sub).maybeSingle();
+    if (sessionResult.error) {
+      throw createError(503, "ACCESS_CONTROL_UNAVAILABLE", "目前無法確認登入連線狀態。");
+    }
+    if (sessionResult.data) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(idToken));
+      const fingerprint = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      const grantResult = await supabase.from("member_login_token_grants")
+        .select("token_hash").eq("line_user_id", sub).eq("token_hash", fingerprint).maybeSingle();
+      if (grantResult.error) {
+        throw createError(503, "ACCESS_CONTROL_UNAVAILABLE", "目前無法確認登入連線狀態。");
+      }
+      if (!grantResult.data) {
+        throw createError(401, "SESSION_REPLACED", "此帳號已在其他裝置登入，您已被登出。");
+      }
+    }
   }
 
   return identity;

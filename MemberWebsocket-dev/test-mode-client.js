@@ -29,11 +29,11 @@
 
   let forcedLogoutTerminating = false;
 
-  function terminateForcedTestSession(message) {
+  function terminateForcedTestSession(message, reason = 'admin-force-logout') {
     if (forcedLogoutTerminating) return;
     forcedLogoutTerminating = true;
     clearSession();
-    dispatchSessionRevoked('admin-force-logout');
+    dispatchSessionRevoked(reason);
     const notice = String(message || '').trim() || '您的測試登入工作階段已由管理員強制結束。';
     try { window.alert(notice); } catch (_) {}
     if (window.liff && typeof window.liff.closeWindow === 'function') {
@@ -66,7 +66,7 @@
       const inUse = surfaceInUse(account, surface);
       const unavailable = inUse && !allowDuplicateTestLogin;
       option.disabled = unavailable;
-      option.textContent = [account.displayName, account.memberCode, inUse ? (allowDuplicateTestLogin ? '已登入 · 可重複登入' : '此用戶端已登入') : '可登入'].filter(Boolean).join('｜');
+      option.textContent = [account.displayName, account.memberCode, inUse ? (allowDuplicateTestLogin ? '已登入 · 新登入將踢除舊連線' : '此用戶端已登入') : '可登入'].filter(Boolean).join('｜');
       select.append(option);
       if (!unavailable && option.value) enabledIds.push(option.value);
     }
@@ -111,6 +111,11 @@
           return;
         }
         if (!eventType.startsWith('test_mode.')) return;
+        // The new session is committed before this notification. An older tab
+        // rechecks server-side revocation; never trusts a broadcast as identity.
+        if (eventType === 'test_mode.session.started' && getSessionToken()) {
+          void sessionStatus(config, realtimeSurface).catch(() => {});
+        }
         dispatchAvailabilityChanged();
         if (eventType === 'test_mode.data.purged') {
           const hadSession = Boolean(getSessionToken());
@@ -175,7 +180,9 @@
         Number(payload?.status || response.status || 0)
       );
       error.details = payload?.error?.details || null;
-      if (error.code === 'SESSION_REVOKED') terminateForcedTestSession(error.message);
+      if (error.code === 'SESSION_REVOKED' || error.code === 'SESSION_REPLACED') {
+        terminateForcedTestSession(error.message, error.code === 'SESSION_REPLACED' ? 'replaced-by-new-login' : 'admin-force-logout');
+      }
       throw error;
     }
     return payload.data || {};

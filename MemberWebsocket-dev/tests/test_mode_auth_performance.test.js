@@ -39,7 +39,7 @@ test('direct test-session verification keeps an independent settings lookup', ()
 
 test('test session activity writes are rate-limited without weakening expiry checks', () => {
   assert.match(source, /const SESSION_TOUCH_INTERVAL_MS = 60_000/);
-  assert.match(source, /expires_at,revoked_at,last_used_at/);
+  assert.match(source, /expires_at,revoked_at,revoked_reason,last_used_at/);
   assert.match(source, /now - lastUsedAt >= SESSION_TOUCH_INTERVAL_MS/);
   assert.match(source, /\.lt\("last_used_at", staleBefore\)/);
   assert.match(source, /session\.revoked_at/);

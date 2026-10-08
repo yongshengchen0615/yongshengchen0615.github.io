@@ -59,7 +59,7 @@ export async function resolveTestSession(
     settingsPromise,
     supabase
       .from("test_login_sessions")
-      .select("id,member_id,device_class,surface,expires_at,revoked_at,last_used_at")
+      .select("id,member_id,device_class,surface,expires_at,revoked_at,revoked_reason,last_used_at")
       .eq("token_hash", tokenHash)
       .maybeSingle(),
   ]);
@@ -89,7 +89,10 @@ export async function resolveTestSession(
     throw new TestModeAuthError(401, "TEST_SESSION_INVALID", "測試登入已失效，請重新選擇測試帳號。");
   }
   if (session.revoked_at) {
-    throw new TestModeAuthError(401, "SESSION_REVOKED", "您的測試登入工作階段已由管理員結束。");
+    if (session.revoked_reason === "replaced_by_new_login") {
+      throw new TestModeAuthError(401, "SESSION_REPLACED", "此測試帳號已在其他視窗或裝置成功登入，原連線已被強制登出。");
+    }
+    throw new TestModeAuthError(401, "SESSION_REVOKED", "您的測試登入工作階段已被管理員結束。");
   }
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
     throw new TestModeAuthError(401, "TEST_SESSION_EXPIRED", "測試登入已過期，請重新選擇測試帳號。");
