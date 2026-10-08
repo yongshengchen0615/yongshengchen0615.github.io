@@ -1999,7 +1999,18 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
 
 async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string; issuedAtMs?: number }, action: string, body: Json): Promise<Json> {
   if (/^(?:admin|user\.(?:member|points|event|calendar|booking))\.session\.claim$/.test(action)) {
-    if (action.startsWith("admin.")) await authorizeAdmin(supabase, identity);
+    if (action.startsWith("admin.")) {
+      await authorizeAdmin(supabase, identity);
+    } else {
+      // A disabled account must not displace its previously connected browser.
+      // Missing member rows are legitimate before first-time onboarding.
+      const member = await supabase.from("members")
+        .select("status").eq("line_user_id",identity.lineUserId).maybeSingle();
+      if (member.error) throw mapDatabaseError(member.error);
+      if (member.data && member.data.status !== "active") {
+        throw new ApiError(403, "MEMBER_DISABLED", "此會員目前已停用。");
+      }
+    }
     const browserKey = requireText(body.browserKey, "瀏覽器登入識別", 120);
     if (!/^[a-f0-9-]{72}$/.test(browserKey)) throw new ApiError(400, "INVALID_LOGIN_KEY", "瀏覽器登入識別不正確。");
     const mode = asText(body.mode, 10);
