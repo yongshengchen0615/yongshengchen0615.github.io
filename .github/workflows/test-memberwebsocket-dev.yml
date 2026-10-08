@@ -77,6 +77,7 @@ jobs:
             MemberWebsocket-dev/tests/integration/ticket_booking_choice.cjs \
             MemberWebsocket-dev/tests/integration/booking_accessible.cjs \
             MemberWebsocket-dev/tests/integration/test_account_phone_sql.cjs \
+            MemberWebsocket-dev/tests/integration/test_duplicate_login_sql.cjs \
             MemberWebsocket-dev/tests/integration/e2e_feature_nodes.cjs \
             MemberWebsocket-dev/tests/integration/fixed_ticket_automation_sql.cjs \
             MemberWebsocket-dev/tests/integration/automation_health_sql.cjs \
