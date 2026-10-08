@@ -46,6 +46,8 @@ test('session issuance ignores untrusted toggle inputs and is virtual-member-onl
   assert.match(sql, /revoked_at = clock_timestamp\(\)/);
   assert.match(takeoverSql, /revoked_reason = 'replaced_by_new_login'/);
   assert.match(takeoverSql, /UPDATE public\.member_presence_sessions/);
+  assert.match(takeoverSql, /INSERT INTO public\.realtime_events\(scope,event_type\)/);
+  assert.doesNotMatch(api, /await emitTestModeEvent\(supabase, "test_mode\.session\.started"\)/);
   assert.match(takeoverSql, /UPDATE public\.test_login_sessions[\s\S]*?INSERT INTO public\.test_login_sessions/);
   assert.match(read('supabase/functions/_shared/test-mode-auth.ts'), /"SESSION_REPLACED"/);
   assert.match(read('supabase/functions/api/index.ts'), /revoked_reason:"admin_force_logout"/);
