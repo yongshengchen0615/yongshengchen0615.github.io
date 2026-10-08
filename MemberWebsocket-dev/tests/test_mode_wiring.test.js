@@ -393,18 +393,19 @@ test('calendar E2E invalid-date boundary is backed by semantic ISO date validati
 });
 
 
-test('same test account cannot open the same member surface twice and the selector reflects live occupancy', () => {
+test('same-surface test login is blocked by default and can be enabled by an admin toggle', () => {
   const client = read('test-mode-client.js');
   const api = read('supabase/functions/test-mode-api/index.ts');
   const migration = read('supabase/migrations/20260922063942_enhance_e2e_fixture_and_test_surface_sessions_v2.sql');
 
-  assert.match(client, /option\.disabled = inUse/);
+  assert.match(client, /option\.disabled = unavailable/);
+  assert.match(client, /const unavailable = inUse && !allowDuplicateTestLogin/);
   assert.match(client, /activeSurfaces/);
   assert.match(client, /currentSurfaceInUse/);
   assert.match(client, /member-test-account-availability-changed/);
   assert.match(api, /activeSurfaceMap/);
   assert.match(api, /accountsWithAvailability/);
-  assert.match(api, /create_test_login_session_v2/);
+  assert.match(api, /create_test_login_session_v3/);
   assert.match(api, /TEST_SURFACE_ALREADY_ACTIVE/);
   assert.match(api, /p_surface: clientType/);
   assert.match(migration, /pg_advisory_xact_lock/);
