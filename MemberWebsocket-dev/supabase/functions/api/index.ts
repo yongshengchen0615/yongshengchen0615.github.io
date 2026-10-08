@@ -2315,7 +2315,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
         .eq("member_id",target.data.id)
         .is("offline_at",null),
       supabase.from("test_login_sessions")
-        .update({ revoked_at:revokedAt,last_used_at:revokedAt })
+        .update({ revoked_at:revokedAt,revoked_reason:"admin_force_logout",last_used_at:revokedAt })
         .eq("member_id",target.data.id)
         .is("revoked_at",null),
     ]);
