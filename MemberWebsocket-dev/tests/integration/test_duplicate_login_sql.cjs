@@ -9,7 +9,7 @@ const migration = fs.readFileSync(
   'utf8',
 );
 const takeoverMigration = fs.readFileSync(
-  path.join(__dirname, '../../supabase/migrations/20261008170000_test_login_takeover_single_session.sql'),
+  path.join(__dirname, '../../supabase/migrations/20261008091007_test_login_takeover_single_session.sql'),
   'utf8',
 );
 
