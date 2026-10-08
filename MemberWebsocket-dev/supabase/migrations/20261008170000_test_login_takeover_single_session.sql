@@ -105,6 +105,11 @@ BEGIN
   VALUES (p_token_hash,p_member_id,p_device_class,p_surface,p_expires_at)
   RETURNING id INTO v_id;
 
+  -- Notify only after a committed successful takeover. Failure to publish
+  -- rolls back both the new session and revocations atomically.
+  INSERT INTO public.realtime_events(scope,event_type)
+  VALUES ('all','test_mode.session.started');
+
   RETURN v_id;
 END;
 $$;
