@@ -11,7 +11,7 @@
   window.addEventListener('DOMContentLoaded', () => {
     [
       'testModeTab', 'testModePanel', 'testModeForm', 'systemMaintenanceEnabled',
-      'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeMaintenanceMessage',
+      'testModePcLoginEnabled', 'testModeMobileLoginEnabled', 'testModeDuplicateLoginEnabled', 'testModeMaintenanceMessage',
       'testModeAddAccountCount', 'saveTestModeButton', 'testModeFormMessage',
       'testModeAccountCount', 'testModeAccountList', 'testModeAccountEmpty',
       'testModeSelectAllAccounts', 'testModeSelectedCount', 'deleteSelectedTestAccountsButton',
@@ -114,6 +114,7 @@
         maintenanceEnabled: els.systemMaintenanceEnabled.checked,
         allowPcTestLogin: els.testModePcLoginEnabled.checked,
         allowMobileTestLogin: els.testModeMobileLoginEnabled.checked,
+        allowDuplicateTestLogin: els.testModeDuplicateLoginEnabled.checked,
         maintenanceMessage,
         addAccountCount
       });
@@ -137,10 +138,12 @@
     const maintenanceEnabled = Boolean(settings.maintenanceEnabled);
     const allowPcTestLogin = Boolean(settings.allowPcTestLogin);
     const allowMobileTestLogin = Boolean(settings.allowMobileTestLogin);
+    const allowDuplicateTestLogin = Boolean(settings.allowDuplicateTestLogin);
 
     els.systemMaintenanceEnabled.checked = maintenanceEnabled;
     els.testModePcLoginEnabled.checked = allowPcTestLogin;
     els.testModeMobileLoginEnabled.checked = allowMobileTestLogin;
+    els.testModeDuplicateLoginEnabled.checked = allowDuplicateTestLogin;
     els.testModeMaintenanceMessage.value = String(settings.maintenanceMessage || '');
     els.testModeAccountCount.textContent = accounts.length + ' 個';
     els.testModeAccountList.replaceChildren(...accounts.map(renderAccount));
@@ -287,6 +290,7 @@
     els.systemMaintenanceEnabled.disabled = busy;
     els.testModePcLoginEnabled.disabled = busy;
     els.testModeMobileLoginEnabled.disabled = busy;
+    els.testModeDuplicateLoginEnabled.disabled = busy;
     els.testModeMaintenanceMessage.disabled = busy;
     els.testModeAddAccountCount.disabled = busy;
     document.querySelectorAll('[data-test-account-count]').forEach((button) => {

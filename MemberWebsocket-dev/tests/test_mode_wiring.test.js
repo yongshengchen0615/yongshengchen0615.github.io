@@ -17,6 +17,7 @@ test('admin exposes only maintenance and device login controls', () => {
   assert.doesNotMatch(html, /id="testModeEnabled"/);
   assert.match(html, /id="testModePcLoginEnabled"/);
   assert.match(html, /id="testModeMobileLoginEnabled"/);
+  assert.match(html, /id="testModeDuplicateLoginEnabled"/);
   assert.doesNotMatch(html, /id="testModeAdminLoginEnabled"/);
   assert.doesNotMatch(html, /允許管理員登入用戶端/);
   assert.match(html, /id="systemMaintenanceBadge"/);
@@ -24,7 +25,7 @@ test('admin exposes only maintenance and device login controls', () => {
   assert.match(html, /id="testModeMobileLoginBadge"/);
   assert.match(html, /id="testModeMaintenanceMessage"/);
   assert.match(html, /id="testModeAddAccountCount"/);
-  assert.match(html, /test-mode\.js\?v=maintenance-device-login-20260920-4/);
+  assert.match(html, /test-mode\.js\?v=duplicate-test-login-20261008-1/);
   assert.match(html, /test-mode\.css\?v=test-mode-ui-20260920-3/);
   assert.match(app, /switchPanel\('testMode'\)/);
   assert.match(testMode, /admin\.test-mode\.save/);
@@ -34,6 +35,7 @@ test('admin exposes only maintenance and device login controls', () => {
   assert.match(testMode, /行動裝置測試登入：可用/);
   assert.match(testMode, /allowPcTestLogin/);
   assert.match(testMode, /allowMobileTestLogin/);
+  assert.match(testMode, /allowDuplicateTestLogin/);
   assert.match(testMode, /maintenanceEnabled/);
   assert.doesNotMatch(testMode, /testModeEnabled|settings\.enabled|enabled: els\.testModeEnabled/);
   assert.match(html, /data-test-account-count="5"/);
@@ -69,8 +71,8 @@ test('all member-facing surfaces load the direct test-account client before app 
   assert.match(client, /mode\.allowMobileTestLogin/);
   assert.match(client, /mode\.allowPcTestLogin/);
   assert.match(client, /isMobileDevice\(\)/);
-  assert.match(client, /selector\(config, surface, accounts\)/);
-  assert.match(client, /renderAccountOptions\(select, currentAccounts, surface\)/);
+  assert.match(client, /selector\(config, surface, accounts, allowDuplicateTestLogin = false\)/);
+  assert.match(client, /renderAccountOptions\(select, currentAccounts, surface, duplicateLoginAllowed\)/);
   assert.match(core, /TestModeClient\.prepare/);
   assert.match(core, /TestModeClient\.payload/);
   assert.match(core, /TestModeClient\.clearSession/);
@@ -87,6 +89,7 @@ test('direct test login is server-side restricted to active test accounts', () =
   assert.match(api, /deviceClassForRequest\(request\)/);
   assert.match(api, /allow_pc_test_login/);
   assert.match(api, /allow_mobile_test_login/);
+  assert.match(api, /allow_duplicate_test_login/);
   assert.match(api, /maintenance_enabled/);
   assert.match(api, /member\.is_test_account !== true/);
   assert.match(api, /member\.status !== "active"/);
@@ -106,7 +109,7 @@ test('test sessions are short-lived, hashed at rest and support direct sessions'
   assert.match(api, /const TEST_SESSION_HOURS = 2/);
   assert.match(api, /p_token_hash: tokenHash/);
   assert.match(api, /sha256Hex\(token\)/);
-  assert.match(api, /create_test_login_session_v2/);
+  assert.match(api, /create_test_login_session_v3/);
   assert.doesNotMatch(api, /admin_line_user_id: identity\.lineUserId/);
   assert.match(api, /p_device_class: deviceClass/);
 
@@ -390,18 +393,19 @@ test('calendar E2E invalid-date boundary is backed by semantic ISO date validati
 });
 
 
-test('same test account cannot open the same member surface twice and the selector reflects live occupancy', () => {
+test('same-surface test login is blocked by default and can be enabled by an admin toggle', () => {
   const client = read('test-mode-client.js');
   const api = read('supabase/functions/test-mode-api/index.ts');
   const migration = read('supabase/migrations/20260922063942_enhance_e2e_fixture_and_test_surface_sessions_v2.sql');
 
-  assert.match(client, /option\.disabled = inUse/);
+  assert.match(client, /option\.disabled = unavailable/);
+  assert.match(client, /const unavailable = inUse && !allowDuplicateTestLogin/);
   assert.match(client, /activeSurfaces/);
   assert.match(client, /currentSurfaceInUse/);
   assert.match(client, /member-test-account-availability-changed/);
   assert.match(api, /activeSurfaceMap/);
   assert.match(api, /accountsWithAvailability/);
-  assert.match(api, /create_test_login_session_v2/);
+  assert.match(api, /create_test_login_session_v3/);
   assert.match(api, /TEST_SURFACE_ALREADY_ACTIVE/);
   assert.match(api, /p_surface: clientType/);
   assert.match(migration, /pg_advisory_xact_lock/);

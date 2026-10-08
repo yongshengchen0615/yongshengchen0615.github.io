@@ -73,6 +73,10 @@ function errorReply(origin: string | null, error: unknown): Response {
       apiError = new ApiError(409, "INVALID_TEST_ACCOUNT_SELECTION", "只能移除目前仍存在的測試帳號，請重新整理後再試。");
     } else if (message.includes("TEST_ACCOUNT_DELETE_MISMATCH")) {
       apiError = new ApiError(409, "TEST_ACCOUNT_DELETE_MISMATCH", "測試帳號資料已變更，請重新整理後再試。");
+    } else if (message.includes("TEST_LOGIN_DISABLED")) {
+      apiError = new ApiError(403, "TEST_LOGIN_DISABLED", "此裝置目前不能使用測試登入。");
+    } else if (message.includes("TEST_ACCOUNT_UNAVAILABLE")) {
+      apiError = new ApiError(403, "TEST_ACCOUNT_UNAVAILABLE", "選擇的測試帳號目前無法使用。");
     } else if (message.includes("TEST_SURFACE_ALREADY_ACTIVE")) {
       apiError = new ApiError(409, "TEST_SURFACE_ALREADY_ACTIVE", "此測試帳號已在相同用戶端登入，請改用其他測試帳號或先關閉原本視窗。");
     } else {
@@ -142,7 +146,7 @@ async function authorizeAdmin(supabase: any, identity: Identity): Promise<any> {
 
 async function settings(supabase: any): Promise<any> {
   const result = await supabase.from("test_mode_settings")
-    .select("maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,maintenance_message,updated_by,updated_at")
+    .select("maintenance_enabled,allow_pc_test_login,allow_mobile_test_login,allow_duplicate_test_login,maintenance_message,updated_by,updated_at")
     .eq("id", true)
     .maybeSingle();
   if (result.error) throw new ApiError(503, "TEST_MODE_SETTINGS_UNAVAILABLE", "目前無法讀取系統維護設定。");
@@ -150,6 +154,7 @@ async function settings(supabase: any): Promise<any> {
     maintenance_enabled: false,
     allow_pc_test_login: false,
     allow_mobile_test_login: false,
+    allow_duplicate_test_login: false,
     maintenance_message: "",
     updated_by: null,
     updated_at: null,
@@ -161,6 +166,7 @@ function settingsClient(row: any): Json {
     maintenanceEnabled: Boolean(row?.maintenance_enabled),
     allowPcTestLogin: Boolean(row?.allow_pc_test_login),
     allowMobileTestLogin: Boolean(row?.allow_mobile_test_login),
+    allowDuplicateTestLogin: Boolean(row?.allow_duplicate_test_login),
     maintenanceMessage: asText(row?.maintenance_message, 500),
     updatedBy: asText(row?.updated_by, 120),
     updatedAt: row?.updated_at || null,
@@ -405,12 +411,15 @@ Deno.serve(async (request: Request) => {
 
     if (action === "test-mode.accounts") {
       if (!USER_SURFACES.has(clientType)) throw new ApiError(403, "USER_SURFACE_REQUIRED", "請從用戶端進行測試登入。");
-      await requireTestLoginEnabled(supabase, request);
+      const { row } = await requireTestLoginEnabled(supabase, request);
       const accounts = (await testAccounts(supabase)).filter((account) =>
         account.status === "active" && account.membershipStatus === "active"
       );
       const surfaceMap = await activeSurfaceMap(supabase, accounts.map((account) => String(account.memberId)));
-      return reply(origin, { ok: true, status: 200, data: { accounts: accountsWithAvailability(accounts, surfaceMap, clientType) } });
+      return reply(origin, { ok: true, status: 200, data: {
+        accounts: accountsWithAvailability(accounts, surfaceMap, clientType),
+        allowDuplicateTestLogin: row.allow_duplicate_test_login === true,
+      } });
     }
 
     if (action === "test-mode.login") {
@@ -438,7 +447,7 @@ Deno.serve(async (request: Request) => {
       const tokenHash = await sha256Hex(token);
       const expiresAt = new Date(Date.now() + TEST_SESSION_HOURS * 60 * 60 * 1000).toISOString();
 
-      const sessionResult = await supabase.rpc("create_test_login_session_v2", {
+      const sessionResult = await supabase.rpc("create_test_login_session_v3", {
         p_token_hash: tokenHash,
         p_member_id: member.id,
         p_surface: clientType,
@@ -543,10 +552,11 @@ Deno.serve(async (request: Request) => {
       if (maintenanceMessage.length > 500) {
         throw new ApiError(400, "INVALID_MAINTENANCE_MESSAGE", "系統維護訊息不可超過 500 字。");
       }
-      const rpc = await supabase.rpc("admin_save_maintenance_test_access", {
+      const rpc = await supabase.rpc("admin_save_maintenance_test_access_v2", {
         p_maintenance_enabled: asBoolean(body.maintenanceEnabled),
         p_allow_pc_test_login: asBoolean(body.allowPcTestLogin),
         p_allow_mobile_test_login: asBoolean(body.allowMobileTestLogin),
+        p_allow_duplicate_test_login: asBoolean(body.allowDuplicateTestLogin),
         p_maintenance_message: maintenanceMessage,
         p_updated_by: identity.lineUserId,
         p_add_account_count: addAccountCount,
@@ -556,6 +566,7 @@ Deno.serve(async (request: Request) => {
         maintenanceEnabled: asBoolean(body.maintenanceEnabled),
         allowPcTestLogin: asBoolean(body.allowPcTestLogin),
         allowMobileTestLogin: asBoolean(body.allowMobileTestLogin),
+        allowDuplicateTestLogin: asBoolean(body.allowDuplicateTestLogin),
         addAccountCount,
       });
       await emitTestModeEvent(supabase, "test_mode.settings.changed");
