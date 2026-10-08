@@ -1103,7 +1103,7 @@
         caseDef('預約表單安全初始狀態', 'UI', bookingFormCase, 'BOOKING_FORM_INITIAL'),
         caseDef('預約頁可用活動／票券推薦一致性', 'Booking / Benefits', bookingBenefitsRecommendationsCase, 'BOOKING_BENEFITS_RECOMMENDATIONS'),
         caseDef('真人操作：優惠勾選／預約保存／交接核銷', 'Human E2E', bookingBenefitRedemptionLifecycleCase, 'BOOKING_BENEFIT_REDEMPTION_LIFECYCLE'),
-        caseDef('預約收據：相機限定／等待管理端審核契約', 'Booking / Receipt', bookingReceiptReviewContractCase, 'BOOKING_RECEIPT_REVIEW_CONTRACT'),
+        caseDef('預約收據：相機／圖片／等待管理端審核契約', 'Booking / Receipt', bookingReceiptReviewContractCase, 'BOOKING_RECEIPT_REVIEW_CONTRACT'),
         caseDef('預約 stepper 狀態同步', 'UI', bookingFlowStepperCase, 'BOOKING_FLOW_STEPPER'),
         caseDef('真人操作：日期／視窗／項目／多人控制', 'Human E2E', bookingHumanControlsCase, 'BOOKING_HUMAN_CONTROLS'),
         caseDef('真人操作：新增／修改／取消預約', 'Human E2E', bookingHumanLifecycleCase, 'BOOKING_HUMAN_LIFECYCLE'),
@@ -3808,7 +3808,11 @@
     const capture = document.getElementById('bookingReceiptCapture');
     const retake = document.getElementById('bookingReceiptRetake');
     const submit = document.getElementById('bookingReceiptSubmit');
+    const picker = modal?.querySelector('#bookingReceiptFile[type="file"]');
     const fileInputs = modal ? modal.querySelectorAll('input[type="file"]').length : -1;
+    const imageTypes = picker ? ['image/jpeg','image/png','image/webp','image/heic','image/heif'].every(type => picker.accept.includes(type)) : false;
+    const preview = Boolean(modal?.querySelector('#bookingReceiptPreview'));
+    const discard = Boolean(modal?.querySelector('#bookingReceiptDiscard'));
     const awaiting = receipts.filter((receipt) => String(receipt?.status || '') === 'awaiting_review').length;
     const bound = receipts.filter((receipt) => String(receipt?.status || '') === 'bound').length;
     const actual = {
@@ -3820,20 +3824,20 @@
       capture: Boolean(capture),
       retake: Boolean(retake),
       submit: Boolean(submit),
-      fileInputs,
+      fileInputs, imageTypes, preview, discard,
       awaitingReviewCount: awaiting,
       boundCount: bound,
       reviewCopy: /送出審核|管理員登記/.test(String(document.getElementById('bookingReceiptTitle')?.textContent || '')) &&
         /等待管理端|待管理端|管理端確認前|管理員核對(?:前|服務項目後)/.test(String(modal?.textContent || ''))
     };
     const ok = actual.bookingsArray && actual.modal && actual.camera && actual.capture && actual.retake &&
-      actual.submit && fileInputs === 0 && actual.reviewCopy;
+      actual.submit && fileInputs === 1 && actual.imageTypes && actual.preview && actual.discard && actual.reviewCopy;
     return ok
-      ? pass('預約收據 Browser E2E 已確認 booking-scoped 收據契約、相機拍攝入口、無檔案選擇器，以及等待管理端審核語意。', {
-          bookingsArray: true, cameraOnly: true, fileInputs: 0, waitsForAdminReview: true
+      ? pass('預約收據 Browser E2E 已確認 booking-scoped 收據契約、相機拍攝入口、相機／圖片雙入口，以及等待管理端審核語意。', {
+          bookingsArray: true, cameraOrImage: true, fileInputs: 1, waitsForAdminReview: true
         }, actual)
-      : fail('預約收據相機／審核 Browser 契約不符合目前規格。', {
-          bookingsArray: true, cameraOnly: true, fileInputs: 0, waitsForAdminReview: true
+      : fail('預約收據相機／圖片／審核 Browser 契約不符合目前規格。', {
+          bookingsArray: true, cameraOrImage: true, fileInputs: 1, waitsForAdminReview: true
         }, actual);
   }
 
