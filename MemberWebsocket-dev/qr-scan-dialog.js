@@ -3,7 +3,8 @@
   // Presentation only. Scanner callers remain responsible for validating a QR value
   // and must never trigger a business transaction from the decoded payload.
   let active = null;
-  function close() {
+  function close(panel) {
+    if (panel && active && active.panel !== panel) return;
     const current = active;
     if (!current) return;
     active = null;
@@ -73,6 +74,7 @@
     if (document.hidden) close();
   });
   window.addEventListener('pagehide', close);
-  window.addEventListener('member-system:session-revoked', close);
+  window.addEventListener('member-system:session-revoked', () => close());
+  window.addEventListener('member:access-ended', () => close());
   window.QRScanDialog = { open, close, isOpen: panel => Boolean(active && (!panel || panel === active.panel)) };
 })();
