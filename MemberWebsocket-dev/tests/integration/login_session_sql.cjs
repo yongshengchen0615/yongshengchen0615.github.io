@@ -5,7 +5,7 @@ const path = require('node:path');
 const { PGlite } = require('@electric-sql/pglite');
 
 const migration = fs.readFileSync(
-  path.join(__dirname, '../../supabase/migrations/20261008160000_single_active_member_login.sql'),
+  path.join(__dirname, '../../supabase/migrations/20261008075553_single_active_member_login.sql'),
   'utf8',
 );
 const hash = char => char.repeat(64);
