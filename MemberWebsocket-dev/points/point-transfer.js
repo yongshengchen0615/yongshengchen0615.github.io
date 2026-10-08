@@ -3,6 +3,7 @@
 
   const state = {
     requestId: '',
+    pending: null,
     fingerprint: '',
     receiver: null,
     receiverGeneration: 0,
@@ -34,7 +35,31 @@
     target.classList.toggle('error', Boolean(error));
   }
 
+  function pendingKey() { return 'point-transfer-pending:v1:' + state.memberCode; }
+  function savePending(value) {
+    state.pending = value;
+    try {
+      if (value) window.sessionStorage.setItem(pendingKey(), JSON.stringify(value));
+      else window.sessionStorage.removeItem(pendingKey());
+    } catch (_) { /* In-memory idempotency still covers this tab. */ }
+  }
+  function restorePending() {
+    state.pending = null;
+    if (!state.memberCode) return;
+    try {
+      const saved = JSON.parse(window.sessionStorage.getItem(pendingKey()) || 'null');
+      if (saved && /^[A-Za-z0-9_-]{8,120}$/.test(saved.requestId) && typeof saved.cardId === 'string' && /^[A-Za-z0-9_-]{4,40}$/.test(saved.memberCode) && Number.isSafeInteger(saved.amount) && saved.amount > 0) state.pending = saved;
+    } catch (_) { /* Never reuse malformed saved instructions. */ }
+  }
+  function lockFields() {
+    const pending = Boolean(state.pending);
+    for (const id of ['pointTransferMemberCode','pointTransferAmount','pointTransferLookup','pointTransferChooseFriend','pointTransferScanQr','pointTransferUseFriend','pointTransferFriendSelect']) {
+      const element = document.getElementById(id);
+      if (element) element.disabled = state.busy || pending;
+    }
+  }
   function clearReceiver() {
+    if (state.pending) return;
     state.receiverGeneration += 1;
     state.receiver = null;
     state.requestId = '';
@@ -131,13 +156,13 @@
     [code, amount].forEach((input) => input.addEventListener('input', clearReceiver));
     modal.querySelector('#pointTransferLookup').addEventListener('click', lookupReceiver);
     modal.querySelector('#pointTransferChooseFriend').addEventListener('click', () => {
-      if (state.busy) return;
+      if (state.busy || state.pending) return;
       const picker = modal.querySelector('#pointTransferFriendPicker');
       picker.hidden = !picker.hidden;
       if (!picker.hidden) void loadFriendChoices();
     });
     modal.querySelector('#pointTransferUseFriend').addEventListener('click', () => {
-      if (state.busy) return;
+      if (state.busy || state.pending) return;
       const chosen = modal.querySelector('#pointTransferFriendSelect').value;
       if (!chosen) return setMessage('請先選擇好友。', true);
       const input = modal.querySelector('#pointTransferMemberCode');
@@ -163,7 +188,7 @@
     const select = document.getElementById('pointTransferFriendSelect');
     const status = document.getElementById('pointTransferFriendStatus');
     const s = session();
-    if (!s || !picker || !select || !status) return;
+    if (!s || !picker || !select || !status || state.pending) return;
     const currentMember = state.memberCode;
     select.disabled = true;
     select.replaceChildren(new Option('請選擇好友', ''));
@@ -205,7 +230,7 @@
   }
 
   function openTransferScanner() {
-    if (state.busy) return;
+    if (state.busy || state.pending) return;
     const panel = document.getElementById('pointTransferQrPanel');
     if (!window.FriendQRScanner?.create || !window.QRScanDialog?.open || !panel) {
       setMessage('無法啟動掃描，請輸入會員編號。', true); return;
@@ -286,7 +311,7 @@
     const cardId = currentCardId();
     const option = state.options.get(cardId);
     const balance = Number(option?.balance || 0);
-    button.disabled = !state.loaded || !cardId || !option || balance <= 0;
+    button.disabled = !state.pending && (!state.loaded || !cardId || !option || balance <= 0);
     button.title = button.disabled && state.loaded ? '這張集點卡目前沒有可轉贈點數' : '';
   }
 
@@ -295,7 +320,7 @@
     const option = state.options.get(cardId);
     const balance = Math.max(0, Number(option?.balance || 0));
     const amount = document.getElementById('pointTransferAmount');
-    if (amount) amount.max = String(balance);
+    if (amount) amount.max = state.pending ? '' : String(balance);
     const summary = document.getElementById('pointTransferCardSummary');
     if (summary) summary.textContent = `${option?.title || state.activeCardTitle || '集點卡'}・可轉贈 ${balance} 點${option?.expiresOn ? `・至 ${option.expiresOn}` : ''}`;
     const hint = document.getElementById('pointTransferBalanceHint');
@@ -304,9 +329,9 @@
 
   function openModal() {
     const modal = ensureModal();
-    const cardId = currentCardId();
+    const cardId = state.pending?.cardId || currentCardId();
     const option = state.options.get(cardId);
-    if (!option || Number(option.balance || 0) <= 0) {
+    if ((!option || Number(option.balance || 0) <= 0) && !state.pending) {
       updateOpenButton();
       return;
     }
@@ -317,11 +342,22 @@
     document.getElementById('pointTransferMemberCode').value = '';
     document.getElementById('pointTransferAmount').value = '';
     document.getElementById('pointTransferCardSummary').textContent =
-      `${option.title || state.activeCardTitle || '集點卡'}・可轉贈 ${Number(option.balance || 0)} 點${option.expiresOn ? `・至 ${option.expiresOn}` : ''}`;
+      `${option?.title || state.activeCardTitle || '集點卡'}・可轉贈 ${Number(option?.balance || 0)} 點${option?.expiresOn ? `・至 ${option.expiresOn}` : ''}`;
     document.getElementById('pointTransferBalanceHint').textContent =
-      `本次轉贈會從這張集點卡扣除，最多可轉贈 ${Number(option.balance || 0)} 點。`;
-    document.getElementById('pointTransferAmount').max = String(Number(option.balance || 0));
+      state.pending ? '待確認原交易；不會重新扣點。' : `本次轉贈會從這張集點卡扣除，最多可轉贈 ${Number(option?.balance || 0)} 點。`;
+    document.getElementById('pointTransferAmount').max = state.pending ? '' : String(Number(option?.balance || 0));
     setMessage('');
+    if (state.pending) {
+      const { memberCode, amount, requestId } = state.pending;
+      document.getElementById('pointTransferMemberCode').value = memberCode;
+      document.getElementById('pointTransferAmount').value = String(amount);
+      state.receiver = { memberCode, displayName: '原收件會員' };
+      state.requestId = requestId;
+      state.fingerprint = JSON.stringify([cardId, memberCode, amount]);
+      renderReceiver();
+      setMessage('前次交易結果尚未確認。再次確認將沿用同一交易識別，不會另建立轉贈。', true);
+    }
+    lockFields();
     modal.classList.remove('hidden');
     document.body.classList.add('point-transfer-modal-open');
     window.setTimeout(() => document.getElementById('pointTransferMemberCode')?.focus(), 0);
@@ -416,7 +452,7 @@
   }
 
   async function lookupReceiver() {
-    if (state.busy) return;
+    if (state.busy || state.pending) return;
     const s = session();
     if (!s) return;
     const memberCode = String(document.getElementById('pointTransferMemberCode').value || '').trim();
@@ -456,10 +492,10 @@
     const memberCode = String(document.getElementById('pointTransferMemberCode').value || '').trim();
     const amount = Number(document.getElementById('pointTransferAmount').value);
 
-    if (!option) return setMessage('這張集點卡目前無法轉贈。', true);
+    if (!option && !state.pending) return setMessage('這張集點卡目前無法轉贈。', true);
     if (!state.receiver || state.receiver.memberCode !== memberCode) return setMessage('請先確認收件會員。', true);
     if (!Number.isSafeInteger(amount) || amount <= 0) return setMessage('請輸入大於 0 的整數點數。', true);
-    if (amount > Number(option.balance || 0)) return setMessage('轉贈點數不可超過目前可用點數。', true);
+    if (!state.pending && amount > Number(option.balance || 0)) return setMessage('轉贈點數不可超過目前可用點數。', true);
 
     const fingerprint = JSON.stringify([cardId, memberCode, amount]);
     if (state.fingerprint !== fingerprint) {
@@ -467,7 +503,8 @@
       state.fingerprint = fingerprint;
     }
 
-    if (!window.confirm(`確定從「${option.title}」轉贈 ${amount} 點給 ${state.receiver.displayName}（${memberCode}）嗎？`)) return;
+    if (!window.confirm(`確定從「${option?.title || '原集點卡'}」轉贈 ${amount} 點給 ${state.receiver.displayName}（${memberCode}）嗎？`)) return;
+    savePending({ cardId, memberCode, amount, requestId: state.requestId });
 
     state.busy = true;
     const submit = document.getElementById('pointTransferSubmit');
@@ -487,6 +524,7 @@
         { cardId, memberCode, amount, requestId: state.requestId }
       );
       setMessage(`轉贈完成。交易編號 ${result.transferId}，目前剩餘 ${result.senderBalance} 點。`);
+      savePending(null);
       state.requestId = '';
       state.fingerprint = '';
       state.receiver = null;
@@ -498,8 +536,10 @@
         : Promise.resolve();
       await Promise.allSettled([refresh, loadOptions()]);
     } catch (error) {
+      const status = Number(error?.status || 0);
+      if (status >= 400 && status < 500 && error?.code !== 'API_RESPONSE_UNCERTAIN') savePending(null);
       setMessage(
-        error?.code === 'API_RESPONSE_UNCERTAIN'
+        (state.pending && (error?.code === 'API_RESPONSE_UNCERTAIN' || status >= 500 || status === 0))
           ? '結果尚未確認；請保持相同內容再次按「確認轉贈」，系統會沿用同一操作識別，不會重複扣點。'
           : (error?.message || '點數轉贈失敗。'),
         true
@@ -509,6 +549,7 @@
       submit.disabled = false;
       close.disabled = false;
       fields.forEach((field) => { if (field) field.disabled = false; });
+      lockFields();
     }
   }
 
@@ -524,6 +565,14 @@
   }
 
   window.addEventListener('member-system:session-revoked', stopTransferScanner);
+  window.addEventListener('member:access-ended', (event) => {
+    stopTransferScanner();
+    state.receiverGeneration += 1;
+    state.receiver = null;
+    if (event.detail?.code === 'MEMBER_REMOVED') savePending(null);
+    document.getElementById('pointTransferModal')?.classList.add('hidden');
+    document.body.classList.remove('point-transfer-modal-open');
+  });
   window.addEventListener('pagehide', stopTransferScanner);
 
   window.addEventListener('pointcard:active-changed', (event) => {
@@ -532,7 +581,11 @@
 
   window.addEventListener('user-tour:ready', (event) => {
     if (event?.detail?.surface !== 'points') return;
-    state.memberCode = String(event?.detail?.profile?.memberCode || '').trim();
+    const nextCode = String(event?.detail?.profile?.memberCode || '').trim();
+    if (nextCode !== state.memberCode) {
+      state.memberCode = nextCode;
+      restorePending();
+    }
     bind();
     updateOwnMemberCode();
     void loadOptions();
