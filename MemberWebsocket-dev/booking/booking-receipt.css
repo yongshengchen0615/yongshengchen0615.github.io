@@ -139,3 +139,11 @@
 html[data-theme="dark"] .booking-receipt-modal-card {
   scrollbar-color: var(--theme-border-strong) var(--theme-surface-raised);
 }
+
+/* Shared modal behavior with QR scan dialog; preserve theme and on-device scrolling. */
+body.booking-receipt-modal-open{overflow:hidden;}
+.booking-receipt-modal{overscroll-behavior:contain;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));}
+.booking-receipt-modal-card{max-height:92dvh;overscroll-behavior:contain;}
+.booking-receipt-file-label input{width:100%;min-height:44px;}
+.booking-receipt-modal :is(button,input):focus-visible{outline:3px solid var(--theme-focus-ring,#5475b9);outline-offset:2px;}
+@media(max-width:600px){.booking-receipt-modal{align-items:end}.booking-receipt-modal-card{max-height:92dvh;border-radius:20px 20px 12px 12px;}}
