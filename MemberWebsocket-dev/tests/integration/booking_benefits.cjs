@@ -220,10 +220,13 @@ test('service-restricted tickets require a matching booked service and are remov
 
     let checkbox = h.el('bookingBenefitsList').querySelector('input[data-booking-benefit-id="PT-BODY"]');
     assert.ok(checkbox);
-    assert.equal(checkbox.disabled, false, 'restricted ticket remains clickable so the member can receive an explanation');
+    assert.equal(checkbox.disabled, true, 'restricted tickets explain their requirements and cannot be selected');
     assert.match(checkbox.parentElement.textContent, /需先預約：身體調理 60 分鐘/);
 
     checkbox.click();
+    assert.deepEqual(JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())), []);
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new h.w.Event('change'));
     assert.deepEqual(JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())), []);
     assert.match(h.el('bookingBenefitsStatus').textContent, /需預約「身體調理 60 分鐘」項目才能使用這張票券/);
 

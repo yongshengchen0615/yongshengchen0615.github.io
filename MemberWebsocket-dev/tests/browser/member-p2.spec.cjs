@@ -68,7 +68,7 @@ test('reward tab binds referral independently and never sends a friend request',
  await openFriends(page,'reward');
  await expect(page.locator('#memberReferralInviteCode')).toBeVisible();await expect(page.locator('#friendAddForm')).toBeHidden();
  await page.locator('#memberReferralInviteCode').fill('CCCC');await expect(page.locator('#bindMemberReferral')).toBeEnabled();await page.locator('#bindMemberReferral').click();
- await expect(page.locator('#memberReferralStatus')).toContainText('邀請優惠綁定成功');expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind').length)).toBe(1);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(0);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.lookup').length)).toBe(0);
+ await expect(page.locator('#memberReferralStatus')).toContainText('邀請成功！你已獲得 1 張好友優惠票券');expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind').length)).toBe(1);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(0);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.lookup').length)).toBe(0);
 });
 
 test('reward link opens reward tab and does not prefill add-friend input',async({page})=>{

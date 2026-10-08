@@ -396,6 +396,13 @@
           card.insertBefore(window.MemberUI.pointTicketDetails(item), card.querySelector('.booking-benefit-select'));
         }
 
+        if (serviceBlocked) {
+          const reason = document.createElement('small');
+          reason.className = 'booking-benefit-disabled-reason';
+          reason.textContent = serviceRequirementMessage(item);
+          card.appendChild(reason);
+        }
+
         if (!selectable && item.disabledReason) {
           const reason = document.createElement('small');
           reason.className = 'booking-benefit-disabled-reason';

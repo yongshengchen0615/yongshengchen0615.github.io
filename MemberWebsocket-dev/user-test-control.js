@@ -3767,7 +3767,7 @@
         const input = Array.from(document.querySelectorAll('[data-booking-benefit-id]')).find(node => node.dataset.bookingBenefitId === id);
         if (!input) { checks.push({kind:item.kind,matchMode:item.requiredServiceMatchMode,rejected:false}); continue; }
         input.click();
-        const rejected = await waitFor(() => window.BookingBenefits.selectionPayload().length === 0 && /需先預約|需預約|必須預約/.test(document.getElementById('bookingBenefitsStatus')?.textContent || ''), 1500);
+        const rejected = await waitFor(() => window.BookingBenefits.selectionPayload().length === 0 && (input.disabled ? /需先預約|需預約|必須預約/.test(input.closest('.booking-benefit')?.textContent || '') : /需先預約|需預約|必須預約/.test(document.getElementById('bookingBenefitsStatus')?.textContent || '')), 1500);
         checks.push({kind:item.kind,matchMode:item.requiredServiceMatchMode,rejected:Boolean(rejected)});
       }
     } finally { window.BookingBenefits.setSelection(originalSelection); }
