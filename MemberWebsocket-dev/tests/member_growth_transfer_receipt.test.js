@@ -78,9 +78,13 @@ test('booking receipt uses private upload, waits for admin review, and keeps the
   assert.match(testControl, /BOOKING_RECEIPT_BUCKET = "booking-receipts"/);
 
   assert.match(memberUi, /navigator\.mediaDevices\?\.getUserMedia/);
-  assert.doesNotMatch(memberUi, /type="file"/);
-  assert.doesNotMatch(memberUi, /<input[^>]+id="bookingReceiptFile"/);
-  assert.doesNotMatch(memberUi, /getElementById\('bookingReceiptFile'\)/);
+  assert.match(memberUi, /type="file"/);
+  assert.match(memberUi, /id="bookingReceiptFile"/);
+  assert.match(memberUi, /acceptFile\(file\)/);
+  assert.match(memberUi, /bookingReceiptDiscard/);
+  assert.match(memberUi, /state\.busy \|\| !file/);
+  assert.match(memberUi, /5 \* 1024 \* 1024/);
+  assert.match(memberUi, /member:access-ended/);
   assert.match(memberUi, /uploadToSignedUrl/);
   assert.match(memberUi, /user\.booking\.receipt\.finalize/);
   assert.match(memberUi, /等待管理端確認/);
