@@ -12,6 +12,10 @@ const api = fs.readFileSync(path.join(root, 'supabase', 'functions', 'api', 'ind
 test('member directory exposes a records action beside existing actions', () => {
   assert.match(app, /actionButton\('會員 360', 'view-records'/);
   assert.match(app, /button\.dataset\.action === 'view-records'/);
+  assert.doesNotMatch(app, /actionButton\('狀態', 'edit-member'/);
+  assert.doesNotMatch(app, /actionButton\('＋ 發放', 'add-grant'/);
+  assert.match(app, /statusAction\.textContent = '狀態'/);
+  assert.match(app, /grantAction\.textContent = '＋ 發放'/);
   assert.match(html, /id="memberRecordsModal"/);
   assert.match(html, /id="memberRecordsOverview"/);
   assert.match(html, /id="memberRecordsModalTitle">會員 360</);
