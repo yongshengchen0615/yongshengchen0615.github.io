@@ -122,11 +122,46 @@ test('point transfer discards stale receiver reads, locks inputs, preserves retr
     for (const id of ['pointTransferMemberCode','pointTransferAmount','pointTransferLookup','pointTransferClose']) assert.equal(el(id).disabled,true);
     // An uncertain result must retry the same immutable request id.
     transfers[0].resolve(Promise.reject(Object.assign(new Error('uncertain'),{code:'API_RESPONSE_UNCERTAIN'}))); await tick();
+    const pending=JSON.parse(w.sessionStorage.getItem('point-transfer-pending:v1:SELF'));
+    assert.equal(pending.requestId,transfers[0].payload.requestId);
+    assert.equal(el('pointTransferMemberCode').disabled,true,'Uncertain result locks immutable receiver');
     el('pointTransferForm').dispatchEvent(new w.Event('submit',{ cancelable:true })); await tick();
     assert.equal(transfers[1].payload.requestId,transfers[0].payload.requestId);
     transfers[1].resolve({ transferId:'transfer',senderBalance:18 }); balance=18; await tick();
     assert.equal(el('pointTransferAmount').max,'18');
     assert.match(el('pointTransferCardSummary').textContent,/18/);
     assert.equal(el('pointTransferMemberCode').disabled,false);
+    assert.equal(w.sessionStorage.getItem('point-transfer-pending:v1:SELF'),null);
   } finally { w.close(); }
+});
+
+test('reload with an uncertain transfer restores exactly the previous request identity even after balance reaches zero',async()=>{
+  const dom=new JSDOM('<div id="pointsView"></div><div id="activeCardView" data-card-id="card"></div><button id="pointTransferButton"></button>',{runScripts:'outside-only',url:'https://example.test/',pretendToBeVisual:true});
+  const w=dom.window, calls=[];
+  const pending={cardId:'card',memberCode:'RECEIVER',amount:3,requestId:'pt-original-unique-123'};
+  w.sessionStorage.setItem('point-transfer-pending:v1:SELF',JSON.stringify(pending));
+  w.confirm=()=>true;
+  w.MemberSystem={getSession:()=>({config:{},idToken:'fixture'}),request:async(_,__,___,action,payload)=>{
+    if(action==='points.transfer.options')return {cards:[]};
+    if(action==='points.transfer.create'){calls.push(payload);return {transferId:'previous-transfer',senderBalance:0,alreadyApplied:true};}
+    throw new Error('Unexpected action: '+action);
+  }};
+  try{
+    w.eval(fs.readFileSync(path.join(root,'points/point-transfer.js'),'utf8'));
+    w.dispatchEvent(new w.CustomEvent('user-tour:ready',{detail:{surface:'points',profile:{memberCode:'SELF'}}}));
+    await tick();
+    const el=id=>w.document.getElementById(id);
+    assert.equal(el('pointTransferButton').disabled,false);
+    el('pointTransferButton').click();
+    assert.equal(el('pointTransferMemberCode').value,'RECEIVER');
+    assert.equal(el('pointTransferAmount').value,'3');
+    assert.equal(el('pointTransferAmount').max,'');
+    assert.equal(el('pointTransferMemberCode').disabled,true);
+    el('pointTransferForm').dispatchEvent(new w.Event('submit',{cancelable:true}));
+    await tick();
+    assert.equal(calls.length,1);
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[0])),pending);
+    assert.equal(w.sessionStorage.getItem('point-transfer-pending:v1:SELF'),null);
+    assert.match(el('pointTransferMessage').textContent,/previous-transfer/);
+  }finally{w.close();}
 });
