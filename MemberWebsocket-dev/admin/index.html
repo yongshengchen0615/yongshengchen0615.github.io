@@ -45,7 +45,7 @@
   <script src="./app.js?v=admin-test-purge-sync-20261005-1-p2-20261006-1-ongoing-20261008-2" defer></script>
   <script src="./member-workspace-tabs.js?v=member-workspace-tabs-20260929-1" defer></script>
   <script src="./terms.js?v=membership-terms-ui-20261005-2" defer></script>
-  <script src="./test-mode.js?v=duplicate-test-login-20261008-1" defer></script>
+  <script src="./test-mode.js?v=test-login-takeover-20261008-2" defer></script>
   <script src="./test-control.js?v=test-control-20261005-3" defer></script>
   <script src="../e2e-feature-coverage.js?v=feature-coverage-20261006-1" defer></script>
   <script src="../e2e-scenario-graph.js?v=e2e-graph-20261004-2" defer></script>
@@ -322,7 +322,7 @@
                     <span class="test-mode-toggle-control"><input id="testModeMobileLoginEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
                   </label>
                   <label class="test-mode-toggle">
-                    <span class="test-mode-toggle-copy"><strong>允許測試帳號重複登入</strong><small>開啟後，同一虛擬測試帳號可在多個視窗／裝置同時登入相同用戶端。關閉時會保留每種用戶端最新的測試登入，其餘立即失效；正式會員不受影響。</small></span>
+                    <span class="test-mode-toggle-copy"><strong>允許測試帳號接管登入（測試強制登出）</strong><small>開啟後，可在其他視窗／裝置再次登入同一測試帳號；新登入成功會撤銷舊 Session 並顯示強制登出通知，不會允許兩個連線同時有效。關閉時，已登入的用戶端將阻擋第二次登入；正式會員不受影響。</small></span>
                     <span class="test-mode-toggle-control"><input id="testModeDuplicateLoginEnabled" type="checkbox"><span class="test-mode-switch" aria-hidden="true"></span></span>
                   </label>
                 </div>
