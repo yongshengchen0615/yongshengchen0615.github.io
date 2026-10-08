@@ -16,7 +16,7 @@
   function stopReferralScan() {
     referralScanner?.stop();
     const scanner = document.getElementById('memberReferralQrScanner');
-    if (scanner) scanner.hidden = true;
+    if (scanner) { window.CameraDialog?.close(scanner); scanner.hidden = true; }
   }
 
   function referralScanStatus(message) {
@@ -339,10 +339,12 @@
     shareButton.addEventListener('click', () => void shareReferralLink());
 
     if (window.FriendQRScanner?.create) {
+      window.CameraDialog?.mount(camera, '掃描邀請優惠 QR Code');
+      const cameraStatus = document.createElement('p'); cameraStatus.className = 'camera-dialog-status'; cameraStatus.setAttribute('role', 'status'); (camera.querySelector('section') || camera).append(cameraStatus);
       referralScanner = window.FriendQRScanner.create(video, {
         label: '邀請優惠',
         parseValue: parseReferralValue,
-        onStatus: referralScanStatus,
+        onStatus: message => { cameraStatus.textContent = message; referralScanStatus(message); },
         onResult: referral => {
           stopReferralScan();
           input.value = referral.memberCode
@@ -355,6 +357,7 @@
       });
       scan.addEventListener('click', () => {
         if (state.binding) return;
+        window.CameraDialog?.open(camera, { onClose: () => referralScanner.stop() });
         camera.hidden = false;
         void referralScanner.start();
       });

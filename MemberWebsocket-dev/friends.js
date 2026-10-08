@@ -63,7 +63,7 @@
 
   function stopScan() {
     scanner?.stop();
-    if (el('friendQrScanner')) el('friendQrScanner').hidden = true;
+    if (el('friendQrScanner')) { window.CameraDialog?.close(el('friendQrScanner')); el('friendQrScanner').hidden = true; }
   }
 
   function selectMemberTab(name, focus = false) {
@@ -270,8 +270,10 @@
 
       tabs.friendsPanel.append(inviteSection, addForm, camera, message, panel);
 
+      window.CameraDialog?.mount(camera, '掃描好友 QR Code');
+      const cameraStatus = document.createElement('p'); cameraStatus.className = 'camera-dialog-status'; cameraStatus.setAttribute('role', 'status'); (camera.querySelector('section') || camera).append(cameraStatus);
       scanner = window.FriendQRScanner.create(el('friendQrVideo'), {
-        onStatus: status,
+        onStatus: message => { cameraStatus.textContent = message; status(message); },
         onResult: code => {
           stopScan();
           input().value = code;
@@ -287,6 +289,7 @@
       input().addEventListener('input', invalidate);
       el('scanFriendQr').addEventListener('click', () => {
         if (busy) return;
+        window.CameraDialog?.open(camera, { onClose: () => scanner.stop() });
         camera.hidden = false;
         void scanner.start();
       });

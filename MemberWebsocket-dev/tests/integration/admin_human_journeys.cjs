@@ -33,6 +33,7 @@ class Locator {
 class Page {
   constructor(){this.routes=[];this.listeners={};this.keyboard={press:async key=>{const w=this.dom.window;w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));await pause();}};}
   on(event,fn){this.listeners[event]=fn;}
+  removeAllListeners(event){delete this.listeners[event];}
   async route(pattern,fn){this.routes.push([pattern,fn]);}
   locator(selector){return new Locator(this,()=>[...this.dom.window.document.querySelectorAll(selector)]);}
   getByRole(role,options={}){return this.locator(role==='button'?'button':role).filter({hasText:options.name||''});}
@@ -58,7 +59,8 @@ class Page {
       w.HTMLElement.prototype.scrollIntoView=function(){};
       // JSDOM supplies no layout; model visibility only, with Chromium testing real geometry.
       w.HTMLElement.prototype.getClientRects=function(){return visible(this)?[{}]:[];};
-      w.confirm=()=>true;w.alert=()=>{};w.isSecureContext=true;let clipboard='';w.navigator.clipboard={writeText:async text=>{clipboard=text;},readText:async()=>clipboard};
+      const dialog=(type,message)=>{let value=type==='prompt'?null:false;page.listeners.dialog?.({type:()=>type,message:()=>message,accept:input=>{value=type==='prompt'?(input||''):true;},dismiss:()=>{value=type==='prompt'?null:false;}});return value;};
+      w.confirm=message=>dialog('confirm',message);w.prompt=message=>dialog('prompt',message);w.alert=message=>dialog('alert',message);w.isSecureContext=true;let clipboard='';w.navigator.clipboard={writeText:async text=>{clipboard=text;},readText:async()=>clipboard};
       w.CSS={escape:value=>String(value).replace(/[^a-zA-Z0-9_-]/g,c=>'\\'+c)};
       w.addEventListener('error',e=>page.listeners.pageerror?.({message:e.message}));
     }});

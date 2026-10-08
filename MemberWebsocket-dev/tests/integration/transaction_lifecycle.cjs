@@ -10,6 +10,7 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 async function receiptHarness() {
   const dom = new JSDOM('<div id="bookingView"></div><div id="bookingList"><article data-booking-id="booking"></article></div>', { runScripts:'outside-only',url:'https://example.test/',pretendToBeVisual:true });
   const w = dom.window;
+  w.confirm = () => true;
   const cameras = [], actions = [], closes = [];
   const finalize = deferred();
   let uploads = 0;

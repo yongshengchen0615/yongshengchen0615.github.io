@@ -47,6 +47,7 @@ function transport(s, action, p={}, slug='api',record=true) {
   if(action==='admin.members.list')return page();
   if(action==='admin.members.presence.list')return {members:s.members};
   if(action==='admin.member.update'){const m=s.members.find(m=>m.lineUserId===p.lineUserId);return {member:save('members','memberId',{...m,...p,...p.profile})};}
+  if(action==='admin.member.remove'){const m=s.members.find(m=>m.lineUserId===p.lineUserId);if(m.memberCode!==p.confirmMemberCode)throw Object.assign(new Error('confirmation mismatch'),{code:'CONFIRMATION_MISMATCH'});s.members=s.members.filter(m=>m.lineUserId!==p.lineUserId);return {state:'complete',jobId:'qa-removal'};}
   if(action==='admin.member.force-logout'){s.members.find(m=>m.lineUserId===p.lineUserId).isOnline=false;return {revoked:true};}
   if(action==='admin.member-tiers.save'){s.tierSettings=p.tierSettings;return bootstrap();}
   if(action==='admin.member-records.list')return {member:s.members.find(m=>m.lineUserId===p.lineUserId),records:[],pointCards:[],eventTickets:[],bookings:[],calendar:[],testAutomation:[],presence:[],summary:{}};

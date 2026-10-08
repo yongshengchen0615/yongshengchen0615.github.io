@@ -21,6 +21,7 @@
     let generation = 0, stream = null, timer = null, active = false;
     const canvas = document.createElement('canvas');
     const stop = () => {
+      window.CameraDialog?.release(stop);
       generation++; active = false; clearTimeout(timer); timer = null;
       if (stream) stream.getTracks().forEach(track => track.stop());
       stream = null; video.srcObject = null;
@@ -52,7 +53,7 @@
       timer = setTimeout(() => scan(current), 180);
     }
     async function start() {
-      stop(); const current = generation; active = true;
+      stop(); window.CameraDialog?.acquire(stop); const current = generation; active = true;
       if (!navigator.mediaDevices?.getUserMedia) {
         stop(); onStatus(`此瀏覽器無法開啟相機，請使用 QR 圖片、貼上${label}連結或輸入會員編號。`); return;
       }

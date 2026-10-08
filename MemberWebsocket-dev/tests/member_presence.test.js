@@ -27,6 +27,8 @@ test('presence events remain authenticated server-side and append only minimal a
   const identityPosition = api.indexOf('identity = await verifyLineIdToken(idToken,clientType,action.endsWith(".session.claim"));');
   const actionPosition = api.indexOf('const presence = presenceActionInfo(action);', api.indexOf('async function handleAction'));
   assert.ok(identityPosition >= 0);
+  assert.match(api, /member_login_claim/);
+  assert.match(api, /member_login_logout/);
   assert.ok(actionPosition >= 0);
 
   assert.match(api, /actor_role:"member"/);

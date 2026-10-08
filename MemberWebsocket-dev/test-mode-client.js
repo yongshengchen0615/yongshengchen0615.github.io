@@ -104,9 +104,9 @@
         const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
         const eventType = String(row.event_type || '');
         const scope = String(row.scope || '');
-        if (eventType === 'admin.member.force-logout' && (scope === 'all' || scope === realtimeSurface) && getSessionToken()) {
+        if ((eventType === 'admin.member.force-logout' || eventType === 'member.removal.started') && (scope === 'all' || scope === realtimeSurface) && getSessionToken()) {
           void sessionStatus(config, realtimeSurface).catch((error) => {
-            if (error && error.code === 'SESSION_REVOKED') terminateForcedTestSession(error.message);
+            if (error && ['SESSION_REVOKED', 'TEST_SESSION_INVALID', 'MEMBER_REMOVED'].includes(error.code)) terminateForcedTestSession(error.message);
           });
           return;
         }

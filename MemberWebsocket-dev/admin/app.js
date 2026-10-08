@@ -1034,7 +1034,22 @@
       }
     });
 
-    actions.append(statusAction, grantAction);
+    const removeAction = document.createElement('button');
+    removeAction.type = 'button'; removeAction.className = 'button button-outline'; removeAction.textContent = '移除會員全部資料';
+    removeAction.addEventListener('click', async () => {
+      const confirmed = window.prompt(`此操作不可復原。將移除 ${member.displayName || '會員'} 的個人資料、連線、收據、點數、票券及好友關聯；其他會員已取得的權益會保留。重新註冊不會復原舊資料。請輸入完整會員編號 ${member.memberCode} 確認：`);
+      if (confirmed !== member.memberCode) { if (confirmed !== null) showMessage(els.memberRecordsMessage, '會員編號不符，未開始移除。'); return; }
+      if (!window.confirm('確定永久移除此會員？已移除的資料無法復原。')) return;
+      removeAction.disabled = true; statusAction.disabled = true; grantAction.disabled = true;
+      showMessage(els.memberRecordsMessage, '正在撤銷連線並清除會員資料…');
+      try {
+        const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.remove', { lineUserId: member.lineUserId, confirmMemberCode: confirmed });
+        if (result.state !== 'complete') throw new Error('清理尚未完成，請重試移除。');
+        closeMemberRecordsModal(); await loadMembersPage(state.memberPage.page, state.memberPage.query);
+      } catch (error) { showMessage(els.memberRecordsMessage, error.message || '移除尚未完成，請重試。'); }
+      finally { removeAction.disabled = false; statusAction.disabled = false; grantAction.disabled = false; }
+    });
+    actions.append(statusAction, grantAction, removeAction);
 
     els.memberRecordsOverview.replaceChildren(hero, metricGrid, actions);
   }

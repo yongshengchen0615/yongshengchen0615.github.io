@@ -12,7 +12,7 @@ for (const loggedIn of [false, true]) {
     const window = {
       location: { href: 'https://example.test/booking/?booking_system_reauth=booking' },
       history: { replaceState: (_, __, url) => { cleanedUrl = url; } },
-      BookingSystem: { signIn: async () => 'original' },
+      BookingSystem: { signIn: async () => 'original', claimBrowserSession: async () => {} },
       liff: { init: async () => {}, isInClient: () => false, isLoggedIn: () => loggedIn, getIDToken: () => 'fixture-token', login: () => { redirects++; } },
     };
     vm.runInNewContext(source, { window, document: { title: 'Booking' }, URL });

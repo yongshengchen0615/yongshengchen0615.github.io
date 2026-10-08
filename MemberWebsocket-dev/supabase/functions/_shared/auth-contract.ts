@@ -50,13 +50,22 @@ export async function verifyLineIdTokenContract(args: {
 
   const { createClient } = await import("npm:@supabase/supabase-js@2.57.0");
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const [settingsResult, adminResult, memberResult] = await Promise.all([
+  const [settingsResult, adminResult, memberResult, removalResult] = await Promise.all([
     supabase.from("test_mode_settings").select("maintenance_enabled,maintenance_message,maintenance_revoked_after").eq("id", true).maybeSingle(),
     supabase.from("admins").select("role,status").eq("line_user_id", sub).maybeSingle(),
     supabase.from("members").select("force_logout_after").eq("line_user_id", sub).maybeSingle(),
+    (async () => {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sub));
+      const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+      return await supabase.from('member_removal_jobs').select('state,revoked_before').eq('identity_hash', hash).maybeSingle();
+    })(),
   ]);
-  if (settingsResult.error || adminResult.error || memberResult.error) {
+  if (settingsResult.error || adminResult.error || memberResult.error || removalResult.error) {
     throw createError(503, "ACCESS_CONTROL_UNAVAILABLE", "目前無法確認會員存取狀態。");
+  }
+
+  if (removalResult.data && (removalResult.data.state !== 'complete' || identity.issuedAtMs <= new Date(removalResult.data.revoked_before).getTime())) {
+    throw createError(401, 'MEMBER_REMOVED', '此會員資料已移除，原登入連線已失效。');
   }
 
   const isActiveAdmin = adminResult.data?.role === "admin" && adminResult.data?.status === "active";

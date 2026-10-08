@@ -3,8 +3,8 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "9c069decab2d889a6df9be4e0c5baa1c552755ddfea983f578a67276a4521e93",
-    "admin/app.js": "f43e09b8ab238b95c2b75aced79a890fa2172fd3759311f69f42c07e25816eeb",
+    "admin/index.html": "ddfa105e7c5361d247c6e96df09f29d15b7e0634791e4a9cf90c59dd45136af6",
+    "admin/app.js": "e616fd14f80ee25d4c8a2403b81fe3cbd8041711f7b0eff9aefa94e8e7300b1c",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
     "admin/grant-automation.js": "f3178a0bb26745d6cd7731b24ab8ab9aaec96a4dada62699a3609ae8b803e2b0",
@@ -480,6 +480,14 @@
       "name": "會員階級可見性策略儲存與重新載入",
       "cases": [
         "TICKET_VISIBILITY"
+      ]
+    },
+    {
+      "id": "member.remove",
+      "module": "member",
+      "name": "會員完整移除：取消、識別確認、清理與名冊刷新",
+      "cases": [
+        "MEMBER_REMOVE"
       ]
     }
   ]

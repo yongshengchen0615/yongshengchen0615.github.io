@@ -73,6 +73,9 @@
       </div>`;
     document.body.append(modal);
 
+    const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = 'image/jpeg,image/png,image/webp'; fileInput.id = 'bookingReceiptFile';
+    const fileLabel = document.createElement('label'); fileLabel.textContent = '也可選擇收據圖片'; fileLabel.append(fileInput); modal.querySelector('.booking-receipt-camera').append(fileLabel);
+    fileInput.addEventListener('change', () => { if (!state.busy && fileInput.files?.[0]) { stopCamera(); acceptFile(fileInput.files[0]); } fileInput.value = ''; });
     modal.querySelector('#bookingReceiptClose').addEventListener('click', closeModal);
     modal.querySelector('#bookingReceiptCancel').addEventListener('click', closeModal);
     modal.querySelector('#bookingReceiptCapture').addEventListener('click', captureFrame);
@@ -121,6 +124,7 @@
   }
 
   function stopCamera() {
+    window.CameraDialog?.release(stopCamera);
     state.cameraGeneration += 1;
     if (state.cameraStream) {
       state.cameraStream.getTracks().forEach((track) => track.stop());
@@ -133,7 +137,9 @@
 
   function closeModal() {
     if (state.busy) return;
+    if (state.selectedFile && !window.confirm('關閉將捨棄尚未送出的收據快照，確定關閉？')) return;
     stopCamera();
+    window.CameraDialog?.close(document.getElementById('bookingReceiptModal'));
     resetModalState();
     document.getElementById('bookingReceiptModal')?.classList.add('hidden');
     state.selectedBookingId = '';
@@ -150,6 +156,7 @@
       : '預約確認後即可拍攝收據。重新上傳會覆蓋目前快照；管理員核對前不會完成預約。';
     state.selectedBookingId = String(bookingId || '');
     state.selectedExpectedUpdatedAt = String(expectedUpdatedAt || '');
+    window.CameraDialog?.open(modal, { onClose: stopCamera });
     modal.classList.remove('hidden');
     if (options?.skipCamera !== true) void startCamera();
   }
@@ -172,6 +179,7 @@
 
   async function startCamera() {
     stopCamera();
+    window.CameraDialog?.acquire(stopCamera);
     const generation = state.cameraGeneration;
     const video = document.getElementById('bookingReceiptCamera');
     const capture = document.getElementById('bookingReceiptCapture');
@@ -184,7 +192,7 @@
     if (!navigator.mediaDevices?.getUserMedia) {
       capture.disabled = false;
       capture.textContent = '重新嘗試開啟相機';
-      setMessage('此瀏覽器無法使用相機拍攝。請改用支援相機權限的瀏覽器或裝置。', true);
+      setMessage('此瀏覽器無法使用相機。請改用下方的收據圖片選檔。', true);
       return;
     }
 
@@ -393,6 +401,7 @@
       );
 
       submitted = true;
+      state.selectedFile = null;
       setMessage(finalized.alreadyApplied ? '此收據已送出，正在等待管理端確認。' : '收據已安全送出，請等待管理端核對後完成預約。');
       if (state.accessible) window.dispatchEvent(new CustomEvent('booking:accessible-receipt-submitted', { detail: finalized }));
       state.receiptsByBooking.set(state.selectedBookingId, {
@@ -513,6 +522,7 @@
     if (event.key === 'Escape' && !document.getElementById('bookingReceiptModal')?.classList.contains('hidden')) closeModal();
   });
   window.addEventListener('DOMContentLoaded', ensureModal);
+  window.addEventListener('member:access-ended', () => { state.photoGeneration += 1; stopCamera(); resetModalState(); document.getElementById('bookingReceiptModal')?.classList.add('hidden'); });
   window.addEventListener('pagehide', () => {
     state.photoGeneration += 1;
     stopCamera();
