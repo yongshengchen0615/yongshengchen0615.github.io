@@ -62,6 +62,7 @@
   }
 
   function stopScan() {
+    window.QRScanDialog?.close(el('friendQrScanner'));
     scanner?.stop();
     if (el('friendQrScanner')) el('friendQrScanner').hidden = true;
   }
@@ -287,8 +288,13 @@
       input().addEventListener('input', invalidate);
       el('scanFriendQr').addEventListener('click', () => {
         if (busy) return;
-        camera.hidden = false;
-        void scanner.start();
+        if (!window.QRScanDialog?.open(camera, {
+          title: '掃描好友 QR Code', opener: el('scanFriendQr'),
+          start: () => scanner.start(), stop: () => scanner.stop()
+        })) {
+          camera.hidden = false;
+          void scanner.start();
+        }
       });
       el('stopFriendQr').addEventListener('click', () => {
         stopScan();
