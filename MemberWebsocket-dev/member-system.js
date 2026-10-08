@@ -712,6 +712,9 @@
   function terminateAccessSession(code, message) {
     if (isTerminatingAccess) return;
     isTerminatingAccess = true;
+    if (code === 'SESSION_REPLACED' || code === 'SESSION_REVOKED') {
+      try { window.localStorage.setItem(LOGIN_REGISTERED_KEY, 'replaced'); } catch (_) {}
+    }
     for (const entry of realtimeSubscriptions.values()) {
       try { entry.unsubscribe(); } catch (_) {}
     }
