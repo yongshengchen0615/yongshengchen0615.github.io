@@ -352,3 +352,14 @@ for(const kind of ['card','ticket','event','fixed'])test('SETTINGS_COPY_'+kind+'
 test('TICKET_VISIBILITY — save both policies and reload persisted setting',async({page:p},info)=>{
  await click(p,'eventsTab');await expect(p.locator('#saveTicketVisibility')).toBeEnabled();await select(p,'ticketVisibilityPolicy','higher_preview');await click(p,'saveTicketVisibility');await expect(p.locator('#ticketVisibilityStatus')).toContainText('已儲存');await p.reload();await click(p,'eventsTab');await expect(p.locator('#ticketVisibilityPolicy')).toHaveValue('higher_preview');await select(p,'ticketVisibilityPolicy','eligible_only');await click(p,'saveTicketVisibility');await expect.poll(()=>info.fixture.visibilityPolicy).toBe('eligible_only');
 });
+
+test('MEMBER_REMOVE — cancelled or mismatched confirmation has no effects; confirmed removal refreshes directory',async({page:p},info)=>{
+  await openMember360(p);
+  p.removeAllListeners('dialog');p.on('dialog',d=>d.dismiss());
+  await p.getByRole('button',{name:'移除會員全部資料'}).click();expect(calls(info.fixture,'admin.member.remove')).toHaveLength(0);
+  p.removeAllListeners('dialog');p.on('dialog',d=>d.type()==='prompt'?d.accept('wrong'):d.accept());
+  await p.getByRole('button',{name:'移除會員全部資料'}).click();await expect(p.locator('#memberRecordsMessage')).toContainText('會員編號不符');expect(calls(info.fixture,'admin.member.remove')).toHaveLength(0);
+  p.removeAllListeners('dialog');p.on('dialog',d=>d.type()==='prompt'?d.accept('TEST1'):d.accept());
+  await p.getByRole('button',{name:'移除會員全部資料'}).click();await expect(p.locator('#memberRecordsModal')).toBeHidden();
+  expect(calls(info.fixture,'admin.member.remove')).toHaveLength(1);expect(info.fixture.members).toHaveLength(2);
+});
