@@ -16,6 +16,7 @@
     cameraReady: false,
     cameraGeneration: 0,
     opener: null,
+    previousShellInert: null,
     photoGeneration: 0,
     busy: false,
     listLoading: false,
@@ -152,6 +153,11 @@
     resetModalState();
     document.getElementById('bookingReceiptModal')?.classList.add('hidden');
     document.body.classList.remove('booking-receipt-modal-open');
+    const shell = document.querySelector('.app-shell');
+    if (shell && state.previousShellInert !== null) {
+      shell.inert = state.previousShellInert;
+      state.previousShellInert = null;
+    }
     const opener = state.opener;
     state.opener = null;
     if (opener?.isConnected && opener.getClientRects().length) opener.focus({ preventScroll: true });
@@ -173,6 +179,11 @@
     state.selectedExpectedUpdatedAt = String(expectedUpdatedAt || '');
     modal.classList.remove('hidden');
     document.body.classList.add('booking-receipt-modal-open');
+    const shell = document.querySelector('.app-shell');
+    if (shell && state.previousShellInert === null) {
+      state.previousShellInert = Boolean(shell.inert);
+      shell.inert = true;
+    }
     if (options?.skipCamera !== true) void startCamera();
   }
 
