@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const sql = read('supabase/migrations/20261008083358_test_account_duplicate_login_setting.sql');
-const takeoverSql = read('supabase/migrations/20261008170000_test_login_takeover_single_session.sql');
+const takeoverSql = read('supabase/migrations/20261008091007_test_login_takeover_single_session.sql');
 
 test('duplicate-login is explicitly admin controlled and disabled by default', () => {
   const html = read('admin/index.html');
