@@ -6,7 +6,7 @@
       key: 'environment',
       label: '環境設定',
       eyebrow: 'Environment',
-      description: '維護模式、PC／行動裝置測試登入與維護訊息。'
+      description: '維護模式、PC／行動裝置測試登入、重複登入與維護訊息。'
     },
     {
       key: 'accounts',
