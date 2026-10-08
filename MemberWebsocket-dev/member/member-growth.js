@@ -52,7 +52,7 @@
 
   function parseReferralValue(raw) {
     const text = String(raw || '').trim();
-    if (!text) throw new Error('請輸入邀請人的會員編號或邀請優惠連結。');
+    if (!text) throw new Error('請輸入被邀請者的會員編號或掃描會員 QR Code。');
     let candidate = text;
     let legacyInviteCode = false;
 
@@ -85,7 +85,7 @@
     candidate = String(candidate || '').trim().toUpperCase();
     if (legacyInviteCode && /^[A-F0-9]{10}$/.test(candidate)) return { inviteCode: candidate };
     if (/^[A-Z0-9_-]{4,40}$/.test(candidate)) return { memberCode: candidate };
-    throw new Error('請輸入有效的邀請人會員編號或邀請優惠連結。');
+    throw new Error('請輸入有效的被邀請者會員編號或 QR Code。');
   }
 
   function referralShareUrl() {
@@ -184,7 +184,7 @@
     share.className = 'member-referral-section';
     share.id = 'memberReferralShare';
     const shareTitle = document.createElement('strong');
-    shareTitle.textContent = '分享邀請優惠';
+    shareTitle.textContent = '出示會員 QR Code';
     const shareBody = document.createElement('div');
     shareBody.className = 'friend-sharing';
     const qr = document.createElement('canvas');
@@ -212,7 +212,7 @@
     shareButton.textContent = '分享邀請優惠';
     shareRow.append(code, copy, shareButton);
     const shareHelp = document.createElement('small');
-    shareHelp.textContent = '可直接出示 QR Code，或分享邀請優惠連結給尚未綁定推薦關係的會員。綁定成功後，邀請者會獲得 1 張好友邀請票券；被邀請者不會獲得此獎勵票券。';
+    shareHelp.textContent = '將自己的會員編號或 QR Code 出示給邀請者 A，由 A 掃描或輸入。A 確認後獲得 1 張活動票券；同一位被邀請者只能被登記一次。';
     shareActions.append(shareRow, shareHelp);
     shareBody.append(qr, shareActions);
     share.append(shareTitle, shareBody);
@@ -222,21 +222,21 @@
     bind.className = 'member-referral-section member-referral-bind';
     bind.noValidate = true;
     const bindTitle = document.createElement('strong');
-    bindTitle.textContent = '綁定邀請優惠';
+    bindTitle.textContent = '領取好友邀請優惠';
     const bindLabel = document.createElement('label');
     bindLabel.setAttribute('for', 'memberReferralInviteCode');
-    bindLabel.textContent = '邀請人的會員編號';
+    bindLabel.textContent = '被邀請者的會員編號';
     const input = document.createElement('input');
     input.id = 'memberReferralInviteCode';
     input.type = 'text';
     input.maxLength = 2048;
     input.autocomplete = 'off';
     input.inputMode = 'text';
-    input.placeholder = '輸入會員編號或貼上邀請優惠連結';
+    input.placeholder = '輸入對方會員編號或掃描對方 QR Code';
     input.setAttribute('aria-describedby', 'memberReferralBindHelp');
     const help = document.createElement('small');
     help.id = 'memberReferralBindHelp';
-    help.textContent = '這裡只處理邀請優惠，不會送出好友邀請。每位會員只能綁定一次；既有舊版邀請連結仍可相容。';
+    help.textContent = '由邀請者本人操作：輸入或掃描被邀請者的會員編號。每成功邀請一位不同會員可獲得 1 張優惠票券；同一位被邀請者僅能登記一次。';
     const scanActions = document.createElement('div');
     scanActions.className = 'friend-actions';
     const scan = document.createElement('button');
@@ -276,7 +276,7 @@
     submit.id = 'bindMemberReferral';
     submit.type = 'submit';
     submit.className = 'button button-dark';
-    submit.textContent = '確認綁定邀請優惠';
+    submit.textContent = '確認邀請並領取票券';
     submit.disabled = true;
     const status = document.createElement('p');
     status.id = 'memberReferralStatus';
@@ -331,8 +331,8 @@
 
     input.addEventListener('input', () => {
       stopReferralScan();
-      if (!state.binding && !state.bound) state.referralRequestId = '';
-      submit.disabled = state.binding || state.bound || !input.value.trim();
+      if (!state.binding) state.referralRequestId = '';
+      submit.disabled = state.binding || !input.value.trim();
       showReferralStatus('');
     });
     copy.addEventListener('click', () => void copyReferralLink());
@@ -354,7 +354,7 @@
         },
       });
       scan.addEventListener('click', () => {
-        if (state.binding || state.bound) return;
+        if (state.binding) return;
         camera.hidden = false;
         void referralScanner.start();
       });
@@ -363,7 +363,7 @@
         scan.focus();
       });
       upload.addEventListener('click', () => {
-        if (!state.binding && !state.bound) file.click();
+        if (!state.binding) file.click();
       });
       file.addEventListener('change', event => {
         const selected = event.target.files?.[0];
@@ -378,7 +378,7 @@
 
     bind.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (state.binding || state.bound) return;
+      if (state.binding) return;
 
       let referral;
       try { referral = parseReferralValue(input.value); }
@@ -414,28 +414,30 @@
           { ...referral, requestId: state.referralRequestId }
         );
         if (current !== state.generation) return;
-        state.bound = true;
+        state.referralRequestId = '';
         const expires = result?.rewardExpiresOn
           ? '，票券效期至 ' + window.MemberSystem.formatDate(result.rewardExpiresOn)
           : '';
         showReferralStatus(
           result?.alreadyApplied
-            ? '這組邀請優惠已完成；邀請人的好友邀請票券已發放' + expires + '。'
-            : '邀請優惠綁定成功；邀請人已獲得 1 張好友邀請票券，你不會取得此獎勵票券' + expires + '。',
+            ? '這位會員已由你成功邀請，你的好友優惠票券已發放' + expires + '。'
+            : '邀請成功！你已獲得 1 張好友優惠票券，可再邀請其他會員累積更多票券' + expires + '。',
           false,
           'success'
         );
-        submit.textContent = '已完成綁定';
+        submit.textContent = '確認邀請並領取票券';
+        input.value = '';
+        submit.disabled = true;
       } catch (error) {
         if (current !== state.generation) return;
         submit.disabled = false;
-        submit.textContent = '確認綁定邀請優惠';
+        submit.textContent = '確認邀請並領取票券';
         showReferralStatus(error?.code === 'REFERRAL_REWARD_UNAVAILABLE' ? '管理員尚未設定好友邀請票券。' : (error?.message || '邀請優惠暫時無法完成，請稍後再試。'), true);
       } finally {
         if (current === state.generation) {
           state.binding = false;
           input.disabled = false;
-          if (!state.bound) submit.disabled = !input.value.trim();
+          submit.disabled = !input.value.trim();
         }
       }
     });
@@ -497,7 +499,7 @@
       const input = document.getElementById('memberReferralInviteCode');
       if (input) { input.value = ''; input.disabled = false; }
       const submit = document.getElementById('bindMemberReferral');
-      if (submit) { submit.disabled = true; submit.textContent = '確認綁定邀請優惠'; }
+      if (submit) { submit.disabled = true; submit.textContent = '確認邀請並領取票券'; }
     }
     state.profile = next;
     renderInviteCode(state.profile);
