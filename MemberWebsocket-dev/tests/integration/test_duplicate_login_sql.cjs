@@ -41,6 +41,11 @@ test('new virtual test login always revokes existing same-surface sessions', asy
         revoked_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT now()
       );
+      CREATE TABLE public.realtime_events (
+        id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        scope text NOT NULL, event_type text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
       CREATE TABLE public.member_presence_sessions (
         member_id uuid NOT NULL REFERENCES public.members(id),
         surface text NOT NULL, offline_at timestamptz,
@@ -112,6 +117,8 @@ test('new virtual test login always revokes existing same-surface sessions', asy
     const oldPresence = await db.query("SELECT offline_at, offline_reason FROM public.member_presence_sessions WHERE member_id=$1", [members.test]);
     assert.ok(oldPresence.rows[0].offline_at);
     assert.equal(oldPresence.rows[0].offline_reason, 'replaced_by_new_login');
+    const eventCount = await db.query("SELECT count(*)::int AS n FROM public.realtime_events WHERE event_type='test_mode.session.started'");
+    assert.equal(eventCount.rows[0].n, 2);
     await login('c');
     current = (await sessions()).rows;
     assert.equal(current.filter(row => row.revoked_at === null).length, 1);
