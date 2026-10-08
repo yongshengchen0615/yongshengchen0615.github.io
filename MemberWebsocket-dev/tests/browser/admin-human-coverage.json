@@ -3,8 +3,8 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "3faf21146f5541492ec2d13aef42b49f92e6bd4096300623ac762c24b80ab5f5",
-    "admin/app.js": "9f192ef2294be6a012c137761af059bf03d69bba96fc968fca912e946e2b221c",
+    "admin/index.html": "5f602d582774ee2f1ca7ee553080f0896d7c27238c86f7ffb89060305f7e706b",
+    "admin/app.js": "f43e09b8ab238b95c2b75aced79a890fa2172fd3759311f69f42c07e25816eeb",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
     "admin/grant-automation.js": "f3178a0bb26745d6cd7731b24ab8ab9aaec96a4dada62699a3609ae8b803e2b0",
@@ -36,7 +36,7 @@
     {
       "id": "member.02",
       "module": "member",
-      "name": "會員資料、停用與恢復",
+      "name": "會員 360 狀態編輯、停用與恢復",
       "cases": [
         "MEMBER_PROFILE_STATUS"
       ]
@@ -44,7 +44,7 @@
     {
       "id": "member.03",
       "module": "member",
-      "name": "會員 360 全部紀錄分類",
+      "name": "會員 360 概況、狀態／發放入口與全部紀錄分類",
       "cases": [
         "MEMBER_360"
       ]
@@ -87,7 +87,7 @@
     {
       "id": "member.08",
       "module": "member",
-      "name": "多卡集點、服務時數與三種通知模式",
+      "name": "會員 360 發放：多卡集點、服務時數與三種通知模式",
       "cases": [
         "MEMBER_GRANT_immediate",
         "MEMBER_GRANT_scheduled",

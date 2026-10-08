@@ -16,8 +16,10 @@ test('member 360 consolidates member summary and cross-domain actions', () => {
   assert.match(app, /function renderMemberRecordsOverview\(\)/);
   assert.match(app, /\['會員等級'/);
   assert.match(app, /\['累積服務時間'/);
-  assert.doesNotMatch(app, /grant\.textContent = '＋ 發放權益'/);
-  assert.match(app, /edit\.textContent = '編輯會員'/);
+  assert.match(app, /statusAction\.textContent = '狀態'/);
+  assert.match(app, /grantAction\.textContent = '＋ 發放'/);
+  assert.doesNotMatch(app, /actionButton\('狀態', 'edit-member'/);
+  assert.doesNotMatch(app, /actionButton\('＋ 發放', 'add-grant'/);
 });
 
 test('operations calendar combines calendar items with booking snapshots', () => {

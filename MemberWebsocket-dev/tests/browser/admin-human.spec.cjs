@@ -30,7 +30,8 @@ const click=(p,id)=>p.locator('#'+id).click();
 const fill=(p,id,value)=>p.locator('#'+id).fill(String(value));
 const select=(p,id,value)=>p.locator('#'+id).selectOption(String(value));
 const calls=(s,a)=>s.calls.filter(c=>c.action===a);
-async function openMember(p){await click(p,'testMembersSubtab');await p.locator('[data-action="edit-member"]').first().click();await expect(p.locator('#memberModal')).toBeVisible();}
+async function openMember360(p){await p.locator('[data-action="view-records"]').first().click();await expect(p.locator('#memberRecordsModal')).toBeVisible();}
+async function openMember(p){await click(p,'testMembersSubtab');await openMember360(p);await p.getByRole('button',{name:'狀態'}).click();await expect(p.locator('#memberModal')).toBeVisible();}
 async function openCard(p){await click(p,'cardsTab');await click(p,'newCardButton');await fill(p,'cardTitle','QA new card');await select(p,'cardStatus','draft');await p.locator('#rewardRows [data-field="ticketTemplateId"]').selectOption('ticket-1');}
 async function openEvent(p,type='coupon'){await click(p,'eventsTab');await click(p,'newEventTicketButton');await select(p,'eventTicketType',type);for(const [id,value] of Object.entries({eventTicketTitle:'QA event',eventTicketDescription:'QA description',eventTicketUsageMethod:'QA usage',eventTicketUsageInstructions:'QA instructions'}))await fill(p,id,value);await select(p,'eventTicketStatus','draft');}
 async function openCalendar(p,type='event'){await click(p,'calendarTab');await click(p,'newCalendarItemButton');await fill(p,'calendarItemTitle','QA calendar');await select(p,'calendarItemType',type);await select(p,'calendarItemStatus','draft');await fill(p,'calendarItemStartsOn',today());}
@@ -46,13 +47,14 @@ test('MEMBER_DIRECTORY — real/test roster, search, empty result and both pagin
 });
 test('MEMBER_PROFILE_STATUS — edit all test profile fields, disable, reopen and restore',async({page:p},info)=>{
   await openMember(p);await fill(p,'memberDisplayName','QA changed');await fill(p,'memberSurname','Chen');await select(p,'memberSalutation','ms');await fill(p,'memberBirthday','1990-02-03');await fill(p,'memberPhone','+886923456789');await select(p,'memberStatus','disabled');await click(p,'saveMemberButton');
-  await expect(p.locator('#memberModal')).toBeHidden();await p.locator('[data-action="edit-member"]').first().click();await expect(p.locator('#memberDisplayName')).toHaveValue('QA changed');await expect(p.locator('#memberStatus')).toHaveValue('disabled');
+  await expect(p.locator('#memberModal')).toBeHidden();await expect(p.locator('#memberRecordsModal')).toBeVisible();await p.getByRole('button',{name:'狀態'}).click();await expect(p.locator('#memberDisplayName')).toHaveValue('QA changed');await expect(p.locator('#memberStatus')).toHaveValue('disabled');
   await select(p,'memberStatus','active');await click(p,'saveMemberButton');await expect(p.locator('#memberModal')).toBeHidden();expect(calls(info.fixture,'admin.member.update')).toHaveLength(2);
 });
-test('MEMBER_360 — all record tabs, summary navigation and modal close',async({page:p})=>{
-  await p.locator('[data-action="view-records"]').first().click();await expect(p.locator('#memberRecordsModal')).toBeVisible();
-  await expect(p.locator('#memberRecordsOverview')).not.toContainText('發放權益');
-  await p.locator('#memberRecordsOverview button').click(); await expect(p.locator('#memberModal')).toBeVisible();
+test('MEMBER_360 — status and grant actions, all record tabs, summary navigation and modal close',async({page:p})=>{
+  await openMember360(p);
+  await expect(p.locator('#memberRecordsOverview')).toContainText('狀態');
+  await expect(p.locator('#memberRecordsOverview')).toContainText('＋ 發放');
+  await p.getByRole('button',{name:'狀態'}).click(); await expect(p.locator('#memberModal')).toBeVisible();
   await p.keyboard.press('Escape'); await expect(p.locator('#memberModal')).toBeHidden(); await expect(p.locator('#memberRecordsModal')).toBeVisible();
   for(const filter of ['all','presence','pointCards','eventTickets','calendar','bookings','testAutomation']){const b=p.locator('[data-record-filter="'+filter+'"]');await b.click();await expect(b).toHaveAttribute('aria-selected','true');}
   await click(p,'closeMemberRecordsModal');await expect(p.locator('#memberRecordsModal')).toBeHidden();
@@ -73,8 +75,8 @@ test('MEMBER_PRESET — create, select, modify and archive message preset',async
   await click(p,'manageGrantMessagesButton');await click(p,'newMessagePresetButton');await fill(p,'messagePresetTitle','QA preset');await fill(p,'messagePresetBody','QA message');await click(p,'saveMessagePresetButton');await expect(p.locator('#messagePresetId')).not.toHaveValue('');
   await fill(p,'messagePresetBody','QA edited');await select(p,'messagePresetStatus','archived');await click(p,'saveMessagePresetButton');await expect.poll(()=>info.fixture.messagePresets[0]?.status).toBe('archived');await click(p,'closeMessagePresetModal');
 });
-for(const mode of ['immediate','scheduled','none'])test('MEMBER_GRANT_'+mode+' — multiple cards, service time and notification mode submit',async({page:p},info)=>{
-  await p.locator('[data-action="add-grant"]').first().click();await p.locator('#grantStampsEnabled').check();await p.locator('[data-grant-point-field="cardId"]').selectOption('card-1');await p.locator('[data-grant-point-field="amount"]').fill('3');await click(p,'addGrantPointButton');await p.locator('[data-grant-point-row]').nth(1).locator('select').selectOption('card-2');await p.locator('[data-grant-point-row]').nth(1).locator('input').fill('2');
+for(const mode of ['immediate','scheduled','none'])test('MEMBER_GRANT_'+mode+' — Member 360 grant, multiple cards, service time and notification mode submit',async({page:p},info)=>{
+  await openMember360(p);await p.getByRole('button',{name:'＋ 發放'}).click();await expect(p.locator('#grantModal')).toBeVisible();await p.locator('#grantStampsEnabled').check();await p.locator('[data-grant-point-field="cardId"]').selectOption('card-1');await p.locator('[data-grant-point-field="amount"]').fill('3');await click(p,'addGrantPointButton');await p.locator('[data-grant-point-row]').nth(1).locator('select').selectOption('card-2');await p.locator('[data-grant-point-row]').nth(1).locator('input').fill('2');
   await p.locator('#grantServiceTimeEnabled').check();await fill(p,'grantServiceTimeMinutes','60');await p.locator('input[name="grantNotificationMode"][value="'+mode+'"]').check();if(mode==='scheduled')await fill(p,'grantNotificationScheduledAt','2099-01-01T10:00');await click(p,'saveGrantButton');
   await expect(p.locator('#grantModal')).toBeHidden();expect(info.fixture.grants).toHaveLength(1);expect(info.fixture.grants[0].points).toHaveLength(2);expect(info.fixture.grants[0].notificationMode).toBe(mode);
 });
