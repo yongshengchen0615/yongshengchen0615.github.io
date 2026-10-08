@@ -1,3 +1,4 @@
+import { removeMember } from "../_shared/member-removal.ts";
 import { tierVisibility, loadVisibilityPolicy } from "../_shared/tier-visibility.ts";
 import { bookingTicketUsageError, ticketBookingId } from "../_shared/booking-ticket-usage.ts";
 import { loadBookingBenefits } from "../_shared/booking-benefits.ts";
@@ -44,6 +45,7 @@ const WRITE_ACTIONS = new Set([
   "admin.terms.activate",
   "admin.member.update",
   "admin.member.force-logout",
+  "admin.member.remove",
   "admin.member-tiers.save",
   "admin.settings.copy",
   "admin.ticket-visibility.save",
@@ -2037,11 +2039,6 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       });
       if (audit.error) console.error("login session audit unavailable",audit.error.code);
     }
-    if (result.data === "replaced") {
-      await supabase.from("realtime_events").insert(
-        ["member","points","event","calendar","booking","admin"].map(scope => ({scope,event_type:"member.login.replaced"})),
-      );
-    }
     return { state:String(result.data) };
   }
   if (/^(?:admin|user\.(?:member|points|event|calendar|booking))\.session\.logout$/.test(action)) {
@@ -2363,6 +2360,10 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   }
   if (action === "admin.member-records.list") {
     return await adminMemberRecords(supabase,requireText(body.lineUserId,"會員識別",120));
+  }
+  if (action === "admin.member.remove") {
+    await authorizeAdmin(supabase, identity);
+    return await removeMember(supabase, identity.lineUserId, body, (status, code, message) => new ApiError(status, code, message)) as Json;
   }
   if (action === "admin.member.force-logout") {
     const lineUserId = requireText(body.lineUserId,"會員識別",120);
