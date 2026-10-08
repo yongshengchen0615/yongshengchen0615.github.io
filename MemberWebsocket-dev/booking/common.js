@@ -20,6 +20,7 @@
   let presenceContext = null;
   let presenceHooksBound = false;
   let presenceHeartbeatTimer = null;
+  let isTerminatingAccess = false;
   const PRESENCE_HEARTBEAT_MS = 30_000;
   const PRESENCE_RESUME_SIGNAL_MS = 60_000;
 
@@ -53,8 +54,32 @@
     }
     const idToken = window.liff.getIDToken();
     if (!idToken) throw clientError('LIFF_ID_TOKEN_MISSING', '無法取得 LINE 登入憑證，請重新登入。');
+    if (!(window.TestModeClient?.getSessionToken?.())) await claimBrowserSession(config, clientType, idToken);
     if (!isAdmin) await startPresence(config, clientType, idToken);
     return idToken;
+  }
+
+  const LOGIN_BROWSER_KEY = 'member-login-browser-v1';
+  const LOGIN_REGISTERED_KEY = 'member-login-registered-v1';
+
+  async function claimBrowserSession(config, clientType, idToken) {
+    let key;
+    let mode;
+    try {
+      key = window.localStorage.getItem(LOGIN_BROWSER_KEY);
+      if (!key) {
+        key = window.crypto.randomUUID() + window.crypto.randomUUID();
+        window.localStorage.setItem(LOGIN_BROWSER_KEY, key);
+      }
+      if (!/^[a-f0-9-]{72}$/.test(key)) throw new Error('invalid browser key');
+      mode = window.localStorage.getItem(LOGIN_REGISTERED_KEY) === '1' ? 'resume' : 'login';
+    } catch (_) {
+      throw clientError('AUTH_STORAGE_UNAVAILABLE', '無法安全保存登入連線，請允許此網站使用瀏覽器儲存空間。');
+    }
+    const action = clientType === 'admin' ? 'admin.session.claim' : 'user.' + clientType + '.session.claim';
+    await postJson(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api', config,
+      { action, clientType, idToken, browserKey: key, mode }, '登入連線', { write: true });
+    window.localStorage.setItem(LOGIN_REGISTERED_KEY, '1');
   }
 
   async function sendMemberChatMessage(message) {
@@ -128,6 +153,14 @@
     }
   }
 
+  async function handleRevokedPresenceResponse(response) {
+    try {
+      const payload = await response.json();
+      const code = String(payload?.error?.code || '');
+      if (code === 'SESSION_REPLACED' || code === 'SESSION_REVOKED') terminateAccessSession(code, payload.error.message);
+    } catch (_) {}
+  }
+
   function bindPresenceLifecycle() {
     if (presenceHooksBound) return;
     presenceHooksBound = true;
@@ -179,6 +212,9 @@
       cache: 'no-store',
       keepalive: true,
       body: JSON.stringify(presenceBody(context, event, reason))
+    }).then(async response => {
+      if (response?.status === 401) await handleRevokedPresenceResponse(response.clone());
+      return response;
     }).catch(() => null);
   }
 
@@ -354,7 +390,7 @@
         const apiError = data && data.error || {};
         const apiErrorCode = String(apiError.code || 'API_ERROR');
         const error = clientError(apiErrorCode, String(apiError.message || `${serviceLabel}暫時無法完成操作。`), apiError.details || null);
-        if (apiErrorCode === 'SESSION_REVOKED' || apiErrorCode === 'SYSTEM_MAINTENANCE') {
+        if (['SESSION_REVOKED', 'SESSION_REPLACED', 'SYSTEM_MAINTENANCE'].includes(apiErrorCode)) {
           terminateAccessSession(apiErrorCode, error.message);
         }
         throw error;
@@ -508,13 +544,16 @@
   }
 
   function terminateAccessSession(code, message) {
+    if (isTerminatingAccess) return;
+    isTerminatingAccess = true;
+    if (realtimeChannel) { try { realtimeChannel.unsubscribe(); } catch (_) {} }
     clearPresenceHeartbeat();
     if (presenceContext) presenceContext.closed = true;
     if (window.TestModeClient && typeof window.TestModeClient.clearSession === 'function') {
       try { window.TestModeClient.clearSession(); } catch (_) {}
     }
 
-    const notice = code === 'SESSION_REVOKED'
+    const notice = code === 'SESSION_REVOKED' || code === 'SESSION_REPLACED'
       ? (String(message || '').trim() || '您的登入工作階段已由管理員強制結束，請重新登入。')
       : (String(message || '').trim() || '系統目前維護中，將關閉此頁面。');
 
@@ -539,6 +578,15 @@
 
   async function logout() {
     try {
+      const session = getSession();
+      if (session?.idToken) {
+        try {
+          await postJson(String(session.config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api',
+            session.config, { action:'user.booking.session.logout',clientType:'booking',idToken:session.idToken },
+            '登出', {write:true});
+        } catch (_) {}
+      }
+      try { window.localStorage.removeItem(LOGIN_REGISTERED_KEY); window.localStorage.removeItem(LOGIN_BROWSER_KEY); } catch (_) {}
       await Promise.race([
         stopPresence('logout'),
         new Promise((resolve) => window.setTimeout(resolve, 1200))
