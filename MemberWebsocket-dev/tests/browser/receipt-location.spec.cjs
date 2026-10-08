@@ -196,6 +196,7 @@ test('accessible receipt image fallback supports preview, discard, and one signe
 test('invalid receipt images are rejected; cancel preserves all business records',async({page})=>{
   const run='receipt-file-invalid';
   await open(page,run,'camera-denied',true);
+  await expect(page.locator('.app-shell')).toHaveAttribute('inert','');
   await page.locator('#bookingReceiptFile').setInputFiles({name:'bad.pdf',mimeType:'application/pdf',buffer:Buffer.from('not an image')});
   await expect(page.locator('#bookingReceiptMessage')).toContainText('JPG');
   await expect(page.locator('#bookingReceiptSubmit')).toBeDisabled();
@@ -205,6 +206,7 @@ test('invalid receipt images are rejected; cancel preserves all business records
   await page.locator('#bookingReceiptCancel').click();
   await expect(page.locator('#bookingReceiptModal')).toBeHidden();
   await expect(page.locator('body')).not.toHaveClass(/booking-receipt-modal-open/);
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('inert','');
   expect(runs.get(run).prepare).toHaveLength(0);
   expect(runs.get(run).finalize).toHaveLength(0);
   expect(runs.get(run).uploads).toHaveLength(0);
