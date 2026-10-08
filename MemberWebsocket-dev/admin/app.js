@@ -669,7 +669,7 @@
       }
       const serviceTimeCell = document.createElement('td'); serviceTimeCell.textContent = formatServiceMinutes(member.serviceMinutesTotal);
       const dateCell = document.createElement('td'); dateCell.textContent = window.MemberSystem.formatDate(member.joinedAt);
-      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('狀態', 'edit-member', member.lineUserId), actionButton('強制下線', 'force-logout', member.lineUserId), actionButton('＋ 發放', 'add-grant', member.lineUserId, true), actionButton('會員 360', 'view-records', member.lineUserId)); actionsCell.append(actions);
+      const actionsCell = document.createElement('td'); actionsCell.className = 'align-right'; const actions = document.createElement('div'); actions.className = 'row-actions'; actions.append(actionButton('強制下線', 'force-logout', member.lineUserId), actionButton('會員 360', 'view-records', member.lineUserId)); actionsCell.append(actions);
       row.append(memberCell, tierCell, statusCell, presenceCell, serviceTimeCell, dateCell, actionsCell); return row;
     }));
     els.memberEmptyState.classList.toggle('hidden', members.length !== 0);
@@ -777,7 +777,6 @@
     if (!button) return;
     const member = state.members.find((item) => item.lineUserId === button.dataset.value);
     if (!member) return;
-    if (button.dataset.action === 'edit-member') return openMemberModal(member);
     if (button.dataset.action === 'force-logout') {
       const confirmed = window.confirm(`確定要強制結束「${member.displayName || member.memberCode || '此會員'}」目前所有登入工作階段嗎？\n\n此操作不會停用或刪除會員，會員之後可重新登入。`);
       if (!confirmed) return;
@@ -798,11 +797,6 @@
       try { await openMemberRecordsModal(member); } finally { button.disabled = false; }
       return;
     }
-    if (button.dataset.action !== 'add-grant') return;
-    // Full bootstrap 已載入集點卡時直接開啟，不再為互動重打 GAS。
-    if (state.loadedPanels.cards) return openGrantModal(member);
-    button.disabled = true;
-    try { await ensureAdminPanelData('cards'); openGrantModal(member); } catch (error) { setSyncStatus(error && error.message || '無法載入集點卡，請稍後再試。', true); } finally { button.disabled = false; }
   }
 
 
@@ -1011,12 +1005,36 @@
 
     const actions = document.createElement('div');
     actions.className = 'member-records-overview-actions';
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'button button-outline member-records-action-secondary';
-    edit.textContent = '編輯會員';
-    edit.addEventListener('click', () => { state.memberRecords.childOpener = edit; openMemberModal(member); });
-    actions.append(edit);
+
+    const statusAction = document.createElement('button');
+    statusAction.type = 'button';
+    statusAction.className = 'button button-outline member-records-action-secondary';
+    statusAction.textContent = '狀態';
+    statusAction.addEventListener('click', () => {
+      state.memberRecords.childOpener = statusAction;
+      openMemberModal(member);
+    });
+
+    const grantAction = document.createElement('button');
+    grantAction.type = 'button';
+    grantAction.className = 'button button-dark';
+    grantAction.textContent = '＋ 發放';
+    grantAction.addEventListener('click', async () => {
+      state.memberRecords.childOpener = grantAction;
+      grantAction.disabled = true;
+      hideMessage(els.memberRecordsMessage);
+      try {
+        if (!state.loadedPanels.cards) await ensureAdminPanelData('cards');
+        openGrantModal(member);
+      } catch (error) {
+        state.memberRecords.childOpener = null;
+        showMessage(els.memberRecordsMessage, error && error.message || '無法載入發放資料，請稍後再試。');
+      } finally {
+        grantAction.disabled = false;
+      }
+    });
+
+    actions.append(statusAction, grantAction);
 
     els.memberRecordsOverview.replaceChildren(hero, metricGrid, actions);
   }
@@ -2719,7 +2737,16 @@
       try { focusTarget.focus({ preventScroll: true }); } catch (_) { focusTarget.focus(); }
     });
   }
-  function closeGrantModal() { if (state.grantSaving) return; state.grantRequestId = ''; serviceGrant.version++; els.grantModal.classList.add('hidden'); }
+  function closeGrantModal() {
+    if (state.grantSaving) return;
+    state.grantRequestId = '';
+    serviceGrant.version++;
+    els.grantModal.classList.add('hidden');
+    if (!els.memberRecordsModal.classList.contains('hidden')) {
+      state.memberRecords.childOpener?.focus({ preventScroll: true });
+      state.memberRecords.childOpener = null;
+    }
+  }
   function activeGrantCards() { return state.cards.filter((card) => card.status === 'active' && !card.expired); }
   function renderGrantPointRows(points) { const grants = Array.isArray(points) ? points : []; els.grantPointRows.replaceChildren(...grants.map((grant, index) => createGrantPointRow(grant, index, grants))); updateGrantPointHint(); }
   function createGrantPointRow(grant, index, grants) {
