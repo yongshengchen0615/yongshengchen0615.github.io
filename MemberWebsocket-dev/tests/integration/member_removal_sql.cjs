@@ -5,7 +5,7 @@ test('member removal blocks writes, retries cross-service failures, removes priv
   const exec=name=>db.exec(fs.readFileSync(path.resolve(__dirname,'../../supabase/migrations',name),'utf8'));
   for(const name of ['20261006023020_booking_ticket_usage_consistency.sql','20261006081433_booking_primary_requirement_fixed_notification_time.sql','20261006133127_member_p2_features.sql','20261008034343_admin_service_item_grants.sql','20261008075553_single_active_member_login.sql','20261008083358_test_account_duplicate_login_setting.sql','20261008091007_test_login_takeover_single_session.sql','20261005151234_e2e_membership_terms_scope.sql','20261005152023_e2e_membership_terms_target_member.sql'])await exec(name);
   await db.exec('create schema storage;create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);');
-  await exec('20261008134321_member_removal_workflow.sql');
+  await exec('20261008152922_member_removal_workflow.sql');
   await db.exec("select maintenance.ensure_required_system_baseline();insert into admins(line_user_id,role,status)values('qa-removal-admin','admin','active');");
   const one=async(q,v=[])=>(await db.query(q,v)).rows[0];
   const make=async code=>(await one("insert into members(line_user_id,member_code,invite_code,status,membership_status,display_name,is_test_account)values($1,$2,$3,'active','active','Private member',true)returning id",['qa-removal-'+code,code,code+'000000'])).id;
