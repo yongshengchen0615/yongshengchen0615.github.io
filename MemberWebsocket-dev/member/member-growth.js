@@ -14,6 +14,7 @@
   let referralScanner = null;
 
   function stopReferralScan() {
+    window.QRScanDialog?.close(document.getElementById('memberReferralQrScanner'));
     referralScanner?.stop();
     const scanner = document.getElementById('memberReferralQrScanner');
     if (scanner) scanner.hidden = true;
@@ -355,8 +356,13 @@
       });
       scan.addEventListener('click', () => {
         if (state.binding) return;
-        camera.hidden = false;
-        void referralScanner.start();
+        if (!window.QRScanDialog?.open(camera, {
+          title: '掃描邀請優惠 QR Code', opener: scan,
+          start: () => referralScanner.start(), stop: () => referralScanner.stop()
+        })) {
+          camera.hidden = false;
+          void referralScanner.start();
+        }
       });
       stopScan.addEventListener('click', () => {
         stopReferralScan();
