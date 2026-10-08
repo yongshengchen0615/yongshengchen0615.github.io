@@ -3,7 +3,7 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "714b1cdeedff62ee4932d455d23f6ad8be1345fe01adbea941398c2289054df2",
+    "admin/index.html": "9c069decab2d889a6df9be4e0c5baa1c552755ddfea983f578a67276a4521e93",
     "admin/app.js": "f43e09b8ab238b95c2b75aced79a890fa2172fd3759311f69f42c07e25816eeb",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
