@@ -23,6 +23,8 @@
   function referralScanStatus(message) {
     const text = String(message || '');
     const isError = /無法|未開啟|不是本站|格式不正確|未找到|過大|請選擇/.test(text);
+    const inScanner = document.getElementById('memberReferralQrScanStatus');
+    if (inScanner) inScanner.textContent = text;
     showReferralStatus(text, isError, isError ? 'error' : 'info');
   }
 
@@ -266,13 +268,20 @@
     video.playsInline = true;
     video.setAttribute('aria-label', '邀請優惠 QR Code 相機預覽');
     const cameraHelp = document.createElement('p');
+    cameraHelp.id = 'memberReferralQrScanStatus';
+    cameraHelp.setAttribute('role', 'status');
+    cameraHelp.setAttribute('aria-live', 'polite');
     cameraHelp.textContent = '將完整的邀請優惠 QR Code 放在畫面中央。影像只在目前裝置辨識。';
     const stopScan = document.createElement('button');
     stopScan.id = 'stopMemberReferralQr';
     stopScan.type = 'button';
     stopScan.className = 'button button-refresh';
     stopScan.textContent = '關閉相機';
-    camera.append(video, cameraHelp, stopScan);
+    const cameraImage = document.createElement('button');
+    cameraImage.type = 'button';
+    cameraImage.className = 'button button-refresh';
+    cameraImage.textContent = '選擇 QR 圖片';
+    camera.append(video, cameraHelp, cameraImage, stopScan);
     const submit = document.createElement('button');
     submit.id = 'bindMemberReferral';
     submit.type = 'submit';
@@ -368,6 +377,7 @@
         stopReferralScan();
         scan.focus();
       });
+      cameraImage.addEventListener('click', () => upload.click());
       upload.addEventListener('click', () => {
         if (!state.binding) file.click();
       });
