@@ -51,6 +51,9 @@ test('MEMBER_PROFILE_STATUS — edit all test profile fields, disable, reopen an
 });
 test('MEMBER_360 — all record tabs, summary navigation and modal close',async({page:p})=>{
   await p.locator('[data-action="view-records"]').first().click();await expect(p.locator('#memberRecordsModal')).toBeVisible();
+  await expect(p.locator('#memberRecordsOverview')).not.toContainText('發放權益');
+  await p.locator('#memberRecordsOverview button').click(); await expect(p.locator('#memberModal')).toBeVisible();
+  await p.keyboard.press('Escape'); await expect(p.locator('#memberModal')).toBeHidden(); await expect(p.locator('#memberRecordsModal')).toBeVisible();
   for(const filter of ['all','presence','pointCards','eventTickets','calendar','bookings','testAutomation']){const b=p.locator('[data-record-filter="'+filter+'"]');await b.click();await expect(b).toHaveAttribute('aria-selected','true');}
   await click(p,'closeMemberRecordsModal');await expect(p.locator('#memberRecordsModal')).toBeHidden();
 });

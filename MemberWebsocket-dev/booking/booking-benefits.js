@@ -319,10 +319,15 @@
           && !isSelected
           && (!selectable || pointBudgetBlocked || serviceBlocked);
 
-        const card = document.createElement('article');
-        card.className = `booking-benefit ui-ticket${isSelected ? ' is-selected' : ''}${pointUnavailable ? ' is-unavailable' : ''}`;
+        const eventUnavailable = item.kind === 'event' && !isSelected && (!selectable || serviceBlocked || (hasLimit(eventTicketMaxPerDay) && selectedEventCount() >= eventTicketMaxPerDay));
+        const card = item.kind === 'event' && window.EventTicketUI
+          ? window.EventTicketUI.create(item, { fixed: Boolean(item.fixedTicketTemplateId), stateLabel: item.statusLabel, stateClass: item.locked ? 'tier-locked' : eventUnavailable ? 'ended' : 'open' })
+          : document.createElement('article');
+        card.classList.add('booking-benefit', 'ui-ticket');
+        card.classList.toggle('is-selected', isSelected);
+        card.classList.toggle('is-unavailable', pointUnavailable || eventUnavailable);
         card.dataset.benefitKind = item.kind;
-        if (pointUnavailable) card.setAttribute('aria-disabled', 'true');
+        if (pointUnavailable || eventUnavailable) card.setAttribute('aria-disabled', 'true');
         if (item.kind === 'points') card.dataset.cardStyle = window.MemberUI.pointCardStyleKey(item.cardStyleKey);
 
         const meta = document.createElement('p');
@@ -353,7 +358,7 @@
             || ((!selectable
               || (item.kind === 'event' && hasLimit(eventTicketMaxPerDay) && !isSelected && selectedEventCount() >= eventTicketMaxPerDay)
               || pointLimitBlocked
-              || pointBudgetBlocked) && !isSelected);
+              || pointBudgetBlocked || serviceBlocked) && !isSelected);
           input.dataset.bookingBenefitKind = item.kind;
           input.dataset.bookingBenefitId = controlId;
           if (item.kind === 'event' && item.claimRequired === true) input.dataset.bookingBenefitClaimRequired = 'true';
@@ -380,13 +385,22 @@
             }
             void handleSelectionChange(item, input);
           });
-          card.append(meta, title, copy, expires, condition, choose);
+          if (card.classList.contains('event-ticket')) card.append(condition, choose);
+          else card.append(meta, title, copy, expires, condition, choose);
         } else {
-          card.append(meta, title, copy, expires, condition);
+          if (card.classList.contains('event-ticket')) card.append(condition);
+          else card.append(meta, title, copy, expires, condition);
         }
 
         if (item.kind === 'points') {
           card.insertBefore(window.MemberUI.pointTicketDetails(item), card.querySelector('.booking-benefit-select'));
+        }
+
+        if (serviceBlocked) {
+          const reason = document.createElement('small');
+          reason.className = 'booking-benefit-disabled-reason';
+          reason.textContent = serviceRequirementMessage(item);
+          card.appendChild(reason);
         }
 
         if (!selectable && item.disabledReason) {

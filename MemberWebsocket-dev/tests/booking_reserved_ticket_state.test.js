@@ -45,7 +45,7 @@ test('batch redemption endpoints also reject tickets reserved for bookings', () 
 test('member ticket surfaces render booked tickets as 已預約使用', () => {
   const points = read('points/pointcard-ticket-overview.js');
   const event = read('event/app.js');
-  const eventCss = read('event/styles.css');
+  const eventCss = read('event/styles.css') + read('event-ticket-ui.css');
 
   assert.match(points, /reservedForBooking/);
   assert.match(points, /statusText = '已預約使用'/);

@@ -1296,3 +1296,6 @@ button, input, select, textarea { line-height: 1.35; }
 .coupon-location-row input { width: 100%; min-width: 0; }
 .coupon-location-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
 @media (max-width: 580px) { .coupon-map-search > div { flex-wrap: wrap; } .coupon-location-draft-fields, .coupon-location-row { grid-template-columns: minmax(0, 1fr); } .coupon-location-draft-actions { flex-direction: column-reverse; } .coupon-location-draft-actions .button { width: 100%; } }
+
+#memberModal {z-index:12;}
+#grantModal {z-index:14;}

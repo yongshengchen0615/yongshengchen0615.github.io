@@ -17,7 +17,7 @@ test('event ticket quota is presented as limited quantity in admin and member UI
   assert.ok(adminApp.includes('限量張數必須是 0–1,000,000 的整數。'));
   assert.ok(adminApp.includes('已領取 ${Number(ticket.claimedCount || 0)} / 限量 ${Number(ticket.quota)} 張'));
 
-  assert.ok(eventApp.includes("quotaLabel.textContent = fixed ? '發放方式' : '限量張數';"));
+  assert.ok(read('event-ticket-ui.js').includes("options.fixed ? '發放方式' : '限量張數'"));
   assert.ok(eventApp.includes('function eventTicketQuotaText(ticket)'));
   assert.ok(eventApp.includes('剩餘 ${Math.max(0, quota - claimedCount)} 張'));
   assert.ok(eventApp.includes('限量張數：${eventTicketQuotaText(ticket)}'));

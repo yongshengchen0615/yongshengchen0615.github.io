@@ -61,6 +61,7 @@ const WRITE_ACTIONS = new Set([
   "admin.stamps.add",
   "admin.service_minutes.add",
   "admin.member-grants.add",
+  "admin.service-grants.add",
   "admin.grant-message-presets.save",
   "user.pointcard.ticket.redeem",
   "user.event.ticket.claim",
@@ -159,6 +160,13 @@ function mapDatabaseError(error: unknown): ApiError {
     ["LOCATION_OUT_OF_RANGE",403,"LOCATION_OUT_OF_RANGE","目前不在此票券的核銷範圍內。"],
     ["INVALID_REQUEST_ID",400,"INVALID_REQUEST_ID","操作識別碼格式不正確。"],
     ["INVALID_POINT_AMOUNT",400,"INVALID_POINT_AMOUNT","點數必須是 1–100 的整數。"],
+    ["SERVICE_GRANT_PREVIEW_STALE",409,"SERVICE_GRANT_PREVIEW_STALE","服務設定已變更，請重新預覽並確認發放。"],
+    ["GRANT_REQUEST_CONFLICT",409,"GRANT_REQUEST_CONFLICT","此操作識別碼已用於其他發放內容，請重新開始。"],
+    ["INVALID_SERVICE_ITEMS",400,"INVALID_SERVICE_ITEMS","請選擇有效服務項目與 1–2 的整數數量。"],
+    ["SERVICE_NOT_AVAILABLE",409,"SERVICE_NOT_AVAILABLE","服務項目已停用、刪除或重複選取，請重新選擇。"],
+    ["SERVICE_COMPANION_REQUIRED",400,"SERVICE_COMPANION_REQUIRED","加購項目需與主要服務一起登記。"],
+    ["MEMBER_NOT_AVAILABLE",409,"MEMBER_NOT_AVAILABLE","此會員尚未啟用或完成加入，無法依服務登記發放。"],
+    ["EMPTY_GRANT",400,"EMPTY_GRANT","所選服務未設定可發放的點數或會員服務時間。"],
     ["INVALID_SERVICE_MINUTES",400,"INVALID_SERVICE_MINUTES","服務時間必須是 1–1440 分鐘。"],
     ["INVALID_TIER_SETTINGS",400,"INVALID_TIER_SETTINGS","會員等級門檻設定不合法。"],
     ["INVALID_CARD_ORDERS",400,"INVALID_CARD_ORDERS","集點卡排序資料不合法。"],
@@ -2559,7 +2567,15 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     return { operations:rpc.data || [],calendarItems:await calendarItems(supabase,false) };
   }
 
-  if (action === "admin.member-grants.add" || action === "admin.stamps.add" || action === "admin.service_minutes.add") {
+  if (action === "admin.service-grants.catalog" || action === "admin.service-grants.preview") {
+    const rpc = action.endsWith("catalog")
+      ? await supabase.rpc("admin_service_grant_catalog", { p_actor:identity.lineUserId })
+      : await supabase.rpc("preview_service_member_grant", { p_actor:identity.lineUserId,p_member:requireText(body.lineUserId,"會員識別",120),p_items:body.items });
+    if (rpc.error) throw mapDatabaseError(rpc.error);
+    return action.endsWith("catalog") ? rpc.data : { preview:rpc.data };
+  }
+
+  if (action === "admin.service-grants.add" || action === "admin.member-grants.add" || action === "admin.stamps.add" || action === "admin.service_minutes.add") {
     const lineUserId = requireText(body.lineUserId,"會員識別",120);
     const req = requireText(body.requestId,"操作識別碼",100);
     const targetMember = await supabase.from("members").select("*").eq("line_user_id",lineUserId).single();
@@ -2575,8 +2591,17 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     }
     let normalizedPoints: Json[] = [];
     let serviceMinutes: number | null = null;
-
-    if (action === "admin.stamps.add") {
+    let serviceGrantRpc: any = null;
+    if (action === "admin.service-grants.add") {
+      if (body.points !== undefined || body.serviceTime !== undefined) throw new ApiError(400,"INVALID_SERVICE_ITEMS","服務項目模式不可指定點數或服務分鐘。");
+      serviceGrantRpc = await supabase.rpc("grant_service_member_benefits", {
+        p_actor:identity.lineUserId,p_member:lineUserId,p_request:req,p_items:body.items,p_expected_preview:body.expectedPreview,
+      });
+      if (serviceGrantRpc.error) throw mapDatabaseError(serviceGrantRpc.error);
+      const preview = serviceGrantRpc.data?.preview;
+      normalizedPoints = Array.isArray(preview?.points) ? preview.points : [];
+      serviceMinutes = Number(preview?.serviceMinutes || 0) || null;
+    } else if (action === "admin.stamps.add") {
       const amount = Number(body.amount);
       const cardId = asText(body.cardId,120);
       if (!cardId || !Number.isInteger(amount) || amount < 1 || amount > 100) {
@@ -2621,7 +2646,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       }
     }
 
-    const rpc = await supabase.rpc("grant_member_benefits",{
+    const rpc = serviceGrantRpc || await supabase.rpc("grant_member_benefits",{
       p_actor_line_user_id:identity.lineUserId,
       p_member_line_user_id:lineUserId,
       p_request_id:req,
@@ -2664,6 +2689,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     return {
       member:{ lineUserId,displayName:memberRow.data.display_name,memberCode:memberRow.data.member_code,status:memberRow.data.status,membershipStatus:memberRow.data.membership_status,birthday:memberRow.data.birthday || "",phone:memberRow.data.phone || "",surname:memberRow.data.surname || "",salutation:memberRow.data.salutation || "",isTestAccount,testAccountSequence:memberRow.data.test_account_sequence || null,joinedAt:memberRow.data.joined_at || memberRow.data.created_at,serviceMinutesTotal:minutes,tierKey:tier.tier_key,tier:tier.tier_label,tierStyleKey:tier.style_key,updatedAt:memberRow.data.updated_at },
       notification,
+      ...(serviceGrantRpc ? { grant:grantResult } : {}),
     };
   }
 

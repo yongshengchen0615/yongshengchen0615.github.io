@@ -125,7 +125,7 @@ test('reward link opens only the reward workflow and binding does not create a f
     assert.equal(calls.filter(c=>c.action==='member.referral.bind').length,1);
     assert.equal(calls.find(c=>c.action==='member.referral.bind').payload.memberCode,'CCCC');
     assert.equal(calls.some(c=>c.action==='member.friend.lookup'||c.action==='member.friend.request'),false);
-    assert.match(w.document.getElementById('memberReferralStatus').textContent,/邀請優惠綁定成功/);
+    assert.match(w.document.getElementById('memberReferralStatus').textContent,/邀請成功！你已獲得 1 張好友優惠票券/);
   }finally{dom.window.close();}
 });
 
@@ -254,7 +254,7 @@ test('friend and reward links cannot cross workflows',async()=>{
     reward.dispatchEvent(new w.Event('input',{bubbles:true}));
     w.document.getElementById('memberReferralForm').dispatchEvent(new w.Event('submit',{cancelable:true}));
     await tick();
-    assert.match(w.document.getElementById('memberReferralStatus').textContent,/邀請優惠/);
+    assert.match(w.document.getElementById('memberReferralStatus').textContent,/被邀請者會員編號/);
     assert.equal(w.document.getElementById('memberReferralStatus').classList.contains('error'),true);
     assert.equal(calls.some(c=>c.action==='member.friend.request'||c.action==='member.referral.bind'),false);
   }finally{dom.window.close();}

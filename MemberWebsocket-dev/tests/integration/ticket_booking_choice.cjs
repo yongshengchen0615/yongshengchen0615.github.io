@@ -35,6 +35,7 @@ for(const owned of [true,false])test('real event page loads '+(owned?'owned usag
    if(action==='user.event.bootstrap')return {profile:{displayName:'QA',tierKey:'general'},usedTickets:[],usedTicketCount:0,offers:[{ticket:{eventTicketId:'EVENT',title:'QA event',ticketType:'coupon',description:'QA',usageMethod:'QA',usageInstructions:'QA'},claim:owned?{claimId:'CLAIM',status:'available',ticketDescription:'QA'}:null,eligibleBookings:owned?[booking('A'),booking('B')]:[],canUse:owned,canClaim:!owned,tierEligible:true,availability:'active'}]};
    calls.push({action,payload});throw Object.assign(new Error('QA location retry'),{code:'LOCATION_OUT_OF_RANGE'});
   }};
+  w.eval(fs.readFileSync(path.join(__dirname,'../../event-ticket-ui.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(__dirname,'../../event/app.js'),'utf8'));w.dispatchEvent(new w.Event('DOMContentLoaded'));
   const wait=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(r=>setTimeout(r,1));}throw Error(w.document.getElementById('errorMessage').textContent||'UI did not settle');};
   const doc=w.document;await wait(()=>!!doc.querySelector('[data-event-ticket-id]'));assert.equal(doc.getElementById('errorView').classList.contains('hidden'),true);
