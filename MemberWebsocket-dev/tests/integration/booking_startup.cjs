@@ -53,7 +53,7 @@ async function fixture(mode) {
     return new Response(JSON.stringify({ ok: true, data }));
   };
   w.BookingSystem = {
-    loadConfig: async () => config, signIn: async () => 'fixture-token', memberProfile: async () => ({}),
+    loadConfig: async () => config, signIn: async () => 'fixture-token', claimBrowserSession: async () => {}, memberProfile: async () => ({}),
     subscribeRealtime: () => { subscriptions++; return () => {}; },
     addDays: (date, days) => new Date(Date.parse(date + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10),
     formatDate: date => date, clientError: (code, message) => Object.assign(new Error(message), { code }),
