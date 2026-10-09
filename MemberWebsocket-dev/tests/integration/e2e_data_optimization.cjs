@@ -206,3 +206,90 @@ test('QA point booking uses real eligibility and constraints, preserves balance 
     assert.equal((await query('select status from members where id=$1',[other]))[0].status,'active');
   } finally { await db.close(); }
 });
+
+
+test('point redemption fixture probes more than five distinct candidate slots', async () => {
+  const api = apiProbe();
+  const observed = [], bookingId = '00000000-0000-4000-8000-000000000099';
+  const records = {
+    booking_settings: { work_start_time:'10:00', work_end_time:'18:00',slot_interval_minutes:15,min_advance_days:1,max_advance_days:10 },
+    booking_services: null,
+    calendar_items: [],
+  };
+  const service = { id:'qa-service',duration_minutes:30 };
+  const store = { id:'store-service',duration_minutes:15 };
+  const client = {
+    from(table) {
+      const criteria = {};
+      const q = {
+        select(){return q}, eq(k,v){criteria[k]=v;return q}, like(){return q},
+        order(){return q},limit(){return q},update(){return q},
+        insert(){return Promise.resolve({data:[{}],error:null})},
+        single(){
+          const data = table==='booking_settings'?records.booking_settings
+            :table==='booking_services'?(criteria.id?store:service)
+            :table==='bookings'?{id:bookingId,status:'confirmed'}:null;
+          return Promise.resolve({data,error:data?null:{message:'not found'}});
+        },
+        then(resolve,reject) {
+          return Promise.resolve({data:table==='booking_services'?[service]:records[table]||[],error:null}).then(resolve,reject);
+        },
+      };
+      return q;
+    },
+    async rpc(name,args) {
+      if(name==='create_booking_bundle_request') {
+        observed.push(args.p_booking_date+' '+args.p_start_time);
+        return observed.length<=5?{data:null,error:{message:'BOOKING_SLOT_TAKEN'}}
+          :{data:{id:bookingId,status:'pending'},error:null};
+      }
+      if(name==='member_ticket_booking_options')return {data:{points:{T:[{bookingId}]}},error:null};
+      throw Error('unexpected rpc '+name);
+    },
+  };
+  const selected = await api.preparePointRedemptionBooking(client,{memberId:'qa',isTestAccount:true,surface:'points'},'ABCDEF1234567890','T');
+  assert.equal(selected,bookingId);
+  assert.equal(observed.length,6);
+  assert.equal(new Set(observed).size,6,'each retry should be a new date and time candidate');
+});
+
+test('point fixture failure before response removes all QA rows including issued tickets and ledger', async () => {
+  const api = apiProbe(), names = ['ticket_templates','point_cards','point_card_rewards','point_balances','point_entries','point_tickets'];
+  const rows = Object.fromEntries(names.map(name=>[name,[]]));
+  let counter=0;
+  const client={
+    from(table) {
+      let action='select',value,filters=[],limit=Infinity,single=false;
+      const q={
+        select(){return q},eq(key,v){filters.push(row=>row[key]===v);return q},
+        like(){return q},order(){return q},
+        limit(n){limit=n;return q},insert(data){action='insert';value=data;return q},
+        delete(){action='delete';return q},single(){single=true;return execute()},
+        maybeSingle(){single=true;return execute()},then(ok,bad){return execute().then(ok,bad)},
+      };
+      async function execute() {
+        if(table==='booking_settings')return {data:null,error:{message:'QA booking setup unavailable'}};
+        const target=rows[table]||[];
+        if(action==='insert') {
+          const newRow={...value,id:'row-'+(++counter)};
+          target.push(newRow);
+          return {data:single?newRow:[newRow],error:null};
+        }
+        const matching=target.filter(row=>filters.every(f=>f(row))).slice(0,limit);
+        if(action==='delete')for(const row of matching)target.splice(target.indexOf(row),1);
+        return {data:single?(matching[0]||null):matching,error:null};
+      }
+      return q;
+    },
+    async rpc(name, args) {
+      if(name!=='issue_eligible_point_tickets')throw Error('unexpected RPC '+name);
+      const reward=rows.point_card_rewards.find(row=>row.point_card_id===args.p_point_card_id);
+      rows.point_tickets.push({id:'issued',ticket_id:'ISSUED',member_id:'qa',point_card_id:args.p_point_card_id,
+        reward_id:reward.id,status:'available'});
+      return {data:{},error:null};
+    },
+  };
+  await assert.rejects(api.prepareHumanFixture(client,{memberId:'qa',surface:'points',isTestAccount:true},'points'),
+    error=>error.code==='QA_FIXTURE_BOOKING_NOT_READY');
+  for(const name of names)assert.equal(rows[name].length,0, name+' leaked an orphan');
+});
