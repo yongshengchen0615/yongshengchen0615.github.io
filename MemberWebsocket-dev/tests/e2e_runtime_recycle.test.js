@@ -50,6 +50,8 @@ test('recycle preserves historical result rows, learning state, and test-account
 test('API fails closed if recycling fails; it does not claim the next run has started', () => {
   assert.match(api, /admin\.test-control\.recycle-e2e-runtime/);
   assert.match(api, /p_lease_id: leaseId/);
+  assert.match(api, /E2E_RECYCLE_REQUIRED/);
+  assert.match(api, /runtime_recycled_at/);
   assert.match(api, /p_actor: identity\.lineUserId/);
   assert.match(api, /E2E_RECYCLE_BLOCKED/);
   assert.match(api, /E2E_RECYCLE_INCOMPLETE/);
