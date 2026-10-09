@@ -451,13 +451,13 @@
         receiptId: String(finalized.receiptId || prepared.receiptId || ''),
         status: String(finalized.status || 'awaiting_review'),
       });
-      window.setTimeout(() => {
-        state.busy = false;
-        [submit, cancel, close, imageInput].forEach((button) => { if (button) button.disabled = false; });
-        if (retake) retake.disabled = false;
-        closeModal();
-        void refreshListAndDecorate();
-      }, 900);
+      // Background tabs throttle timers. Finalization is the commit point, so
+      // release the dialog immediately and refresh the persisted receipt list.
+      state.busy = false;
+      [submit, cancel, close, imageInput].forEach((button) => { if (button) button.disabled = false; });
+      if (retake) retake.disabled = false;
+      closeModal();
+      void refreshListAndDecorate();
       return;
     } catch (error) {
       if (error?.code !== 'API_RESPONSE_UNCERTAIN' && error?.code !== 'RECEIPT_UPLOAD_UNAVAILABLE') {

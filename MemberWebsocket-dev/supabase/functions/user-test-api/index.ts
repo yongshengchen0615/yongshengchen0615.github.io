@@ -1378,6 +1378,98 @@ function requireFixtureTag(value: unknown): string {
   return tag;
 }
 
+async function preparePointRedemptionBooking(s: any, identity: any, tag: string, ticketId: string): Promise<string> {
+  if (identity.isTestAccount !== true || identity.surface !== "points") {
+    throw new ApiError(403, "TEST_ACCOUNT_REQUIRED", "票券預約前置資料只允許集點卡測試 Session 建立。");
+  }
+  const actor = "qa-ui:" + identity.memberId + ":" + requireFixtureTag(tag);
+  const [settingsResult, servicesResult, storeResult, holidaysResult] = await Promise.all([
+    s.from("booking_settings").select("*").eq("id", 1).single(),
+    s.from("booking_services").select("id,title,duration_minutes")
+      .eq("is_active", true).eq("requires_companion_service", false)
+      .like("created_by", "qa:%").order("created_at", { ascending: false }).limit(1),
+    s.from("booking_services").select("id,duration_minutes").eq("id", STORE_SERVICE_ID).eq("is_active", true).single(),
+    s.from("calendar_items").select("starts_on,ends_on").eq("item_type", "holiday").eq("status", "active"),
+  ]);
+  const settings = settingsResult.data;
+  const service = servicesResult.data?.[0];
+  const store = storeResult.data;
+  if (settingsResult.error || servicesResult.error || storeResult.error || holidaysResult.error || !settings || !service || !store) {
+    throw new ApiError(409, "QA_FIXTURE_BOOKING_NOT_READY", "請先建立 E2E 預約測試資源，再測試票券核銷。");
+  }
+  const minutes = (time: unknown) => {
+    const [hour, minute] = String(time || "").split(":").map(Number);
+    return hour * 60 + minute;
+  };
+  const start = minutes(settings.work_start_time);
+  let end = minutes(settings.work_end_time);
+  if (end <= start) end += 1440;
+  const interval = Math.max(1, Number(settings.slot_interval_minutes || 15));
+  const duration = Number(service.duration_minutes) + Number(store.duration_minutes);
+  const slotCount = Math.floor((end - start - duration) / interval) + 1;
+  if (!Number.isFinite(slotCount) || slotCount < 1) {
+    throw new ApiError(409, "QA_FIXTURE_BOOKING_NOT_READY", "測試服務無法放入目前營業時段。");
+  }
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei" }).format(new Date());
+  const firstDay = Math.max(1, Number(settings.min_advance_days || 0));
+  const lastDay = Number(settings.max_advance_days) > 0 ? Number(settings.max_advance_days) : firstDay + 7;
+  const dayCount = lastDay - firstDay + 1;
+  if (dayCount < 1) throw new ApiError(409, "QA_FIXTURE_BOOKING_NOT_READY", "目前預約日期範圍不足以建立測試預約。");
+  const seed = Number.parseInt(tag.slice(0, 8), 16);
+  const requestId = "BOOK-QA-POINTS-" + tag;
+  const holidays = holidaysResult.data || [];
+  let bookingId = "";
+  // Spread probes across dates and distinct time slots. A five-slot retry
+  // makes human E2E flaky whenever the calendar has a handful of collisions.
+  // Cap backend RPC attempts so a fully booked calendar cannot stall the runner.
+  const candidateLimit = Math.min(dayCount * slotCount, 96);
+  for (let attempt = 0; attempt < candidateLimit; attempt += 1) {
+    const dayIndex = attempt % dayCount;
+    const timeRound = Math.floor(attempt / dayCount);
+    const slotIndex = (seed + dayIndex * 7 + timeRound) % slotCount;
+    const date = isoDateAdd(today, firstDay + ((seed + dayIndex) % dayCount));
+    if (holidays.some((row: any) => row.starts_on <= date && (row.ends_on || row.starts_on) >= date)) continue;
+    const cursor = (start + slotIndex * interval) % 1440;
+    const time = String(Math.floor(cursor / 60)).padStart(2, "0") + ":" + String(cursor % 60).padStart(2, "0");
+    const created = await s.rpc("create_booking_bundle_request", {
+      p_request_id: requestId, p_member_id: identity.memberId, p_booking_date: date,
+      p_start_time: time, p_items: [{ serviceId: service.id, quantity: 1 }, { serviceId: store.id, quantity: 1 }],
+      p_member_note: "QA HUMAN E2E POINTS " + tag,
+    });
+    if (created.error) {
+      if (/BOOKING_SLOT_TAKEN/.test(String(created.error.message || ""))) continue;
+      throw new ApiError(409, "QA_FIXTURE_BOOKING_NOT_READY", "無法建立票券核銷需要的 QA 預約。");
+    }
+    if (created.data?.status !== "pending") {
+      throw new ApiError(409, "QA_FIXTURE_BOOKING_NOT_READY", "測試預約已進入後續狀態，請建立新的測試資料。");
+    }
+    bookingId = asText(created.data?.id, 80);
+    if (bookingId) break;
+  }
+  if (!bookingId) throw new ApiError(409, "QA_FIXTURE_BOOKING_NOT_READY", "目前找不到票券核銷前置資料的安全時段。");
+  try {
+    // This is fixture setup, not a member-facing confirmation capability. The
+    // authenticated test member, request and QA service are all server-derived.
+    const confirmed = await s.from("bookings").update({ status: "confirmed", confirmed_by: actor, confirmed_at: new Date().toISOString() })
+      .eq("id", bookingId).eq("member_id", identity.memberId).eq("request_id", requestId).eq("status", "pending")
+      .select("id,status").single();
+    if (confirmed.error || confirmed.data?.status !== "confirmed") throw new Error("confirmation failed");
+    const eligible = await s.rpc("member_ticket_booking_options", { p_member_id: identity.memberId });
+    if (eligible.error || !eligible.data?.points?.[ticketId]?.some((row: any) => row.bookingId === bookingId)) {
+      throw new Error("eligibility failed");
+    }
+    const audit = await s.from("booking_audit_events").insert({
+      actor_line_user_id: actor, actor_role: "system", action: "QA_POINT_REDEMPTION_FIXTURE",
+      target_type: "booking", target_id: bookingId, result: "success", metadata: { fixtureTag: tag },
+    });
+    if (audit.error) throw new Error("audit failed");
+    return bookingId;
+  } catch {
+    await cleanupBooking(s, bookingId);
+    throw new ApiError(409, "QA_FIXTURE_BOOKING_NOT_READY", "QA 預約確認或核銷資格回讀失敗。");
+  }
+}
+
 async function prepareHumanFixture(s: any, identity: any, surface: Surface): Promise<Json> {
   const tag = suffix();
   const actor = "qa-ui:" + identity.memberId + ":" + tag;
@@ -1485,12 +1577,15 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
     }
 
     if (!ticket) {
-      // Cleanup in FK-safe order; automatic issuance may already have created a ticket.
-      await s.from("point_tickets").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
-      await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
-      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
-      await s.from("point_cards").delete().eq("id", card.data.id);
-      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      // An issuance failure also requires ledger cleanup; removing only the
+      // balance/reward leaves a point_entries FK and prevents deleting the card.
+      try {
+        await cleanupHumanFixture(s, identity, "points", { fixtureTag: tag });
+        const remaining = await s.from("point_cards").select("id").eq("card_id", card.data.card_id).maybeSingle();
+        if (remaining.error || remaining.data) throw new Error("QA point fixture still exists");
+      } catch {
+        throw new ApiError(500, "QA_FIXTURE_CLEANUP_FAILED", "票券發放失敗，且無法完整清理已建立的 QA 資料。");
+      }
       throw new ApiError(
         500,
         "QA_FIXTURE_POINT_TICKET_FAILED",
@@ -1499,7 +1594,22 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
       );
     }
 
-    return { fixtureTag: tag, cardId: card.data.card_id, ticketId: ticket.ticket_id, expectedStamps: 2 };
+    try {
+      const bookingId = await preparePointRedemptionBooking(s, identity, tag, ticket.ticket_id);
+      return { fixtureTag: tag, cardId: card.data.card_id, ticketId: ticket.ticket_id, bookingId, expectedStamps: 2 };
+    } catch (error) {
+      // Preparation has not returned fixtureTag to the browser yet, so the
+      // client cannot invoke normal cleanup. Remove the partial point fixture
+      // server-side before propagating the original booking error.
+      try {
+        await cleanupHumanFixture(s, identity, "points", { fixtureTag: tag });
+        const remaining = await s.from("point_cards").select("id").eq("card_id", "QA-UI-PC-" + tag).maybeSingle();
+        if (remaining.error || remaining.data) throw new Error("QA point fixture still exists");
+      } catch {
+        throw new ApiError(500, "QA_FIXTURE_CLEANUP_FAILED", "票券預約準備失敗，且無法完整清理已建立的 QA 資料。");
+      }
+      throw error;
+    }
   }
 
   if (surface === "event") {
@@ -1838,11 +1948,28 @@ function safeDiagnosticSnapshot(value: unknown, maxChars = 7000): Json {
   let serialized = "";
   try { serialized = JSON.stringify(sanitized ?? {}); } catch { return { serializationFailed: true }; }
   if (serialized.length <= maxChars) return sanitized ?? {};
-  return {
+  const compacted: Json = {
     truncated: true,
     originalChars: serialized.length,
-    preview: serialized.slice(0, Math.max(300, maxChars - 120)),
+    artifactVersion: sanitized.artifactVersion,
+    seed: sanitized.seed,
+    surface: sanitized.surface,
+    caseKey: sanitized.caseKey,
+    page: sanitized.page,
+    elapsedMs: sanitized.elapsedMs,
+    error: sanitized.error,
+    screenshot: sanitized.screenshot,
+    diagnosis: sanitized.diagnosis,
+    apiTimings: Array.isArray(sanitized.apiTimings) ? sanitized.apiTimings.slice(-8) : [],
+    events: Array.isArray(sanitized.events) ? sanitized.events.slice(-6).map((event: any) => ({
+      atMs: event.atMs, type: event.type, detail: { target: event.detail?.target, message: event.detail?.message, code: event.detail?.code },
+    })) : [],
   };
+  while (JSON.stringify(compacted).length > maxChars && ((compacted.events as any[]).length || (compacted.apiTimings as any[]).length)) {
+    if ((compacted.events as any[]).length) (compacted.events as any[]).shift();
+    else (compacted.apiTimings as any[]).shift();
+  }
+  return compacted;
 }
 
 async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawCases: unknown, timing: Json = {}): Promise<Json> {
@@ -1883,7 +2010,8 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
     passed_cases: passedCount,
     failed_cases: failedCount,
     summary: {
-      runnerVersion: "user-test-control-human-e2e-20260923-trace1",
+      runnerVersion: /^20\d{2}-\d{2}-\d{2}\.\d{1,3}$/.test(String(timing.runnerVersion || ""))
+        ? timing.runnerVersion : "legacy-unreported",
       source: "member-client-browser",
       surface,
       ...summarizeE2EExecution(normalized),

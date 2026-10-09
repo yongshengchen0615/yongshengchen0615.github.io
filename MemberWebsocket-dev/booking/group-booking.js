@@ -35,8 +35,10 @@
     state.idToken = idToken;
 
     if (action === 'user.booking.bootstrap') {
-      const base = await originalRequest(config, clientType, idToken, action, payload);
-      const group = await groupRequest('user.booking.group.bootstrap');
+      const [base, group] = await Promise.all([
+        originalRequest(config, clientType, idToken, action, payload),
+        groupRequest('user.booking.group.bootstrap'),
+      ]);
       state.maxPartySize = clamp(Number(group.settings?.maxPartySize || 1), 1, 10);
       state.primaryTechnicianId = String(group.settings?.primaryTechnicianId || '');
       state.requirePrimaryTechnician = group.settings?.requirePrimaryTechnician !== false;
