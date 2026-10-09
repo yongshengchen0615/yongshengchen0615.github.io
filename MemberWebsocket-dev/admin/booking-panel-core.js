@@ -47,6 +47,11 @@
     tab.setAttribute('aria-selected', 'false');
     tab.setAttribute('aria-controls', 'bookingPanel');
     tab.textContent = '預約';
+    const badge = document.createElement('span');
+    badge.className = 'booking-nav-count';
+    badge.setAttribute('aria-hidden', 'true');
+    badge.hidden = true;
+    tab.appendChild(badge);
     const testModeTab = document.getElementById('testModeTab');
     if (testModeTab && testModeTab.parentElement === nav) nav.insertBefore(tab, testModeTab);
     else nav.appendChild(tab);
@@ -329,11 +334,10 @@
     const unread = Math.max(0, Number(unreadCount || 0));
     const pending = Math.max(0, Number(pendingCount || 0));
     const accessiblePending = Math.max(0, Number(accessiblePendingCount || 0));
-    const badgeCount = unread + accessiblePending;
+    const totalActionable = pending + accessiblePending;
     state.unreadCount = unread;
     state.pendingCount = pending;
     state.accessiblePendingCount = accessiblePending;
-    const totalActionable = pending + accessiblePending;
     els.bookingAdminPendingCount.textContent = String(pending);
     if (els.bookingAdminAccessiblePendingCount) els.bookingAdminAccessiblePendingCount.textContent = String(accessiblePending);
     if (els.bookingAdminStandardModeCount) els.bookingAdminStandardModeCount.textContent = String(pending);
@@ -342,7 +346,12 @@
     els.bookingTab.dataset.unreadCount = String(unread);
     els.bookingTab.dataset.pendingCount = String(pending);
     els.bookingTab.dataset.accessiblePendingCount = String(accessiblePending);
-    els.bookingTab.dataset.badgeCount = String(badgeCount);
+    els.bookingTab.dataset.badgeCount = String(totalActionable);
+    const badge = els.bookingTab.querySelector('.booking-nav-count');
+    if (badge) {
+      badge.textContent = String(totalActionable);
+      badge.hidden = totalActionable === 0;
+    }
     const labels = [];
     if (unread) labels.push(`${unread} 筆未讀更新`);
     if (pending) labels.push(`${pending} 筆一般預約待確認`);
