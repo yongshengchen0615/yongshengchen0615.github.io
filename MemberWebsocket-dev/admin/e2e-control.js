@@ -2131,6 +2131,19 @@
       }
 
       cleanupLeaseId = await acquireE2ECleanupLease();
+      setMessage('正在安全回收前一輪 E2E 集點卡、活動票券與預約測試資料，保留歷史 QA 紀錄。');
+      const previousCleanup = await recyclePreviousE2ERuntime(cleanupLeaseId);
+      state.results.push({
+        key: 'E2E_RUNTIME_RECYCLE',
+        name: '測試前資料回收與殘留驗證',
+        domain: 'Paired E2E / Orchestration',
+        status: 'passed',
+        message: previousCleanup.alreadyRecycled ? '本次執行鎖已完成資料重置，不重複刪除。' : '已回收上輪暫存資料並確認沒有 QA 資源殘留。',
+        expected: { cleanupComplete: true, remainingQaArtifacts: 0 },
+        actual: safe(previousCleanup),
+        durationMs: 0
+      });
+      render();
       const renewCleanupLease = async () => {
         if (!cleanupLeaseId || cleanupLeaseHeartbeatBusy || state.cancelled) return;
         cleanupLeaseHeartbeatBusy = true;
@@ -7594,6 +7607,22 @@
       throw error;
     }
     return leaseId;
+  }
+
+  async function recyclePreviousE2ERuntime(leaseId) {
+    const session = await adminSession();
+    const data = await postFunction('test-control-api', {
+      action: 'admin.test-control.recycle-e2e-runtime',
+      clientType: 'admin',
+      idToken: session.idToken,
+      leaseId: String(leaseId || '')
+    });
+    if (data?.recycle?.cleanupComplete !== true) {
+      const error = new Error('前一輪 E2E 測試資料未清理完成，已停止本輪測試。');
+      error.code = 'E2E_RECYCLE_INCOMPLETE';
+      throw error;
+    }
+    return data.recycle;
   }
 
   async function releaseE2ECleanupLease(leaseId) {
