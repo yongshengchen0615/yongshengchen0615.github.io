@@ -2721,36 +2721,55 @@
     throw new Error('找不到會員操作按鈕：' + action);
   }
 
-  async function adminMemberModalCase() {
-    const edit = await ensureTestRoster();
-    const lineUserId = String(edit.dataset.value || '');
-    const actual = { edit: false, records: false, grant: false };
-
-    await clickRowAction('edit-member', lineUserId);
-    actual.edit = Boolean(await waitFor(() => !document.getElementById('memberModal')?.classList.contains('hidden'), 3000));
-    if (document.getElementById('memberIsTestAccount')?.value !== 'true') {
-      document.getElementById('cancelMemberButton')?.click();
-      const error = new Error('E2E 安全邊界：管理端會員測試只能操作測試用戶，已阻擋正式用戶。');
-      error.code = 'E2E_REAL_MEMBER_BLOCKED';
-      throw error;
+  async function closeMemberWorkflowDialogs() {
+    for (const [modalId, cancelId] of [['memberModal', 'cancelMemberButton'], ['grantModal', 'cancelGrantButton'], ['memberRecordsModal', 'closeMemberRecordsModal']]) {
+      const modal = document.getElementById(modalId);
+      if (!modal || modal.classList.contains('hidden')) continue;
+      const button = await waitFor(() => {
+        const cancel = document.getElementById(cancelId);
+        return cancel && !cancel.disabled ? cancel : null;
+      }, 8000);
+      button?.click();
+      if (!await waitFor(() => modal.classList.contains('hidden'), 3000)) {
+        throw Object.assign(new Error('會員 E2E 視窗未能正常關閉：' + modalId), { code: 'E2E_DIALOG_CLEANUP_FAILED' });
+      }
     }
-    document.getElementById('cancelMemberButton')?.click();
-    await waitFor(() => document.getElementById('memberModal')?.classList.contains('hidden'), 3000);
+  }
 
-    await clickRowAction('view-records', lineUserId);
-    actual.records = Boolean(await waitFor(() => !document.getElementById('memberRecordsModal')?.classList.contains('hidden'), 7000));
-    document.getElementById('closeMemberRecordsModal')?.click();
-    await waitFor(() => document.getElementById('memberRecordsModal')?.classList.contains('hidden'), 3000);
+  async function adminMemberModalCase() {
+    try {
+      const edit = await ensureTestRoster();
+      const lineUserId = String(edit.dataset.value || '');
+      const actual = { edit: false, records: false, grant: false };
 
-    await clickRowAction('add-grant', lineUserId);
-    actual.grant = Boolean(await waitFor(() => !document.getElementById('grantModal')?.classList.contains('hidden'), 7000));
-    document.getElementById('cancelGrantButton')?.click();
-    await waitFor(() => document.getElementById('grantModal')?.classList.contains('hidden'), 3000);
+      await clickRowAction('edit-member', lineUserId);
+      actual.edit = Boolean(await waitFor(() => !document.getElementById('memberModal')?.classList.contains('hidden'), 3000));
+      if (document.getElementById('memberIsTestAccount')?.value !== 'true') {
+        document.getElementById('cancelMemberButton')?.click();
+        const error = new Error('E2E 安全邊界：管理端會員測試只能操作測試用戶，已阻擋正式用戶。');
+        error.code = 'E2E_REAL_MEMBER_BLOCKED';
+        throw error;
+      }
+      document.getElementById('cancelMemberButton')?.click();
+      await waitFor(() => document.getElementById('memberModal')?.classList.contains('hidden'), 3000);
 
-    const ok = Object.values(actual).every(Boolean);
-    return ok
-      ? pass('會員狀態、紀錄、發放三個管理視窗皆可真人開啟與關閉。', { allDialogs: true }, actual)
-      : fail('至少一個會員管理視窗互動異常。', { allDialogs: true }, actual);
+      await clickRowAction('view-records', lineUserId);
+      actual.records = Boolean(await waitFor(() => !document.getElementById('memberRecordsModal')?.classList.contains('hidden'), 7000));
+      document.getElementById('closeMemberRecordsModal')?.click();
+      await waitFor(() => document.getElementById('memberRecordsModal')?.classList.contains('hidden'), 3000);
+
+      await clickRowAction('add-grant', lineUserId);
+      actual.grant = Boolean(await waitFor(() => !document.getElementById('grantModal')?.classList.contains('hidden'), 7000));
+      document.getElementById('cancelGrantButton')?.click();
+      await waitFor(() => document.getElementById('grantModal')?.classList.contains('hidden'), 3000);
+
+      const ok = Object.values(actual).every(Boolean);
+      return ok
+        ? pass('會員狀態、紀錄、發放三個管理視窗皆可真人開啟與關閉。', { allDialogs: true }, actual)
+        : fail('至少一個會員管理視窗互動異常。', { allDialogs: true }, actual);
+    } finally {
+      await closeMemberWorkflowDialogs();
+    }
   }
 
   function setField(id, value) {
@@ -2790,74 +2809,78 @@
   }
 
   async function adminProfileMutationCase() {
-    const edit = await ensureTestRoster();
-    const lineUserId = String(edit.dataset.value || '');
-    await openTestMember(lineUserId);
-    const original = {
-      displayName: String(document.getElementById('memberDisplayName')?.value || ''),
-      surname: String(document.getElementById('memberSurname')?.value || ''),
-      salutation: String(document.getElementById('memberSalutation')?.value || 'mr'),
-      birthday: String(document.getElementById('memberBirthday')?.value || ''),
-      phone: String(document.getElementById('memberPhone')?.value || ''),
-      status: String(document.getElementById('memberStatus')?.value || 'active')
-    };
-    const suffix = Date.now().toString(36).slice(-5).toUpperCase();
-    const next = {
-      displayName: ('QA E2E ' + suffix).slice(0, 70),
-      surname: original.surname === '測' ? '驗' : '測',
-      salutation: original.salutation === 'mr' ? 'ms' : 'mr',
-      birthday: original.birthday === '1990-01-15' ? '1991-02-16' : '1990-01-15',
-      phone: original.phone.replace(/\D/g, '') === '0900000001' ? '0900000002' : '0900000001',
-      status: original.status
-    };
-    let changedVerified = false;
-    let restoredVerified = false;
-
-    async function fill(profile) {
-      setField('memberDisplayName', profile.displayName);
-      setField('memberSurname', profile.surname);
-      setField('memberSalutation', profile.salutation);
-      setField('memberBirthday', profile.birthday);
-      setField('memberPhone', profile.phone);
-      setField('memberStatus', profile.status);
-    }
-
     try {
-      await fill(next);
-      if (!await submitMemberAndWait()) throw new Error('測試會員修改後視窗未正常關閉。');
+      const edit = await ensureTestRoster();
+      const lineUserId = String(edit.dataset.value || '');
       await openTestMember(lineUserId);
-      changedVerified = [
-        ['memberDisplayName', next.displayName],
-        ['memberSurname', next.surname],
-        ['memberSalutation', next.salutation],
-        ['memberBirthday', next.birthday],
-        ['memberPhone', next.phone]
-      ].every(([id, value]) => String(document.getElementById(id)?.value || '') === value);
-      await fill(original);
-      if (!await submitMemberAndWait()) throw new Error('測試會員還原後視窗未正常關閉。');
-      await openTestMember(lineUserId);
-      restoredVerified = [
-        ['memberDisplayName', original.displayName],
-        ['memberSurname', original.surname],
-        ['memberSalutation', original.salutation],
-        ['memberBirthday', original.birthday],
-        ['memberPhone', original.phone]
-      ].every(([id, value]) => String(document.getElementById(id)?.value || '') === value);
-      document.getElementById('cancelMemberButton')?.click();
-    } finally {
-      if (!restoredVerified) {
-        try {
-          if (document.getElementById('memberModal')?.classList.contains('hidden')) await openTestMember(lineUserId);
-          await fill(original);
-          await submitMemberAndWait();
-        } catch {}
-      }
-    }
+      const original = {
+        displayName: String(document.getElementById('memberDisplayName')?.value || ''),
+        surname: String(document.getElementById('memberSurname')?.value || ''),
+        salutation: String(document.getElementById('memberSalutation')?.value || 'mr'),
+        birthday: String(document.getElementById('memberBirthday')?.value || ''),
+        phone: String(document.getElementById('memberPhone')?.value || ''),
+        status: String(document.getElementById('memberStatus')?.value || 'active')
+      };
+      const suffix = Date.now().toString(36).slice(-5).toUpperCase();
+      const next = {
+        displayName: ('QA E2E ' + suffix).slice(0, 70),
+        surname: original.surname === '測' ? '驗' : '測',
+        salutation: original.salutation === 'mr' ? 'ms' : 'mr',
+        birthday: original.birthday === '1990-01-15' ? '1991-02-16' : '1990-01-15',
+        phone: original.phone.replace(/\D/g, '') === '0900000001' ? '0900000002' : '0900000001',
+        status: original.status
+      };
+      let changedVerified = false;
+      let restoredVerified = false;
 
-    const actual = { changedVerified, restoredVerified, lineUserId: lineUserId ? '[present]' : '[missing]' };
-    return changedVerified && restoredVerified
-      ? pass('已透過管理端 UI 修改測試會員全部可編輯個資欄位，驗證後完整還原。', { changedVerified: true, restoredVerified: true }, actual)
-      : fail('測試會員修改或還原驗證失敗。', { changedVerified: true, restoredVerified: true }, actual);
+      async function fill(profile) {
+        setField('memberDisplayName', profile.displayName);
+        setField('memberSurname', profile.surname);
+        setField('memberSalutation', profile.salutation);
+        setField('memberBirthday', profile.birthday);
+        setField('memberPhone', profile.phone);
+        setField('memberStatus', profile.status);
+      }
+
+      try {
+        await fill(next);
+        if (!await submitMemberAndWait()) throw new Error('測試會員修改後視窗未正常關閉。');
+        await openTestMember(lineUserId);
+        changedVerified = [
+          ['memberDisplayName', next.displayName],
+          ['memberSurname', next.surname],
+          ['memberSalutation', next.salutation],
+          ['memberBirthday', next.birthday],
+          ['memberPhone', next.phone]
+        ].every(([id, value]) => String(document.getElementById(id)?.value || '') === value);
+        await fill(original);
+        if (!await submitMemberAndWait()) throw new Error('測試會員還原後視窗未正常關閉。');
+        await openTestMember(lineUserId);
+        restoredVerified = [
+          ['memberDisplayName', original.displayName],
+          ['memberSurname', original.surname],
+          ['memberSalutation', original.salutation],
+          ['memberBirthday', original.birthday],
+          ['memberPhone', original.phone]
+        ].every(([id, value]) => String(document.getElementById(id)?.value || '') === value);
+        document.getElementById('cancelMemberButton')?.click();
+      } finally {
+        if (!restoredVerified) {
+          try {
+            if (document.getElementById('memberModal')?.classList.contains('hidden')) await openTestMember(lineUserId);
+            await fill(original);
+            await submitMemberAndWait();
+          } catch {}
+        }
+      }
+
+      const actual = { changedVerified, restoredVerified, lineUserId: lineUserId ? '[present]' : '[missing]' };
+      return changedVerified && restoredVerified
+        ? pass('已透過管理端 UI 修改測試會員全部可編輯個資欄位，驗證後完整還原。', { changedVerified: true, restoredVerified: true }, actual)
+        : fail('測試會員修改或還原驗證失敗。', { changedVerified: true, restoredVerified: true }, actual);
+    } finally {
+      await closeMemberWorkflowDialogs();
+    }
   }
 
   async function openEditor(buttonId, modalId, preClick) {
@@ -6618,27 +6641,31 @@
   }
 
   async function adminGrantNotificationControlsCase() {
-    const edit = await ensureTestRoster();
-    await clickRowAction('add-grant', edit.dataset.value);
-    const modal = await waitFor(() => !document.getElementById('grantModal')?.classList.contains('hidden') && document.getElementById('grantModal'), 4000);
-    if (!modal) return fail('發放視窗未開啟。', { opened:true }, { opened:false });
-    const original = modal.querySelector('input[name="grantNotificationMode"]:checked')?.value || 'immediate';
-    const checks = [];
     try {
-      for (const mode of ['scheduled','none','immediate']) {
-        const radio = modal.querySelector('input[name="grantNotificationMode"][value="' + mode + '"]');
-        radio?.click();
-        const input = document.getElementById('grantNotificationScheduledAt');
-        checks.push({mode, selected:radio?.checked === true,
-          correctRequired:input?.required === (mode === 'scheduled'), correctDisabled:input?.disabled === (mode !== 'scheduled')});
+      const edit = await ensureTestRoster();
+      await clickRowAction('add-grant', edit.dataset.value);
+      const modal = await waitFor(() => !document.getElementById('grantModal')?.classList.contains('hidden') && document.getElementById('grantModal'), 4000);
+      if (!modal) return fail('發放視窗未開啟。', { opened:true }, { opened:false });
+      const original = modal.querySelector('input[name="grantNotificationMode"]:checked')?.value || 'immediate';
+      const checks = [];
+      try {
+        for (const mode of ['scheduled','none','immediate']) {
+          const radio = modal.querySelector('input[name="grantNotificationMode"][value="' + mode + '"]');
+          radio?.click();
+          const input = document.getElementById('grantNotificationScheduledAt');
+          checks.push({mode, selected:radio?.checked === true,
+            correctRequired:input?.required === (mode === 'scheduled'), correctDisabled:input?.disabled === (mode !== 'scheduled')});
+        }
+      } finally {
+        modal.querySelector('input[name="grantNotificationMode"][value="' + original + '"]')?.click();
+        document.getElementById('cancelGrantButton')?.click();
       }
+      return checks.every(item => item.selected && item.correctRequired && item.correctDisabled)
+        ? pass('通知三種模式可切換，排程日期只在排程模式必填；未送出發放。', { modes:3 }, {checks})
+        : fail('通知模式與日期狀態不一致。', { modes:3 }, {checks});
     } finally {
-      modal.querySelector('input[name="grantNotificationMode"][value="' + original + '"]')?.click();
-      document.getElementById('cancelGrantButton')?.click();
+      await closeMemberWorkflowDialogs();
     }
-    return checks.every(item => item.selected && item.correctRequired && item.correctDisabled)
-      ? pass('通知三種模式可切換，排程日期只在排程模式必填；未送出發放。', { modes:3 }, {checks})
-      : fail('通知模式與日期狀態不一致。', { modes:3 }, {checks});
   }
 
   async function adminPointLimitSettingsCase() {

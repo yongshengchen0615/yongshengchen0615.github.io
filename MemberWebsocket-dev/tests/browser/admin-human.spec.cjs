@@ -245,7 +245,7 @@ test('BOOKING_RECEIPT — open signed receipt, inspect summary, close and clear 
 // Execute the registered production runner nodes, not copies of their logic.
 const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'../..');
-const runtimeKeys=['ADMIN_MEMBER_MODALS','ADMIN_SERVICE_GRANT_JOURNEY','ADMIN_SETTINGS_COPY_CONTROLS','ADMIN_CALENDAR_EVENT_CRUD','ADMIN_EVENT_CALENDAR_SYNC','ADMIN_TIER_EDITOR_JOURNEY','ADMIN_TERMS_EDITOR_JOURNEY','ADMIN_CARD_EDITOR_OPTIONS','ADMIN_CARD_SORT_JOURNEY','ADMIN_EVENT_AUDIENCE_JOURNEY','ADMIN_CALENDAR_NAVIGATION','ADMIN_BOOKING_BATCH_EDITOR','ADMIN_CALENDAR_BATCH_CONTROLS','ADMIN_CALENDAR_CRUD','ADMIN_FIXED_DRAFT_BIRTHDAY_MONTH','ADMIN_FIXED_DRAFT_WEEKLY','ADMIN_FIXED_DRAFT_MONTHLY','ADMIN_FIXED_DRAFT_YEARLY'];
+const runtimeKeys=['ADMIN_MEMBER_MODALS','ADMIN_TEST_MEMBER_PROFILE_EDIT','ADMIN_GRANT_NOTIFICATION_CONTROLS','ADMIN_SERVICE_GRANT_JOURNEY','ADMIN_SETTINGS_COPY_CONTROLS','ADMIN_CALENDAR_EVENT_CRUD','ADMIN_EVENT_CALENDAR_SYNC','ADMIN_TIER_EDITOR_JOURNEY','ADMIN_TERMS_EDITOR_JOURNEY','ADMIN_CARD_EDITOR_OPTIONS','ADMIN_CARD_SORT_JOURNEY','ADMIN_EVENT_AUDIENCE_JOURNEY','ADMIN_CALENDAR_NAVIGATION','ADMIN_BOOKING_BATCH_EDITOR','ADMIN_CALENDAR_BATCH_CONTROLS','ADMIN_CALENDAR_CRUD','ADMIN_FIXED_DRAFT_BIRTHDAY_MONTH','ADMIN_FIXED_DRAFT_WEEKLY','ADMIN_FIXED_DRAFT_MONTHLY','ADMIN_FIXED_DRAFT_YEARLY'];
 async function loadRuntime(p){
   await p.evaluate(fs.readFileSync(path.join(root,'e2e-scenario-graph.js'),'utf8'));
   await p.evaluate(fs.readFileSync(path.join(root,'admin/e2e-control.js'),'utf8').replace('  window.MemberAdminE2EControl =','  window.qaRuntime={adminDefinitions};\n  window.MemberAdminE2EControl ='));
@@ -256,7 +256,16 @@ for(const key of runtimeKeys)test('RUNNER_'+key+' — production node executes a
   await loadRuntime(p);
   const result=await p.evaluate(async key=>{const node=window.qaRuntime.adminDefinitions('full',['member','points','event','calendar','integration','booking']).find(n=>n.key===key);return node.run();},key);
   expect(result.status,JSON.stringify(result)).toBe('passed');
+  if(['ADMIN_MEMBER_MODALS','ADMIN_TEST_MEMBER_PROFILE_EDIT','ADMIN_GRANT_NOTIFICATION_CONTROLS','ADMIN_SERVICE_GRANT_JOURNEY'].includes(key)){for(const id of ['memberModal','grantModal','memberRecordsModal'])await expect(p.locator('#'+id)).toBeHidden();}
   if(key.includes('FIXED_DRAFT')){expect(info.fixture.templates).toHaveLength(0);expect(calls(info.fixture,'admin.fixed-tickets.run')).toHaveLength(0);expect(calls(info.fixture,'admin.fixed-tickets.save').every(c=>c.payload.template.status==='draft'&&!c.payload.template.notifyLine&&!c.payload.template.calendarEnabled)).toBe(true);}
+});
+
+test('RUNNER_MEMBER_MODAL_FAILURE — failed 360 load closes parent and performs no writes',async({page:p},info)=>{
+  info.setTimeout(45000);await loadRuntime(p);info.fixture.fault={action:'admin.member-records.list',code:'RECORDS_UNAVAILABLE'};
+  const error=await p.evaluate(async()=>{try{await qaRuntime.adminDefinitions('full',['member']).find(n=>n.key==='ADMIN_MEMBER_MODALS').run();return '';}catch(e){return e.message;}});
+  expect(error).toContain('會員 360 尚未載入操作');
+  for(const id of ['memberModal','grantModal','memberRecordsModal'])await expect(p.locator('#'+id)).toBeHidden();
+  expect(calls(info.fixture,'admin.member.update')).toHaveLength(0);expect(info.fixture.grants).toHaveLength(0);
 });
 
 test('CALENDAR_BONUS — save bonus amount, reopen, disable by changing to holiday',async({page:p},info)=>{

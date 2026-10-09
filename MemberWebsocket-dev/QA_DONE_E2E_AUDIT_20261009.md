@@ -104,13 +104,15 @@ Supabase dev 只做 metadata 及 automation 表的彙總唯讀查詢；本次查
 
 首輪 Chromium 161 項通過、6 項轉贈入口案例失敗；所有失敗均指出正式集點卡 `::before` 裝飾層攔截點擊。修正正式 CSS 裝飾層的 `pointer-events`，由原本真人點擊案例驗證；不使用強制點擊跳過 actionability。轉贈 fixture 同時補齊集點卡樣式與顯示資料。
 
+PR 審查另確認會員狀態／個資／發放通知 runner 關閉子視窗後，可能留下會員 360 遮罩。本次在案例 `finally` 依序透過正式按鈕關閉子窗與父窗，關閉失敗回報 cleanup error；新增個資還原、通知模式及 360 載入失敗驗證，所有路徑均檢查沒有殘留視窗。
+
 CI 首輪也同時跑 push／PR 兩套測試，因 branch group 使用不同的 ref 格式；本次統一來源 repository 與 branch 名稱，保留新推送取消舊 run，避免重複執行。
 
 ## 本輪驗證狀態
 
 - 692 項 JavaScript 回歸通過（含邀請規則行為與 44 卡矩陣檢查）。
-- 完整管理端 DOM 113 項通過；另新增會員 360 runtime 案例並重驗服務發放，共 114 項具通過證據（含父測試）。新增用戶 DOM 5 項通過。
+- 完整管理端 DOM 113 項通過；另新增會員 360 runtime、個資還原、通知模式及載入失敗案例並重驗服務發放，共 117 項具通過證據（含父測試）。新增用戶 DOM 5 項通過。
 - 服務發放 PostgreSQL 5 項通過（含父測試）；32 個整合測試檔共 179 項通過（含父測試；31 檔完整驗證 174 項，加新增邀請 SQL 5 項），覆蓋條款、收據、票券一致性、登入、移除、排程與本次用戶流程。
-- Playwright 可成功列出全部 167 個案例；原生 Chromium 在本機啟動即 `SIGTRAP`，沒有進入應用程式，狀態為環境阻擋，不能記作功能測試通過。新增 Playwright 案例需 GitHub Actions 原生 Chromium 執行。
+- Playwright 可成功列出全部 170 個案例；原生 Chromium 在本機啟動即 `SIGTRAP`，沒有進入應用程式，狀態為環境阻擋，不能記作功能測試通過。新增 Playwright 案例需 GitHub Actions 原生 Chromium 執行。
 - 後續已獲授權推送與合併至 main，變更已發布至 [PR #314](https://github.com/yongshengchen0615/yongshengchen0615.github.io/pull/314)。CI 執行回歸、DOM／SQL、原生 Chromium、語法、Edge Function 型別與架構檢查；以該 PR 最新版本的結果為準。
 

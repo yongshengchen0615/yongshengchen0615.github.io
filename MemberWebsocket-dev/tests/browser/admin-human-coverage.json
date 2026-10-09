@@ -3,7 +3,7 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "45357a0e448b7855ecbef03b332d3bea0a6bda5f28007e05b9214219c9911071",
+    "admin/index.html": "6e42931ebe64b8afda31c496ae9181507dd09a18c3d036d808eafa6788379129",
     "admin/app.js": "e616fd14f80ee25d4c8a2403b81fe3cbd8041711f7b0eff9aefa94e8e7300b1c",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
@@ -38,7 +38,8 @@
       "module": "member",
       "name": "會員 360 狀態編輯、停用與恢復",
       "cases": [
-        "MEMBER_PROFILE_STATUS"
+        "MEMBER_PROFILE_STATUS",
+        "RUNNER_ADMIN_TEST_MEMBER_PROFILE_EDIT"
       ]
     },
     {
@@ -47,7 +48,8 @@
       "name": "會員 360 概況、狀態／發放入口與全部紀錄分類",
       "cases": [
         "MEMBER_360",
-        "RUNNER_ADMIN_MEMBER_MODALS"
+        "RUNNER_ADMIN_MEMBER_MODALS",
+        "RUNNER_MEMBER_MODAL_FAILURE"
       ]
     },
     {
@@ -92,7 +94,8 @@
       "cases": [
         "MEMBER_GRANT_immediate",
         "MEMBER_GRANT_scheduled",
-        "MEMBER_GRANT_none"
+        "MEMBER_GRANT_none",
+        "RUNNER_ADMIN_GRANT_NOTIFICATION_CONTROLS"
       ]
     },
     {
