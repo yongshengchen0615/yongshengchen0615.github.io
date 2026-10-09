@@ -292,4 +292,13 @@ test('point fixture failure before response removes all QA rows including issued
   await assert.rejects(api.prepareHumanFixture(client,{memberId:'qa',surface:'points',isTestAccount:true},'points'),
     error=>error.code==='QA_FIXTURE_BOOKING_NOT_READY');
   for(const name of names)assert.equal(rows[name].length,0, name+' leaked an orphan');
+
+  // Failed ticket issuance must not leave the point ledger that blocks card deletion.
+  client.rpc = async name => {
+    assert.equal(name,'issue_eligible_point_tickets');
+    return {data:{},error:{code:'ISSUANCE_FAILED'}};
+  };
+  await assert.rejects(api.prepareHumanFixture(client,{memberId:'qa',surface:'points',isTestAccount:true},'points'),
+    error=>error.code==='QA_FIXTURE_POINT_TICKET_FAILED');
+  for(const name of names)assert.equal(rows[name].length,0, name+' leaked after failed issuance');
 });
