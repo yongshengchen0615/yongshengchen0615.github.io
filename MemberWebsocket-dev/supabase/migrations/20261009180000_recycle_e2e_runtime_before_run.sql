@@ -59,40 +59,6 @@ begin
     raise exception 'E2E_RECYCLE_LEASE_INVALID';
   end if;
   if v_recycled_at is not null then
-    -- The extended pass removes QA-owned parent fixtures after test-member
-  -- ticket/point/booking references have been cleared above.
-  for v_pass in 1..4 loop
-    v_pass_result := public.admin_purge_extended_qa_artifacts();
-    v_rows := coalesce((v_pass_result ->> 'deletedExtendedQaArtifacts')::integer, 0);
-    v_extended_deleted := v_extended_deleted + v_rows;
-    exit when v_rows = 0;
-  end loop;
-
-  delete from public.booking_service_types t
-   where public.is_qa_test_provenance(t.created_by)
-     and not exists (select 1 from public.booking_service_type_rewards r where r.service_type_id = t.id)
-     and not exists (select 1 from public.booking_services s where lower(btrim(s.service_type)) = lower(btrim(t.name)));
-  get diagnostics v_service_types_deleted = row_count;
-
-  select
-      (select count(*) from public.point_cards pc where public.is_qa_test_provenance(pc.created_by))
-    + (select count(*) from public.ticket_templates tt where public.is_qa_test_provenance(tt.created_by))
-    + (select count(*) from public.fixed_ticket_templates ft where public.is_qa_test_provenance(ft.created_by))
-    + (select count(*) from public.calendar_items ci where public.is_qa_test_provenance(ci.created_by))
-    + (select count(*) from public.booking_services bs where public.is_qa_test_provenance(bs.created_by))
-    + (select count(*) from public.booking_service_types bst where public.is_qa_test_provenance(bst.created_by))
-    + (select count(*) from public.booking_technicians bt where public.is_qa_test_provenance(bt.created_by))
-    + (select count(*) from public.event_tickets et where public.is_qa_test_provenance(et.created_by))
-    into v_remaining;
-
-  -- Do not create another run on top of residual QA assets: roll back atomically.
-  if v_remaining <> 0 then
-    raise exception 'E2E_RECYCLE_QA_ARTIFACTS_REMAIN: %', v_remaining;
-  end if;
-
-  update public.test_execution_leases
-     set runtime_recycled_at = clock_timestamp()
-   where id = p_lease_id and actor_line_user_id = p_actor;
 
   return jsonb_build_object('alreadyRecycled', true, 'cleanupComplete', true);
   end if;
@@ -305,6 +271,41 @@ begin
   get diagnostics v_rows = row_count;
   v_qa_artifact_count := v_qa_artifact_count + v_rows;
 
+  -- The extended pass removes QA-owned parent fixtures after test-member
+  -- ticket/point/booking references have been cleared above.
+  for v_pass in 1..4 loop
+    v_pass_result := public.admin_purge_extended_qa_artifacts();
+    v_rows := coalesce((v_pass_result ->> 'deletedExtendedQaArtifacts')::integer, 0);
+    v_extended_deleted := v_extended_deleted + v_rows;
+    exit when v_rows = 0;
+  end loop;
+
+  delete from public.booking_service_types t
+   where public.is_qa_test_provenance(t.created_by)
+     and not exists (select 1 from public.booking_service_type_rewards r where r.service_type_id = t.id)
+     and not exists (select 1 from public.booking_services s where lower(btrim(s.service_type)) = lower(btrim(t.name)));
+  get diagnostics v_service_types_deleted = row_count;
+
+  select
+      (select count(*) from public.point_cards pc where public.is_qa_test_provenance(pc.created_by))
+    + (select count(*) from public.ticket_templates tt where public.is_qa_test_provenance(tt.created_by))
+    + (select count(*) from public.fixed_ticket_templates ft where public.is_qa_test_provenance(ft.created_by))
+    + (select count(*) from public.calendar_items ci where public.is_qa_test_provenance(ci.created_by))
+    + (select count(*) from public.booking_services bs where public.is_qa_test_provenance(bs.created_by))
+    + (select count(*) from public.booking_service_types bst where public.is_qa_test_provenance(bst.created_by))
+    + (select count(*) from public.booking_technicians bt where public.is_qa_test_provenance(bt.created_by))
+    + (select count(*) from public.event_tickets et where public.is_qa_test_provenance(et.created_by))
+    into v_remaining;
+
+  -- Do not create another run on top of residual QA assets: roll back atomically.
+  if v_remaining <> 0 then
+    raise exception 'E2E_RECYCLE_QA_ARTIFACTS_REMAIN: %', v_remaining;
+  end if;
+
+  update public.test_execution_leases
+     set runtime_recycled_at = clock_timestamp()
+   where id = p_lease_id and actor_line_user_id = p_actor;
+
   return jsonb_build_object(
     'testAccountCount', v_test_account_count,
     'deletedAutomationRuns', v_automation_run_count,
@@ -334,8 +335,7 @@ begin
     'alreadyRecycled', false
   );
 end;
-$function$
-
+$function$;
 
 revoke all on function public.admin_recycle_e2e_runtime(uuid, text)
   from public, anon, authenticated;
