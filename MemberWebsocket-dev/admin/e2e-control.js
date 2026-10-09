@@ -2190,7 +2190,7 @@
       render();
 
       setMessage('後端完整 QA 階段已完成；正在建立 Browser 協同 E2E 的高複雜度測試資料。');
-      const fixture = await prepareComplexE2EFixtures(profile);
+      const fixture = await prepareComplexE2EFixtures(profile, cleanupLeaseId);
       if (state.cancelled) return { cancelled: true, results: safe(state.results) };
 
       const preferredMemberIds = state.replayContext ? state.replayContext.manifest.participants.map((item)=>String(item.preferredMemberId||'')).filter(Boolean) : [];
@@ -7655,7 +7655,7 @@
     return data?.renewed === true;
   }
 
-  async function prepareComplexE2EFixtures(profile = {}) {
+  async function prepareComplexE2EFixtures(profile = {}, leaseId = '') {
     const session = await adminSession();
     const runTag = 'PAIR-' + Date.now().toString(36).toUpperCase() + '-' + randomInt(1000, 9999);
     const data = await postFunction('test-control-api', {
@@ -7663,6 +7663,7 @@
       clientType: 'admin',
       idToken: session.idToken,
       runTag,
+      leaseId: String(leaseId || ''),
       complexityLevel: Number(profile.complexityLevel || state.complexityLevel || 1),
       seed: String(profile.seed || state.randomSeed || '')
     });
