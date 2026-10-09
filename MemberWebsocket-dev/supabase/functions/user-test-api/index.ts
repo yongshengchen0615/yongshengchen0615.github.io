@@ -1419,10 +1419,17 @@ async function preparePointRedemptionBooking(s: any, identity: any, tag: string,
   const requestId = "BOOK-QA-POINTS-" + tag;
   const holidays = holidaysResult.data || [];
   let bookingId = "";
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const date = isoDateAdd(today, firstDay + ((seed + attempt) % dayCount));
+  // Spread probes across dates and distinct time slots. A five-slot retry
+  // makes human E2E flaky whenever the calendar has a handful of collisions.
+  // Cap backend RPC attempts so a fully booked calendar cannot stall the runner.
+  const candidateLimit = Math.min(dayCount * slotCount, 96);
+  for (let attempt = 0; attempt < candidateLimit; attempt += 1) {
+    const dayIndex = attempt % dayCount;
+    const timeRound = Math.floor(attempt / dayCount);
+    const slotIndex = (seed + dayIndex * 7 + timeRound) % slotCount;
+    const date = isoDateAdd(today, firstDay + ((seed + dayIndex) % dayCount));
     if (holidays.some((row: any) => row.starts_on <= date && (row.ends_on || row.starts_on) >= date)) continue;
-    const cursor = (start + ((seed + attempt) % slotCount) * interval) % 1440;
+    const cursor = (start + slotIndex * interval) % 1440;
     const time = String(Math.floor(cursor / 60)).padStart(2, "0") + ":" + String(cursor % 60).padStart(2, "0");
     const created = await s.rpc("create_booking_bundle_request", {
       p_request_id: requestId, p_member_id: identity.memberId, p_booking_date: date,
@@ -1584,8 +1591,22 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
       );
     }
 
-    const bookingId = await preparePointRedemptionBooking(s, identity, tag, ticket.ticket_id);
-    return { fixtureTag: tag, cardId: card.data.card_id, ticketId: ticket.ticket_id, bookingId, expectedStamps: 2 };
+    try {
+      const bookingId = await preparePointRedemptionBooking(s, identity, tag, ticket.ticket_id);
+      return { fixtureTag: tag, cardId: card.data.card_id, ticketId: ticket.ticket_id, bookingId, expectedStamps: 2 };
+    } catch (error) {
+      // Preparation has not returned fixtureTag to the browser yet, so the
+      // client cannot invoke normal cleanup. Remove the partial point fixture
+      // server-side before propagating the original booking error.
+      try {
+        await cleanupHumanFixture(s, identity, "points", { fixtureTag: tag });
+        const remaining = await s.from("point_cards").select("id").eq("card_id", "QA-UI-PC-" + tag).maybeSingle();
+        if (remaining.error || remaining.data) throw new Error("QA point fixture still exists");
+      } catch {
+        throw new ApiError(500, "QA_FIXTURE_CLEANUP_FAILED", "票券預約準備失敗，且無法完整清理已建立的 QA 資料。");
+      }
+      throw error;
+    }
   }
 
   if (surface === "event") {
