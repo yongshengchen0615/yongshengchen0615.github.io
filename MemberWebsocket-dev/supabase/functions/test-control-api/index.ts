@@ -1959,6 +1959,20 @@ Deno.serve(async (request: Request) => {
     }
 
     if (action === "admin.test-control.prepare-e2e-fixtures") {
+      const leaseId = asText(body.leaseId, 80);
+      if (!UUID_RE.test(leaseId)) {
+        throw new ApiError(409, "E2E_RECYCLE_REQUIRED", "請先取得 E2E 執行鎖並清理上一輪測試資料。");
+      }
+      const lease = await supabase.from("test_execution_leases")
+        .select("id,runtime_recycled_at")
+        .eq("id", leaseId)
+        .eq("lease_type", "full_e2e")
+        .eq("actor_line_user_id", identity.lineUserId)
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+      if (lease.error || !lease.data?.runtime_recycled_at) {
+        throw new ApiError(409, "E2E_RECYCLE_REQUIRED", "未完成 E2E 執行前的測試資料回收，禁止新增測試資料。");
+      }
       const fixture = await prepareComplexFixtures(supabase, identity, body);
       return response(origin, {
         ok: true,
