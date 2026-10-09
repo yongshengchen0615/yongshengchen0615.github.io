@@ -19,7 +19,7 @@ test('booking calendar and cancellation sync do not inject runtime style element
 test('admin CSP allows Leaflet and sanitized runtime style attributes without allowing inline style elements', () => {
   const meta = cspMeta('admin/index.html');
   assert.match(meta, /style-src 'self' https:\/\/cdn\.jsdelivr\.net;/);
-  assert.match(meta, /style-src-elem 'self' https:\/\/cdn\.jsdelivr\.net;/);
+  assert.match(meta, /style-src-elem 'self' https:\/\/cdn\.jsdelivr\.net 'sha256-KJIOj901voMKZQZFhhMhuUzk6p4KVITpJJnOB8DP7Gg=';/);
   assert.match(meta, /style-src-attr 'unsafe-inline';/);
   assert.match(meta, /connect-src[^;]*https:\/\/cdn\.jsdelivr\.net/);
   assert.doesNotMatch(meta, /script-src[^;]*'unsafe-inline'/);
