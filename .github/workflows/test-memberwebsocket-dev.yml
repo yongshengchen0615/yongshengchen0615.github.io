@@ -13,9 +13,9 @@ on:
 permissions:
   contents: read
 
-# Playwright-style stale-run cancellation: newer pushes on the same branch supersede old CI work.
+# Normalize push and PR branch names so the same change does not run the full suite twice.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:

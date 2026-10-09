@@ -29,6 +29,7 @@ test.beforeAll(async()=>{
     }};
     window.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{
       document.getElementById('loadingView').classList.add('hidden');document.getElementById('pointsView').classList.remove('hidden');
+      document.getElementById('activeCardView').dataset.cardStyle='citrus';document.getElementById('activeCardTitle').textContent='QA card';document.getElementById('progressCount').textContent='5';
       window.dispatchEvent(new CustomEvent('user-tour:ready',{detail:{surface:'points',profile:{memberCode:'AAAA'}}}));
       window.dispatchEvent(new CustomEvent('pointcard:active-changed',{detail:{cardId:'QA-CARD',title:'QA card',stamps:5}}));
     },0));
