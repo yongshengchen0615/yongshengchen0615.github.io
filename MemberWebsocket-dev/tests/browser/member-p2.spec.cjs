@@ -122,3 +122,12 @@ for(const [width,theme] of [[320,'light'],[390,'dark']])test('separated friend a
  await page.locator('#closeMemberReferral').focus();await page.keyboard.press('Shift+Tab');expect(await page.evaluate(()=>document.getElementById('memberReferralModal').contains(document.activeElement))).toBe(true);
  await page.keyboard.press('Escape');await expect(page.locator('#memberReferralModal')).toBeHidden();await expect(page.locator('#openMemberReferral')).toBeFocused();
 });
+test('production QR controls runner sees both independent workflows and never performs a bind',async({page})=>{
+ await openFriends(page,'friends');await page.evaluate(()=>history.replaceState(null,'','/MemberWebsocket-dev/member/'));await page.evaluate(fs.readFileSync(path.join(root,'qr-scan-dialog.js'),'utf8'));
+ await page.evaluate(fs.readFileSync(path.join(root,'user-test-control.js'),'utf8').replace('  window.MemberUserTestControl =','  window.qaNodes={memberQrControlsCase};\n  window.MemberUserTestControl ='));
+ const result=await page.evaluate(()=>qaNodes.memberQrControlsCase());expect(result.status,JSON.stringify(result)).toBe('passed');await expect(page.locator('#memberReferralModal')).toBeHidden();expect(await page.evaluate(()=>p2Calls.filter(c=>/request|referral/.test(c.action)))).toHaveLength(0);
+});
+test('referral QR image prefills the reward workflow and only explicit confirm binds',async({page})=>{
+ await openFriends(page,'reward');await page.locator('#memberReferralQrFile').setInputFiles({name:'reward.png',mimeType:'image/png',buffer:await qrPng(page,base+'/member/#reward=CCCC')});
+ await expect(page.locator('#memberReferralInviteCode')).toHaveValue('CCCC');expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind'))).toHaveLength(0);await page.locator('#bindMemberReferral').click();await expect(page.locator('#memberReferralStatus')).toContainText('邀請成功');expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind'))).toHaveLength(1);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request'))).toHaveLength(0);
+});

@@ -245,7 +245,7 @@ test('BOOKING_RECEIPT — open signed receipt, inspect summary, close and clear 
 // Execute the registered production runner nodes, not copies of their logic.
 const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'../..');
-const runtimeKeys=['ADMIN_CALENDAR_EVENT_CRUD','ADMIN_EVENT_CALENDAR_SYNC','ADMIN_TIER_EDITOR_JOURNEY','ADMIN_TERMS_EDITOR_JOURNEY','ADMIN_CARD_EDITOR_OPTIONS','ADMIN_CARD_SORT_JOURNEY','ADMIN_EVENT_AUDIENCE_JOURNEY','ADMIN_CALENDAR_NAVIGATION','ADMIN_BOOKING_BATCH_EDITOR','ADMIN_CALENDAR_BATCH_CONTROLS','ADMIN_CALENDAR_CRUD','ADMIN_FIXED_DRAFT_BIRTHDAY_MONTH','ADMIN_FIXED_DRAFT_WEEKLY','ADMIN_FIXED_DRAFT_MONTHLY','ADMIN_FIXED_DRAFT_YEARLY'];
+const runtimeKeys=['ADMIN_MEMBER_MODALS','ADMIN_TEST_MEMBER_PROFILE_EDIT','ADMIN_GRANT_NOTIFICATION_CONTROLS','ADMIN_SERVICE_GRANT_JOURNEY','ADMIN_SETTINGS_COPY_CONTROLS','ADMIN_CALENDAR_EVENT_CRUD','ADMIN_EVENT_CALENDAR_SYNC','ADMIN_TIER_EDITOR_JOURNEY','ADMIN_TERMS_EDITOR_JOURNEY','ADMIN_CARD_EDITOR_OPTIONS','ADMIN_CARD_SORT_JOURNEY','ADMIN_EVENT_AUDIENCE_JOURNEY','ADMIN_CALENDAR_NAVIGATION','ADMIN_BOOKING_BATCH_EDITOR','ADMIN_CALENDAR_BATCH_CONTROLS','ADMIN_CALENDAR_CRUD','ADMIN_FIXED_DRAFT_BIRTHDAY_MONTH','ADMIN_FIXED_DRAFT_WEEKLY','ADMIN_FIXED_DRAFT_MONTHLY','ADMIN_FIXED_DRAFT_YEARLY'];
 async function loadRuntime(p){
   await p.evaluate(fs.readFileSync(path.join(root,'e2e-scenario-graph.js'),'utf8'));
   await p.evaluate(fs.readFileSync(path.join(root,'admin/e2e-control.js'),'utf8').replace('  window.MemberAdminE2EControl =','  window.qaRuntime={adminDefinitions};\n  window.MemberAdminE2EControl ='));
@@ -256,7 +256,16 @@ for(const key of runtimeKeys)test('RUNNER_'+key+' — production node executes a
   await loadRuntime(p);
   const result=await p.evaluate(async key=>{const node=window.qaRuntime.adminDefinitions('full',['member','points','event','calendar','integration','booking']).find(n=>n.key===key);return node.run();},key);
   expect(result.status,JSON.stringify(result)).toBe('passed');
+  if(['ADMIN_MEMBER_MODALS','ADMIN_TEST_MEMBER_PROFILE_EDIT','ADMIN_GRANT_NOTIFICATION_CONTROLS','ADMIN_SERVICE_GRANT_JOURNEY'].includes(key)){for(const id of ['memberModal','grantModal','memberRecordsModal'])await expect(p.locator('#'+id)).toBeHidden();}
   if(key.includes('FIXED_DRAFT')){expect(info.fixture.templates).toHaveLength(0);expect(calls(info.fixture,'admin.fixed-tickets.run')).toHaveLength(0);expect(calls(info.fixture,'admin.fixed-tickets.save').every(c=>c.payload.template.status==='draft'&&!c.payload.template.notifyLine&&!c.payload.template.calendarEnabled)).toBe(true);}
+});
+
+test('RUNNER_MEMBER_MODAL_FAILURE — failed 360 load closes parent and performs no writes',async({page:p},info)=>{
+  info.setTimeout(45000);await loadRuntime(p);info.fixture.fault={action:'admin.member-records.list',code:'RECORDS_UNAVAILABLE'};
+  const error=await p.evaluate(async()=>{try{await qaRuntime.adminDefinitions('full',['member']).find(n=>n.key==='ADMIN_MEMBER_MODALS').run();return '';}catch(e){return e.message;}});
+  expect(error).toContain('會員 360 尚未載入操作');
+  for(const id of ['memberModal','grantModal','memberRecordsModal'])await expect(p.locator('#'+id)).toBeHidden();
+  expect(calls(info.fixture,'admin.member.update')).toHaveLength(0);expect(info.fixture.grants).toHaveLength(0);
 });
 
 test('CALENDAR_BONUS — save bonus amount, reopen, disable by changing to holiday',async({page:p},info)=>{
@@ -362,4 +371,31 @@ test('MEMBER_REMOVE — cancelled or mismatched confirmation has no effects; con
   p.removeAllListeners('dialog');p.on('dialog',d=>d.type()==='prompt'?d.accept('TEST1'):d.accept());
   await p.getByRole('button',{name:'移除會員全部資料'}).click();await expect(p.locator('#memberRecordsModal')).toBeHidden();
   expect(calls(info.fixture,'admin.member.remove')).toHaveLength(1);expect(info.fixture.members).toHaveLength(2);
+});
+
+async function serviceGrant(p){await openMember360(p);await p.getByRole('button',{name:'＋ 發放'}).click();await select(p,'grantMode','services');await expect(p.locator('#grantServiceList [data-service-grant-id]')).toHaveCount(2);}
+test('MEMBER_SERVICE_GRANT — empty selection, quantity, preview invalidation, double-submit and parent return',async({page:p},info)=>{
+  await serviceGrant(p);await click(p,'previewServiceGrantButton');await expect(p.locator('#grantFormMessage')).toContainText('請選擇服務項目');expect(calls(info.fixture,'admin.service-grants.preview')).toHaveLength(0);
+  await p.locator('#grantServiceList [data-service-grant-id]').first().check();await click(p,'previewServiceGrantButton');await expect(p.locator('#saveGrantButton')).toBeEnabled();
+  await p.locator('#grantServiceList input[type=number]').first().fill('2');await p.locator('#grantServiceList input[type=number]').first().evaluate(input=>input.dispatchEvent(new Event('change',{bubbles:true}))); await expect(p.locator('#saveGrantButton')).toBeDisabled();
+  await click(p,'previewServiceGrantButton');await expect(p.locator('#grantServicePreview')).toContainText('+60 分鐘');
+  await p.locator('#saveGrantButton').evaluate(button=>{button.click();button.click();});await expect(p.locator('#grantModal')).toBeHidden();await expect(p.locator('#memberRecordsModal')).toBeVisible();
+  expect(calls(info.fixture,'admin.service-grants.add')).toHaveLength(1);expect(info.fixture.members[0].serviceMinutesTotal).toBe(60);expect(info.fixture.grants[0].items[0].quantity).toBe(2);
+  expect(info.fixture.grants[0].points).toBe(undefined);expect(info.fixture.grants[0].serviceTime).toBe(undefined);expect(info.fixture.grants[0].messagePresetId).toBe('');
+});
+test('MEMBER_SERVICE_GRANT_STALE — server conflict invalidates preview and leaves balance unchanged',async({page:p},info)=>{
+  await serviceGrant(p);await p.locator('#grantServiceList [data-service-grant-id]').first().check();await click(p,'previewServiceGrantButton');await expect(p.locator('#saveGrantButton')).toBeEnabled();
+  info.fixture.fault={action:'admin.service-grants.add',code:'SERVICE_GRANT_PREVIEW_STALE'};await click(p,'saveGrantButton');await expect(p.locator('#grantFormMessage')).toBeVisible();await expect(p.locator('#saveGrantButton')).toBeDisabled();expect(info.fixture.grants).toHaveLength(0);expect(info.fixture.members[0].serviceMinutesTotal).toBe(0);
+  await click(p,'previewServiceGrantButton');await expect(p.locator('#saveGrantButton')).toBeEnabled();await click(p,'saveGrantButton');await expect(p.locator('#grantModal')).toBeHidden();expect(info.fixture.grants).toHaveLength(1);
+});
+test('MEMBER_SERVICE_GRANT_RETRY — uncertain commit locks writes until refresh and readback shows one credit',async({page:p},info)=>{
+  await serviceGrant(p);await p.locator('#grantServiceList [data-service-grant-id]').first().check();await click(p,'previewServiceGrantButton');await expect(p.locator('#saveGrantButton')).toBeEnabled();
+  info.fixture.fault={action:'admin.service-grants.add',afterCommit:true,code:'API_RESPONSE_UNCERTAIN'};await click(p,'saveGrantButton');await expect(p.locator('#grantFormMessage')).toBeVisible();expect(info.fixture.grants).toHaveLength(1);
+  await expect(p.locator('#saveGrantButton')).toBeDisabled();await p.locator('#saveGrantButton').evaluate(button=>button.click());expect(calls(info.fixture,'admin.service-grants.add')).toHaveLength(1);
+  await p.reload();await serviceGrant(p);await p.locator('#grantServiceList [data-service-grant-id]').first().check();await click(p,'previewServiceGrantButton');await expect(p.locator('#saveGrantButton')).toBeEnabled();
+  expect(info.fixture.grants).toHaveLength(1);expect(info.fixture.members[0].serviceMinutesTotal).toBe(30);expect(calls(info.fixture,'admin.service-grants.add')).toHaveLength(1);
+});
+test('MEMBER_SERVICE_GRANT_CATALOG_FAILURE — empty/error catalog blocks submit and manual mode recovers',async({page:p},info)=>{
+  info.fixture.fault={action:'admin.service-grants.catalog',code:'CATALOG_UNAVAILABLE'};await openMember360(p);await p.getByRole('button',{name:'＋ 發放'}).click();await select(p,'grantMode','services');await expect(p.locator('#grantServiceStatus')).toContainText('QA rejected write');await expect(p.locator('#saveGrantButton')).toBeDisabled();
+  await select(p,'grantMode','manual');await expect(p.locator('#grantServiceFields')).toBeHidden();await select(p,'grantMode','services');await expect(p.locator('#grantServiceList [data-service-grant-id]')).toHaveCount(2);expect(info.fixture.grants).toHaveLength(0);
 });

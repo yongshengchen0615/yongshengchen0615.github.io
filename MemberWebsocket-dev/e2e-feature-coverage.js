@@ -18,6 +18,10 @@
     ['member.phone', '電話國碼與重複數字拒絕', 'member', 'user', 'boundary', [], ['MEMBER_PHONE_COUNTRY_VALIDATION']],
     ['member.terms', '條款版本、會員申請同意與拒絕', 'member', 'both', 'contract', ['ADMIN_MEMBERSHIP_TERMS','ADMIN_TERMS_EDITOR_JOURNEY'], ['MEMBER_TERMS_CONSENT','MEMBER_JOIN_TERMS_FLOW'], '加入會員完整成功送出另由隔離 Chromium 真人流程驗證', {}, {admin:'interaction',user:'lifecycle'}],
     ['member.join', '加入會員與 LINE 通知', 'member', 'user', 'contract', [], ['MEMBER_JOIN_LINE_AUTOMATION_CONTRACT','MEMBER_LINE_SUPPRESSION'], '正式 LINE 收件需實機驗收'],
+    ['member.clipboard','會員編號複製與結果回饋','member','user','interaction',[],['MEMBER_CODE_COPY'],'剪貼簿內容由隔離 Chromium 驗證'],
+    ['member.qr','好友／邀請優惠 QR 入口與外站碼拒絕','member','user','contract',[],['MEMBER_QR_CONTROLS'],'相機影格、權限、停止與晚到結果另由 Chromium；LINE 實機待驗'],
+    ['member.service-grant','依服務項目預覽、雙擊發放與會員回讀','member','admin','lifecycle',['ADMIN_SERVICE_GRANT_JOURNEY'],[],'只操作本輪專用測試會員；真正多連線、寫入故障與服務點數帳本由 SQL／線上驗收補充'],
+    ['tickets.copy','集點卡／票券／活動票券未儲存複製拒絕','points','admin','interaction',['ADMIN_SETTINGS_COPY_CONTROLS'],[],'已儲存設定的草稿複製與獨立 IDs 由 Chromium／SQL 驗證',{admin:['points','event']}],
     ['member.referral', '好友邀請與自邀拒絕', 'member', 'user', 'boundary', [], ['MEMBER_REFERRAL_BOUNDARY']],
     ['member.tiers', '會員等級、門檻與累積時數', 'member', 'both', 'contract', ['ADMIN_TIER_SETTINGS','ADMIN_TIER_EDITOR_JOURNEY'], ['COMMON_MEMBERSHIP_MILESTONE'], '', {}, {admin:'interaction'}],
     ['member.revocation', '強制下線、撤銷與維護邊界', 'member', 'admin', 'boundary', ['ADMIN_FORCE_LOGOUT_SECURITY'], []],
@@ -29,6 +33,7 @@
     ['points.lottery', '抽獎券與機率設定', 'points', 'admin', 'lifecycle', ['ADMIN_LOTTERY_TICKET_CRUD'], []],
     ['points.limits', '集點卡使用上限與 0 不限張數', 'points', 'both', 'contract', ['ADMIN_POINT_LIMIT_SETTINGS'], ['POINTS_SETTINGS']],
     ['points.redeem', '勾選、取消與核銷', 'points', 'user', 'lifecycle', [], ['POINTS_HUMAN_REDEEM','POINTS_INVALID_WRITE']],
+    ['points.transfer-recipients','轉贈好友／QR／編號入口與取消','points','user','interaction',[],['POINTS_TRANSFER_RECIPIENT_CONTROLS'],'好友與 QR 完整成功轉贈及重試由 Chromium 驗證；線上併發待驗'],
     ['points.transfer', '點數轉贈與輸入邊界', 'points', 'user', 'boundary', [], ['POINTS_TRANSFER_BOUNDARY']],
     ['points.history', '集點卡票券使用紀錄', 'points', 'user', 'interaction', [], ['POINTS_HISTORY_DISCLOSURE']],
     ['event.crud', '活動票券 CRUD 與領取資格', 'event', 'both', 'lifecycle', ['ADMIN_EVENT_TICKET_CRUD','ADMIN_EVENT_AUDIENCE_JOURNEY'], ['EVENT_DATA','EVENT_HUMAN_LIFECYCLE']],
@@ -67,8 +72,9 @@
     const statuses = new Map();
     for (const row of results) {
       const previous = statuses.get(row.key);
-      // A later successful stress replay must not conceal a failed base node.
-      if (previous !== 'failed') statuses.set(row.key, row.status);
+      const rank = status => status === 'failed' ? 4 : ['skipped','blocked'].includes(status) ? 3 : status === 'passed' ? 1 : 2;
+      // Preserve the weakest evidence across base nodes and stress replays.
+      if (!statuses.has(row.key) || rank(row.status) > rank(previous)) statuses.set(row.key,row.status);
     }
     const features = catalog.filter(item => (item.side === 'both' || item.side === side)
       && (item.module === 'shared' || item.module === 'testing' || (item.scopes[side] || [item.module]).some(module => modules.includes(module))))

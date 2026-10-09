@@ -77,6 +77,7 @@ test('coverage distinguishes unregistered, unplanned, missing, blocked and faile
   for(const [status,expected] of [['passed','passed'],['skipped','blocked'],['failed','failed'],['running','not-run'],['queued','not-run'],['cancelled','not-run'],['unknown','not-run']])
     assert.equal(probe({registeredKeys:[key],plannedKeys:[key],results:[{key,status}]}).status,expected);
   assert.equal(probe({registeredKeys:[key],plannedKeys:[key],results:[{key,status:'failed'},{key,status:'passed'}]}).status,'failed');
+  for (const status of ['skipped','blocked','cancelled','running']) assert.notEqual(probe({registeredKeys:[key],plannedKeys:[key],results:[{key,status},{key,status:'passed'}]}).status,'passed');
 });
 
 test('new contract evidence keeps device and external-delivery limitations explicit',()=>{

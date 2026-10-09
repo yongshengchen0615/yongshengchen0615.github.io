@@ -28,6 +28,7 @@ class Locator {
   async dragTo(target){const w=this.page.dom.window,from=this.one(),to=target.one();const prior=w.document.elementFromPoint;w.document.elementFromPoint=()=>to;try{for(const [type,x,y]of [['pointerdown',1,1],['pointermove',20,20],['pointerup',20,20]]){const e=new w.MouseEvent(type,{bubbles:true,clientX:x,clientY:y,button:0,cancelable:true});Object.defineProperties(e,{pointerId:{value:1},pointerType:{value:'mouse'}});from.dispatchEvent(e);}await pause();}finally{w.document.elementFromPoint=prior;}}
   async inputValue(){return eventually(()=>this.one().value);}async textContent(){return eventually(()=>this.one().textContent);}
   async count(){return this.nodes().length;}
+  async evaluate(fn,arg){return this.page.dom.window.eval('('+fn.toString()+')')(this.one(),arg);}
   async getAttribute(key){return eventually(()=>this.one().getAttribute(key));}
 }
 class Page {
