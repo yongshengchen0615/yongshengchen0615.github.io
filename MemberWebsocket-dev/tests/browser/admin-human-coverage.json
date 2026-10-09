@@ -3,7 +3,7 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "2f19620e43f622349fcba642355e7bbe3c495c81a5539efa52ca788274a50476",
+    "admin/index.html": "45357a0e448b7855ecbef03b332d3bea0a6bda5f28007e05b9214219c9911071",
     "admin/app.js": "e616fd14f80ee25d4c8a2403b81fe3cbd8041711f7b0eff9aefa94e8e7300b1c",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
@@ -46,7 +46,8 @@
       "module": "member",
       "name": "會員 360 概況、狀態／發放入口與全部紀錄分類",
       "cases": [
-        "MEMBER_360"
+        "MEMBER_360",
+        "RUNNER_ADMIN_MEMBER_MODALS"
       ]
     },
     {
@@ -488,6 +489,26 @@
       "name": "會員完整移除：取消、識別確認、清理與名冊刷新",
       "cases": [
         "MEMBER_REMOVE"
+      ]
+    },
+    {
+      "id": "member.service-grant",
+      "module": "member",
+      "name": "依服務項目發放、預覽失效、雙擊、回應遺失重送與載入失敗",
+      "cases": [
+        "RUNNER_ADMIN_SERVICE_GRANT_JOURNEY",
+        "MEMBER_SERVICE_GRANT",
+        "MEMBER_SERVICE_GRANT_STALE",
+        "MEMBER_SERVICE_GRANT_RETRY",
+        "MEMBER_SERVICE_GRANT_CATALOG_FAILURE"
+      ]
+    },
+    {
+      "id": "tickets.copy-controls",
+      "module": "points",
+      "name": "正式 runner 三類未儲存設定複製拒絕",
+      "cases": [
+        "RUNNER_ADMIN_SETTINGS_COPY_CONTROLS"
       ]
     }
   ]

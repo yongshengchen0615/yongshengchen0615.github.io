@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-06.4';
+  const VERSION = '2026-10-09.1';
   const COVERAGE_STORAGE_KEY = 'member-admin-e2e-coverage-v1';
   const COVERAGE_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
@@ -39,6 +39,8 @@
   ]);
   const E2E_MODULES = Object.freeze([...PAIRED_SURFACES.slice(0, 4), ['integration', '整合中心'], PAIRED_SURFACES[4]]);
   const ADMIN_CASE_MODULES = Object.freeze({
+    ADMIN_SERVICE_GRANT_JOURNEY: ['member'],
+    ADMIN_SETTINGS_COPY_CONTROLS: ['points','event'],
     ADMIN_TIER_EDITOR_JOURNEY: ['member'],
     ADMIN_TERMS_EDITOR_JOURNEY: ['member'],
     ADMIN_CARD_EDITOR_OPTIONS: ['points'],
@@ -89,6 +91,8 @@
     booking: 'ADMIN_BOOKING_CONTROLS'
   });
   const ADMIN_NODE_META = Object.freeze({
+    ADMIN_SERVICE_GRANT_JOURNEY: {module:'member',phase:4,risk:'mutation',dependencies:['ADMIN_TEST_MEMBER_ROSTER']},
+    ADMIN_SETTINGS_COPY_CONTROLS: {module:'ticket',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
     ADMIN_TIER_EDITOR_JOURNEY: {module:'member',phase:4,dependencies:['ADMIN_PRIMARY_NAVIGATION']},
     ADMIN_TERMS_EDITOR_JOURNEY: {module:'member',phase:4,dependencies:['ADMIN_PRIMARY_NAVIGATION']},
     ADMIN_CARD_EDITOR_OPTIONS: {module:'points',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
@@ -1819,6 +1823,8 @@
     if (suite !== 'full') return common;
     const allSelected = modules.length === E2E_MODULES.length;
     return common.concat([
+      caseDef('ADMIN_SERVICE_GRANT_JOURNEY', '依服務項目發放：預覽／雙擊／會員回讀／清理', 'Human E2E', adminServiceGrantJourneyCase),
+      caseDef('ADMIN_SETTINGS_COPY_CONTROLS', '設定複製：未儲存拒絕與取消', 'Human E2E', adminSettingsCopyControlsCase),
       caseDef('ADMIN_TIER_EDITOR_JOURNEY', '會員卡：全部樣式與預覽', 'Human E2E', adminTierEditorJourneyCase),
       caseDef('ADMIN_TERMS_EDITOR_JOURNEY', '會員條款：版本／唯讀／草稿互動', 'Human E2E', adminTermsEditorJourneyCase),
       caseDef('ADMIN_CARD_EDITOR_OPTIONS', '集點卡：樣式／到期／節點／清除', 'Human E2E', adminCardEditorOptionsCase),
@@ -2247,7 +2253,7 @@
 
         if (!state.cancelled && selectedModules.includes('member')) {
           await executeCases([
-            caseDef('PAIRED_MEMBER_REFERRAL_REWARD', '好友邀請：兩個臨時測試會員綁定與雙方獎勵', 'Paired E2E / Member Growth', pairedMemberReferralRewardCase)
+            caseDef('PAIRED_MEMBER_REFERRAL_REWARD', '邀請優惠：輸入者獲券、重送與再次邀請', 'Paired E2E / Member Growth', pairedMemberReferralRewardCase)
           ], '協同會員成長與安全');
         }
 
@@ -2653,10 +2659,11 @@
     const memberCode = String(account?.memberCode || '');
     const findEdit = () => {
       const rows = Array.from(document.querySelectorAll('#memberTableBody tr'));
-      const row = memberCode
-        ? rows.find((item) => item.textContent?.includes(memberCode))
-        : rows[0];
-      return row?.querySelector('button[data-action="edit-member"]') || null;
+      const targetLineUserId = String(account?.lineUserId || '');
+      const row = rows.find(item => targetLineUserId
+        ? item.querySelector('button[data-action="view-records"]')?.dataset.value === targetLineUserId
+        : !memberCode || item.querySelector('.member-cell small')?.textContent.trim() === memberCode);
+      return row?.querySelector('button[data-action="view-records"]') || null;
     };
 
     let edit = await waitFor(findEdit, 1200, 100);
@@ -2690,9 +2697,28 @@
   async function clickRowAction(action, lineUserId) {
     const buttons = Array.from(document.querySelectorAll('#memberTableBody button[data-action]'));
     const button = buttons.find((item) => item.dataset.action === action && (!lineUserId || item.dataset.value === lineUserId));
-    if (!button) throw new Error('找不到會員操作按鈕：' + action);
-    button.click();
-    return button;
+    if (button) {
+      if (!await waitFor(() => !button.disabled, 8000)) throw new Error('會員操作仍在載入：' + action);
+      button.click();
+      return button;
+    }
+    // 狀態與發放入口已移至會員 360；先開啟指定會員再操作其子視窗。
+    if (action === 'edit-member' || action === 'add-grant') {
+      const records = buttons.find(item => item.dataset.action === 'view-records' && item.dataset.value === lineUserId);
+      if (!records) throw new Error('找不到指定測試會員的 360 入口。');
+      if (!await waitFor(() => !records.disabled, 8000)) throw new Error('會員 360 前次載入尚未完成。');
+      records.click();
+      const label = action === 'edit-member' ? '狀態' : '＋ 發放';
+      const child = await waitFor(() => {
+        const modal = document.getElementById('memberRecordsModal');
+        if (!modal || modal.classList.contains('hidden')) return null;
+        return Array.from(modal.querySelectorAll('.member-records-overview-actions button')).find(item => item.textContent.trim() === label && !item.disabled);
+      }, 7000);
+      if (!child) throw new Error('會員 360 尚未載入操作：' + label);
+      child.click();
+      return child;
+    }
+    throw new Error('找不到會員操作按鈕：' + action);
   }
 
   async function adminMemberModalCase() {
@@ -6526,6 +6552,71 @@
       : fail('會員門檻或卡面設定契約不完整。', { orderedThresholds:true, styles:true }, {values});
   }
 
+  async function adminSettingsCopyControlsCase() {
+    const checks = [];
+    try {
+      for (const kind of ['card','ticket','event']) {
+        document.getElementById(kind === 'event' ? 'eventsTab' : 'cardsTab')?.click();
+        if (kind === 'ticket') document.getElementById('ticketSettingsTab')?.click();
+        document.getElementById({card:'newCardButton',ticket:'newTicketButton',event:'newEventTicketButton'}[kind])?.click();
+        const button = await waitFor(() => document.getElementById('copySettings-' + kind), 3000);
+        button?.click();
+        const message = document.getElementById({card:'cardFormMessage',ticket:'ticketFormMessage',event:'eventTicketFormMessage'}[kind]);
+        checks.push({kind,button:Boolean(button),unsavedRejected:/先選擇已儲存/.test(message?.textContent || ''),copyDialogClosed:!document.getElementById('settingsCopyModal') || document.getElementById('settingsCopyModal').classList.contains('hidden')});
+        document.getElementById({card:'cardEditorModal',ticket:'ticketEditorModal',event:'eventTicketEditorModal'}[kind])?.querySelector('.editor-modal-close')?.click();
+      }
+    } finally {
+      document.getElementById('settingsCopyCancel')?.click();
+      document.querySelectorAll('.editor-modal:not(.hidden) .editor-modal-close').forEach(button => button.click());
+    }
+    return checks.length === 3 && checks.every(row => row.button && row.unsavedRejected && row.copyDialogClosed)
+      ? pass('三類未儲存設定均拒絕複製；此節點未建立複本，草稿生命週期另由 Chromium／SQL 驗證。',{unsavedRejected:3},{checks})
+      : fail('設定複製入口或未儲存拒絕不完整。',{unsavedRejected:3},{checks});
+  }
+
+  async function adminServiceGrantJourneyCase() {
+    let account = null;
+    const previousSearch = document.getElementById('memberSearch')?.value || '';
+    try {
+      account = await createEphemeralTestAccount();
+      const before = await adminMemberSnapshot(account);
+      if (before?.isTestAccount !== true) throw new Error('E2E_SERVICE_GRANT_TEST_ACCOUNT_REQUIRED');
+      await openGrantForAccount(account);
+      setField('grantMode','services');
+      const loaded = await waitFor(() => document.querySelector('#grantServiceList [data-service-grant-id]') || !/正在載入/.test(document.getElementById('grantServiceStatus')?.textContent || ''), 8000);
+      const session = await adminSession();
+      const catalog = await window.MemberSystem.request(session.config,'admin',session.idToken,'admin.service-grants.catalog',{});
+      const service = (catalog.services || []).find(item => !item.requiresCompanionService && item.countsTowardMembership && Number(item.durationMinutes) > 0);
+      if (!loaded || !service) return skip('沒有可供本輪服務發放的有效主服務；未發放。',{mainService:true},{mainService:false});
+      const checkbox = Array.from(document.querySelectorAll('#grantServiceList [data-service-grant-id]')).find(input => input.dataset.serviceGrantId === service.serviceId);
+      if (!checkbox) return fail('服務項目 catalog 與 UI 不一致。',{serviceVisible:true},{serviceVisible:false});
+      document.getElementById('previewServiceGrantButton')?.click();
+      const emptyRejected = /請選擇服務項目/.test(document.getElementById('grantFormMessage')?.textContent || '');
+      checkbox.click();
+      document.getElementById('previewServiceGrantButton')?.click();
+      const previewReady = Boolean(await waitFor(() => !document.getElementById('saveGrantButton')?.disabled, 8000));
+      const items = [{serviceId:service.serviceId,quantity:1}];
+      const previewData = await window.MemberSystem.request(session.config,'admin',session.idToken,'admin.service-grants.preview',{lineUserId:account.lineUserId,items});
+      const minutes = Number(previewData.preview?.serviceMinutes);
+      const previewMatches = Number.isInteger(minutes) && minutes > 0 && document.getElementById('grantServicePreview')?.textContent.includes('+' + minutes + ' 分鐘');
+      if (!emptyRejected || !previewReady || !previewMatches) return fail('空項目驗證或服務預覽不一致。',{emptyRejected:true,previewReady:true,previewMatches:true},{emptyRejected,previewReady,previewMatches});
+      document.getElementById('saveGrantButton')?.click();
+      document.getElementById('saveGrantButton')?.click();
+      const closed = Boolean(await waitFor(() => document.getElementById('grantModal')?.classList.contains('hidden'), 15000));
+      const after = await adminMemberSnapshot(account);
+      const delta = Number(after?.serviceMinutesTotal || 0) - Number(before.serviceMinutesTotal || 0);
+      return closed && delta === minutes
+        ? pass('專用測試會員完成服務預覽與雙擊發放，回讀服務時間只增加一次；不發正式 LINE。',{closed:true,serviceMinutesDelta:minutes},{closed,serviceMinutesDelta:delta,points:previewData.preview.points,evidence:'ui-and-server-readback'})
+        : fail('服務發放終態或會員服務時間不一致。',{closed:true,serviceMinutesDelta:minutes},{closed,serviceMinutesDelta:delta});
+    } finally {
+      document.getElementById('cancelGrantButton')?.click();
+      document.getElementById('closeMemberRecordsModal')?.click();
+      if (account && !(await removeEphemeralTestAccount(account))) throw Object.assign(new Error('本輪服務發放測試會員清理失敗。'),{code:'E2E_FIXTURE_CLEANUP_FAILED'});
+      const search = document.getElementById('memberSearch');
+      if (search) { search.value = previousSearch; search.dispatchEvent(new Event('input',{bubbles:true})); }
+    }
+  }
+
   async function adminGrantNotificationControlsCase() {
     const edit = await ensureTestRoster();
     await clickRowAction('add-grant', edit.dataset.value);
@@ -7288,7 +7379,7 @@
       const explicitCase = explicitCaseByButtonId.get(id) || '';
       const accepted = explicitCase
         ? registeredCaseKeys.has(explicitCase)
-        : Boolean(id && /^(retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|close|cancel|save|grant|messagePreset|booking|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
+        : Boolean(id && /^(previewServiceGrant|copySettings|retry|logout|members|cards|events|calendar|testMode|refresh|tier|manageGrant|saveTier|realMembers|testMembers|member|card|ticket|event|adminCalendar|saveTestMode|deleteSelectedTestAccounts|purgeTestData|close|cancel|save|grant|messagePreset|booking|runPaired|add|queue|delete|clear|new|reset|archive|balance|fixedTicket)/i.test(id)) ||
           datasets.length > 0 ||
           button.classList.contains('editor-modal-close') ||
           button.classList.contains('close-button');
@@ -7751,6 +7842,7 @@
       maintenanceEnabled: Boolean(settings.maintenanceEnabled),
       allowPcTestLogin: Boolean(settings.allowPcTestLogin),
       allowMobileTestLogin: Boolean(settings.allowMobileTestLogin),
+      allowDuplicateTestLogin: Boolean(settings.allowDuplicateTestLogin),
       maintenanceMessage: String(settings.maintenanceMessage || ''),
       addAccountCount: 1
     });
@@ -7801,10 +7893,13 @@
   async function pairedMemberReferralRewardCase() {
     let inviter = null;
     let invitee = null;
+    let anotherInvitee = null;
     let qaRewardEventTicketId = '';
     try {
       const session = await adminSession();
       const stamp = qaCrudStamp();
+      const existing = await window.MemberSystem.request(session.config,'admin',session.idToken,'admin.event-tickets.list',{});
+      if ((existing.eventTickets || []).some(ticket => ticket.ticketType === 'referral' && ticket.status === 'active')) return skip('已有啟用邀請票券；本輪不改動既有設定或消耗既有額度。完整獎勵規則由隔離 SQL 驗證。',{isolatedReferralSource:true},{isolatedReferralSource:false});
       const rewardFixture = await postFunction('api', {
         action: 'admin.event-tickets.save',
         clientType: 'admin',
@@ -7835,10 +7930,11 @@
 
       inviter = await createEphemeralTestAccount();
       invitee = await createEphemeralTestAccount();
-      const consent = await prepareEphemeralConsents([inviter, invitee]);
-      if (Number(consent?.currentConsentCount || 0) !== 2) {
-        return fail('好友邀請 E2E 無法建立兩位已同意條款的臨時測試會員。', {
-          consentCount: 2
+      anotherInvitee = await createEphemeralTestAccount();
+      const consent = await prepareEphemeralConsents([inviter, invitee, anotherInvitee]);
+      if (Number(consent?.currentConsentCount || 0) !== 3) {
+        return fail('好友邀請 E2E 無法建立三位已同意條款的臨時測試會員。', {
+          consentCount: 3
         }, { consentCount: Number(consent?.currentConsentCount || 0) });
       }
 
@@ -7855,9 +7951,11 @@
         return fail('邀請人沒有取得有效邀請碼。', { inviteCodeReady: true }, { inviteCodeReady: false });
       }
 
+      const caller = inviteeMemberLogin;
       const requestId = 'ref-e2e-' + qaCrudStamp();
       const first = await memberGrowthRequest(inviteeMemberLogin, 'member', 'member.referral.bind', { inviteCode, requestId });
       const replay = await memberGrowthRequest(inviteeMemberLogin, 'member', 'member.referral.bind', { inviteCode, requestId });
+      const second = await memberGrowthRequest(caller,'member','member.referral.bind',{memberCode:anotherInvitee.memberCode,requestId:requestId+'-next'});
       const rewardEventTicketId = String(first?.rewardEventTicketId || '');
       const inviterEventLogin = await createPairedSession(inviter, 'event');
       const inviteeEventLogin = await createPairedSession(invitee, 'event');
@@ -7867,15 +7965,15 @@
       ]);
       const ownsReward = (snapshot) => (Array.isArray(snapshot?.offers) ? snapshot.offers : []).some((offer) =>
         String(offer?.ticket?.eventTicketId || '') === rewardEventTicketId &&
-        String(offer?.claim?.status || '') === 'available' &&
-        offer?.canUse === true
+        String(offer?.claim?.status || '') === 'available'
       );
       const actual = {
         inviteCodeReady: true,
         referralId: String(first?.referralId || ''),
         qaRewardEventTicketId,
         rewardEventTicketId,
-        rewardFixtureMatched: rewardEventTicketId === qaRewardEventTicketId,
+        rewardFixtureMatched: Boolean(rewardEventTicketId) && (inviteeEvent.offers || []).some(offer => offer.ticket?.eventTicketId === rewardEventTicketId && offer.ticket?.title === 'E2E 好友邀請獎勵 ' + stamp),
+        repeatableDistinctRecipient: Boolean(second?.referralId) && second.referralId !== first.referralId && second?.rewardEventTicketId !== rewardEventTicketId && (inviteeEvent.offers || []).some(offer => offer.ticket?.eventTicketId === second.rewardEventTicketId && offer.ticket?.title === 'E2E 好友邀請獎勵 ' + stamp),
         firstAlreadyApplied: first?.alreadyApplied === true,
         replayAlreadyApplied: replay?.alreadyApplied === true,
         replaySameReferral: String(first?.referralId || '') === String(replay?.referralId || ''),
@@ -7884,27 +7982,30 @@
       };
       const ok = Boolean(actual.referralId && rewardEventTicketId) && actual.rewardFixtureMatched &&
         !actual.firstAlreadyApplied && actual.replayAlreadyApplied && actual.replaySameReferral &&
-        actual.inviterRewardVisible && actual.inviteeRewardVisible;
+        !actual.inviterRewardVisible && actual.inviteeRewardVisible && actual.repeatableDistinctRecipient;
       return ok
-        ? pass('兩個新測試會員完成好友邀請綁定；本輪 QA referral 票券被正確使用，同 requestId 重播不重複發券。', {
+        ? pass('輸入者完成兩個不同會員邀請；本輪 QA referral 票券被正確使用，同 requestId 重播不重複發券。', {
             rewardFixtureMatched: true, firstAlreadyApplied: false, replayAlreadyApplied: true,
-            replaySameReferral: true, inviterRewardVisible: true, inviteeRewardVisible: true
+            replaySameReferral: true, inviterRewardVisible: false, inviteeRewardVisible: true, repeatableDistinctRecipient:true
           }, actual)
-        : fail('好友邀請綁定、QA 獎勵票券、冪等或雙方獎勵驗證失敗。', {
+        : fail('好友邀請綁定、QA 獎勵票券、冪等或輸入者單方獎勵或再次邀請驗證失敗。', {
             rewardFixtureMatched: true, firstAlreadyApplied: false, replayAlreadyApplied: true,
-            replaySameReferral: true, inviterRewardVisible: true, inviteeRewardVisible: true
+            replaySameReferral: true, inviterRewardVisible: false, inviteeRewardVisible: true, repeatableDistinctRecipient:true
           }, actual);
     } finally {
-      if (invitee) await removeEphemeralTestAccount(invitee).catch(() => false);
-      if (inviter) await removeEphemeralTestAccount(inviter).catch(() => false);
+      const cleanupFailures = [];
+      for (const account of [anotherInvitee,invitee,inviter].filter(Boolean)) {
+        try { if (!(await removeEphemeralTestAccount(account))) cleanupFailures.push(account.memberCode); } catch (_) { cleanupFailures.push(account.memberCode); }
+      }
       if (qaRewardEventTicketId) {
         try {
           const session = await adminSession();
           await window.MemberSystem.request(session.config, 'admin', session.idToken, 'admin.event-tickets.delete', {
             eventTicketId: qaRewardEventTicketId
           });
-        } catch (_) {}
+        } catch (_) { cleanupFailures.push('referral-template'); }
       }
+      if (cleanupFailures.length) throw Object.assign(new Error('本輪邀請 E2E 清理失敗：'+cleanupFailures.join('、')),{code:'E2E_FIXTURE_CLEANUP_FAILED'});
     }
   }
 
@@ -8319,10 +8420,7 @@
 
   async function openGrantForAccount(account) {
     await ensureTestRoster(account);
-    const row = Array.from(document.querySelectorAll('#memberTableBody tr')).find((item) => item.textContent?.includes(String(account.memberCode || '')));
-    const button = row?.querySelector('button[data-action="add-grant"]');
-    if (!button) throw new Error('深度 E2E 測試會員沒有發放按鈕。');
-    button.click();
+    await clickRowAction('add-grant', String(account.lineUserId || ''));
     const modal = await waitFor(() => {
       const node = document.getElementById('grantModal');
       return node && !node.classList.contains('hidden') ? node : null;

@@ -232,7 +232,8 @@ test('referral E2E owns and cleans only its QA referral reward fixture', () => {
   const runner = read('admin/e2e-control.js');
   assert.match(runner, /ticketType: 'referral'/);
   assert.match(runner, /qaRewardEventTicketId = String\(rewardFixture\?\.eventTicket\?\.eventTicketId \|\| ''\)/);
-  assert.match(runner, /rewardFixtureMatched: rewardEventTicketId === qaRewardEventTicketId/);
+  // Issuance creates a child event; ownership and replay behavior are tested in e2e_referral_current_rule.test.js.
+  assert.match(runner, /offer\.ticket\?\.title === 'E2E 好友邀請獎勵 ' \+ stamp/);
   assert.match(runner, /eventTicketId: qaRewardEventTicketId/);
   assert.doesNotMatch(runner, /generatedRewardEventTicketId = rewardEventTicketId/);
 });

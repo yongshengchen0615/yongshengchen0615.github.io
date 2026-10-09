@@ -158,7 +158,7 @@ test('both admin and user E2E entry points load and enforce the professional tes
   const workflow = read('../.github/workflows/test-memberwebsocket-dev.yml');
 
   assert.match(adminHtml, /e2e-professional-tester\.js\?v=professional-qa-20261005-2/);
-  assert.match(adminHtml, /e2e-control\.js\?v=qa-e2e-20261006-5/);
+  assert.match(adminHtml, /e2e-control\.js\?v=qa-e2e-20261009-1/);
   assert.match(adminRunner, /MemberE2EProfessionalTester/);
   assert.match(adminRunner, /professionalTesterStructuralRegressionFree/);
   assert.match(adminRunner, /registerCleanup/);
@@ -169,7 +169,7 @@ test('both admin and user E2E entry points load and enforce the professional tes
   for (const surface of ['member', 'points', 'event', 'calendar', 'booking']) {
     const html = read(surface + '/index.html');
     assert.match(html, /e2e-professional-tester\.js\?v=professional-qa-20261005-2/, surface);
-    assert.match(html, /user-test-control\.js\?v=qa-e2e-20261005-4/, surface);
+    assert.match(html, /user-test-control\.js\?v=qa-e2e-20261009-1/, surface);
   }
   assert.match(workflow, /MemberWebsocket-dev\/e2e-professional-tester\.js/);
 });

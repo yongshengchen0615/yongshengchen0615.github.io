@@ -11,8 +11,9 @@ const today = () => new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Taipe
 function fixture() {
   const ticket = {ticketTemplateId:'ticket-1',title:'QA coupon',ticketType:'coupon',description:'QA description',usageMethod:'QA usage',usageInstructions:'QA instructions',status:'active',updatedAt:version,prizes:[],redemptionLocations:[]};
   const card = n => ({cardId:'card-'+n,title:'QA card '+n,status:'active',styleKey:'denim',pointCardStyleKey:'denim',expiryMode:'unlimited',expiresOn:'',accent:'#df6b4d',usageMethod:'QA',usageInstructions:'QA',benefitDescription:'QA',updatedAt:version,sortOrder:n,rewards:[{thresholdStamps:5,ticketTemplateId:'ticket-1',requiredServiceIds:[],requiredServiceMatchMode:'any'}]});
-  const member = n => ({memberId:'member-'+n,lineUserId:'test:member-'+n,memberCode:'TEST'+n,displayName:'QA Member '+n,surname:'QA',salutation:'mr',birthday:'1980-01-01',phone:'+886912345678',status:'active',isTestAccount:true,tierKey:'general',tier:'一般會員',serviceMinutesTotal:0,joinedAt:version,updatedAt:version,isOnline:true,onlineSurfaces:['member']});
+  const member = n => ({memberId:'member-'+n,lineUserId:'test:member-'+n,memberCode:'TEST'+n,displayName:'QA Member '+n,surname:'QA',salutation:'mr',birthday:'1980-01-01',phone:'+886912345678',status:'active',isTestAccount:true,membershipStatus:'active',tierKey:'general',tier:'一般會員',serviceMinutesTotal:0,joinedAt:version,updatedAt:version,isOnline:true,onlineSurfaces:['member']});
   return {
+    testSettings:{maintenanceEnabled:true,allowPcTestLogin:true,allowMobileTestLogin:true,allowDuplicateTestLogin:true},serviceGrantResults:{},
     visibilityPolicy:'eligible_only',visibilityVersion:version,copies:{},calls:[],unexpected:[],fault:null,hold:null,seq:10,receiptResults:{},settlements:[],
     members:[member(1),member(2),member(3)],cards:[card(1),card(2)],tickets:[ticket],eventTickets:[],calendarItems:[],messagePresets:[],templates:[],
     tierSettings:tiers.map((tierKey,i)=>({tierKey,requiredServiceMinutes:i*100,styleKey:'forest'})),
@@ -43,7 +44,26 @@ function transport(s, action, p={}, slug='api',record=true) {
     if(p.kind==='card')row.rewards=row.rewards.map(reward=>{const template=s.tickets.find(t=>t.ticketTemplateId===reward.ticketTemplateId);const child=save('tickets','ticketTemplateId',{...template,ticketTemplateId:'',status:'draft'});return {...reward,ticketTemplateId:child.ticketTemplateId};});
     s[table][s[table].length-1]=row;return s.copies[p.requestId]={publicId:row[key],status:'draft',kind:p.kind};
   }
-  if(action==='admin.bootstrap' ||action==='admin.summary')return bootstrap();
+  if(action==='admin.test-mode.bootstrap')return {settings:s.testSettings,accounts:s.members.filter(m=>m.isTestAccount)};
+  if(action==='admin.test-mode.save'){
+    Object.assign(s.testSettings,{maintenanceEnabled:p.maintenanceEnabled,allowPcTestLogin:p.allowPcTestLogin,allowMobileTestLogin:p.allowMobileTestLogin,allowDuplicateTestLogin:p.allowDuplicateTestLogin});
+    const n=++s.seq;const template=s.members[0];s.members.push({...template,memberId:'member-'+n,lineUserId:'test:member-'+n,memberCode:'TEST'+n,serviceMinutesTotal:0});return {settings:s.testSettings,accounts:s.members.filter(m=>m.isTestAccount)};
+  }
+  if(action==='admin.test-mode.delete-accounts'){const count=s.members.length;s.members=s.members.filter(m=>!p.memberIds.includes(m.memberId));return {deletedAccountCount:count-s.members.length};}
+  if(action==='admin.service-grants.catalog')return {services:s.services.filter(x=>x.isActive).map(x=>({...x,countsTowardMembership:true,requiresCompanionService:false}))};
+  if(action==='admin.service-grants.preview' || action==='admin.service-grants.add'){
+    const member=s.members.find(m=>m.lineUserId===p.lineUserId);
+    const items=p.items.map(item=>({...s.services.find(service=>service.serviceId===item.serviceId),quantity:item.quantity}));
+    const minutes=items.reduce((n,i)=>n+i.durationMinutes*i.quantity,0);
+    const preview={items,serviceMinutes:minutes,totalMinutes:minutes,points:[{cardId:'card-1',cardTitle:'QA card 1',amount:Math.floor(minutes/30)}],rules:[]};
+    if(action.endsWith('preview'))return {preview};
+    if(s.serviceGrantResults[p.requestId])return {...s.serviceGrantResults[p.requestId],alreadyApplied:true};
+    if(JSON.stringify(p.expectedPreview)!==JSON.stringify(preview))throw Object.assign(new Error('預覽已變更'),{code:'SERVICE_GRANT_PREVIEW_STALE'});
+    member.serviceMinutesTotal+=minutes;s.grants.push(structuredClone(p));const result={member,grant:{preview},notification:{status:'suppressed'}};s.serviceGrantResults[p.requestId]=structuredClone(result);
+    if(s.fault?.action===action&&s.fault.afterCommit){const f=s.fault;s.fault=null;throw Object.assign(new Error('QA response lost after commit'),{code:f.code});}
+    return result;
+  }
+  if(action==='admin.bootstrap'  ||action==='admin.summary')return bootstrap();
   if(action==='admin.members.list')return page();
   if(action==='admin.members.presence.list')return {members:s.members};
   if(action==='admin.member.update'){const m=s.members.find(m=>m.lineUserId===p.lineUserId);return {member:save('members','memberId',{...m,...p,...p.profile})};}
