@@ -58,7 +58,7 @@ test('late camera permission cannot activate a closed receipt dialog or survive 
   } finally { h.dom.window.close(); }
 });
 
-test('receipt submission locks retake and stays locked through successful close, preventing duplicate uploads', async () => {
+test('receipt submission locks retake and closes immediately after commit, preventing duplicate uploads', async () => {
   const h = await receiptHarness();
   try {
     h.open(); await h.activate(0);
@@ -71,8 +71,7 @@ test('receipt submission locks retake and stays locked through successful close,
     h.el('bookingReceiptSubmit').dispatchEvent(new h.w.Event('click'));
     assert.equal(h.actions.filter(action => action === 'user.booking.receipt.prepare').length,1);
     assert.equal(h.uploads(),1);
-    assert.equal(h.closes.length,1);
-    h.closes[0]();
+    assert.equal(h.closes.length,0,'Successful close must not depend on a background timer');
     assert.equal(h.el('bookingReceiptModal').classList.contains('hidden'),true);
     await tick();
   } finally { h.dom.window.close(); }

@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-10-09.1';
+  const VERSION = '2026-10-09.2';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -411,6 +411,9 @@
     for (const type of ['booking:created', 'booking:bookings-rendered', 'booking:settings-updated', 'booking:selection-changed']) {
       on(window, type, (event) => pushDiagnosticEvent(type, event?.detail || {}));
     }
+    for (const type of ['click', 'input', 'change', 'submit']) {
+      on(document, type, event => pushDiagnosticEvent('ui.' + type, { target: humanTargetLabel(event.target) }));
+    }
     state.traceCleanup = () => {
       while (listeners.length) {
         try { listeners.pop()(); } catch {}
@@ -446,7 +449,6 @@
   }
 
   function buildFailureTrace(marker, row, error = null) {
-    const startEventIndex = Math.max(0, Number(marker?.eventIndex || 0));
     return safeJson({
       artifactVersion: 1,
       seed: state.randomSeed,
@@ -462,7 +464,7 @@
         online: window.navigator?.onLine !== false
       },
       elapsedMs: Math.max(0, Date.now() - Number(marker?.startedAtMs || Date.now())),
-      events: state.traceEvents.slice(startEventIndex).slice(-24),
+      events: state.traceEvents.slice(0).filter(event => event.atMs >= Number(marker?.startedAtMs || 0)).slice(-20),
       apiTimings: resourceTimingsSince(marker?.resourceIndex),
       error: error ? plainError(error) : null
     });
@@ -865,7 +867,7 @@
       } catch (error) {
         timedOutCase = error?.code === 'E2E_NODE_TIMEOUT';
         Object.assign(running, fail(
-          '案例執行發生未預期錯誤。',
+          '案例執行失敗：' + plainError(error).message,
           { noUnhandledError: true },
           plainError(error)
         ), { durationMs: elapsed(started) });
@@ -1637,16 +1639,8 @@
   }
 
   async function waitForModalState(modal, shouldBeOpen, timeoutMs) {
-    const deadline = performance.now() + Math.max(100, Number(timeoutMs) || 1000);
-    while (performance.now() < deadline) {
-      if (state.pendingTimedOutNode) {
-        throw Object.assign(new Error('逾時案例已停止等待。'), { code: 'E2E_NODE_CANCELLED' });
-      }
-      const isOpen = !modal.classList.contains('hidden');
-      if (isOpen === shouldBeOpen) return true;
-      await wait(25);
-    }
-    return (!modal.classList.contains('hidden')) === shouldBeOpen;
+    return Boolean(await waitFor(() => modal && (!modal.classList.contains('hidden')) === shouldBeOpen,
+      timeoutMs || 1000, 25));
   }
 
   async function clickModalPair(openId, modalId, closeId) {
@@ -1683,22 +1677,44 @@
 
 
   async function waitFor(predicate, timeoutMs = 5000, intervalMs = 40) {
+    if (state.pendingTimedOutNode) throw Object.assign(new Error('逾時案例已停止等待。'), { code: 'E2E_NODE_CANCELLED' });
     const deadline = performance.now() + Math.max(100, Number(timeoutMs) || 5000);
-    let lastError = null;
-    while (performance.now() < deadline) {
-      if (state.pendingTimedOutNode) {
-        throw Object.assign(new Error('逾時案例已停止等待。'), { code: 'E2E_NODE_CANCELLED' });
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let lastError = null;
+      let pollTimer = null;
+      let deadlineTimer = null;
+      const observer = typeof MutationObserver === 'function' ? new MutationObserver(check) : null;
+      function finish(value, error = null) {
+        if (settled) return;
+        settled = true;
+        observer?.disconnect();
+        window.clearTimeout(pollTimer);
+        window.clearTimeout(deadlineTimer);
+        error ? reject(error) : resolve(value);
       }
-      try {
-        const value = predicate();
-        if (value) return value;
-      } catch (error) {
-        lastError = error;
+      function check() {
+        if (settled) return;
+        if (state.pendingTimedOutNode) {
+          finish(null, Object.assign(new Error('逾時案例已停止等待。'), { code: 'E2E_NODE_CANCELLED' }));
+          return;
+        }
+        // Check once at the deadline too, including changes delivered while a
+        // background tab's timer was suspended.
+        try {
+          const value = predicate();
+          if (value) { finish(value); return; }
+        } catch (error) { lastError = error; }
+        if (performance.now() >= deadline) finish(null, lastError);
       }
-      await wait(intervalMs);
-    }
-    if (lastError) throw lastError;
-    return null;
+      function poll() {
+        check();
+        if (!settled) pollTimer = window.setTimeout(poll, Math.max(25, intervalMs));
+      }
+      observer?.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
+      deadlineTimer = window.setTimeout(check, Math.max(100, deadline - performance.now()));
+      poll();
+    });
   }
 
   function humanTargetLabel(node) {
@@ -1957,19 +1973,41 @@
   }
 
   function compactFailureTrace(value, maxChars = 5000) {
-    const normalized = safeJson(value) || {};
+    const normalized = safeJson(value && typeof value === 'object' ? {
+      ...value,
+      events: Array.isArray(value.events) ? value.events.slice(-20) : [],
+      apiTimings: Array.isArray(value.apiTimings) ? value.apiTimings.slice(-20) : [],
+    } : value) || {};
     let serialized = '';
     try { serialized = JSON.stringify(normalized); } catch { return { serializationFailed: true }; }
     if (serialized.length <= maxChars) return normalized;
     const screenshot = normalized?.screenshot && typeof normalized.screenshot === 'object'
       ? safeJson(normalized.screenshot)
       : null;
-    return {
+    const compacted = {
       truncated: true,
       originalChars: serialized.length,
-      preview: serialized.slice(0, Math.max(300, maxChars - 120)),
+      artifactVersion: normalized.artifactVersion,
+      seed: String(normalized.seed || '').slice(0, 120),
+      caseKey: String(normalized.caseKey || '').slice(0, 100),
+      surface: normalized.surface,
+      page: normalized.page,
+      elapsedMs: normalized.elapsedMs,
+      error: normalized.error,
+      apiTimings: (normalized.apiTimings || []).slice(-8),
+      events: (normalized.events || []).slice(-8).map(event => ({
+        atMs: event.atMs, type: event.type,
+        // Keep the last control and error, not entire repeated settings dumps.
+        detail: event.detail?.target ? { target: event.detail.target }
+          : event.detail?.message ? { message: String(event.detail.message).slice(0, 200), code: event.detail.code } : {}
+      })),
       ...(screenshot ? { screenshot } : {})
     };
+    while (JSON.stringify(compacted).length > maxChars && (compacted.events.length || compacted.apiTimings.length)) {
+      if (compacted.events.length) compacted.events.shift();
+      else compacted.apiTimings.shift();
+    }
+    return compacted;
   }
 
   async function recordBrowserRun() {
@@ -1994,6 +2032,7 @@
     }));
     const payload = {
       cases,
+      runnerVersion: VERSION,
       startedAt: state.runStartedAt || undefined,
       completedAt: new Date().toISOString()
     };
@@ -2138,6 +2177,8 @@
         return button && !button.disabled ? button : null;
       }, 2000);
       actual.selected = Boolean(useButton);
+      if (!useButton) throw Object.assign(new Error('QA 票券不可核銷：' + String(document.querySelector('[data-ticket-error]')?.textContent ||
+        '缺少符合資格且已確認的預約，或選券狀態未同步。')), { code: 'E2E_TICKET_PRECONDITION' });
       useButton.click();
       const modal = await waitFor(() => {
         const node = document.getElementById('ticketBatchModal');
@@ -2148,6 +2189,12 @@
       actual.cancelClosed = Boolean(await waitFor(() => modal.classList.contains('hidden'), 1500));
       useButton.click();
       actual.reopened = Boolean(await waitFor(() => !modal.classList.contains('hidden'), 1500));
+      const bookingChoice = modal.querySelector('[data-ticket-booking-choice] select');
+      if (!bookingChoice || !Array.from(bookingChoice.options).some(option => option.value === String(fixture.bookingId || ''))) {
+        throw Object.assign(new Error('QA 票券沒有對應的已確認預約選項。'), { code: 'E2E_TICKET_PRECONDITION' });
+      }
+      setFieldValue(bookingChoice, fixture.bookingId);
+      actual.bookingSelected = bookingChoice.value === String(fixture.bookingId);
       modal.querySelector('.ticket-batch-confirm')?.click();
       const completed = await waitFor(() => {
         const confirm = modal.querySelector('.ticket-batch-confirm');
@@ -3748,7 +3795,13 @@
 
       document.getElementById('bookingReceiptSubmit')?.click();
       actual.submitted = Boolean(await waitFor(
-        () => modal?.classList.contains('hidden') ? modal : null,
+        () => {
+          const message = document.getElementById('bookingReceiptMessage');
+          if (message?.classList.contains('error') && !document.getElementById('bookingReceiptSubmit')?.disabled) {
+            throw Object.assign(new Error(String(message.textContent || '收據送審失敗。')), { code: 'E2E_RECEIPT_SUBMIT_FAILED' });
+          }
+          return modal?.classList.contains('hidden') ? modal : null;
+        },
         18000,
         120
       ));
