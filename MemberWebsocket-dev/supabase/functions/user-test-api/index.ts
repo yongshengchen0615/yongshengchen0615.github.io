@@ -1577,12 +1577,15 @@ async function prepareHumanFixture(s: any, identity: any, surface: Surface): Pro
     }
 
     if (!ticket) {
-      // Cleanup in FK-safe order; automatic issuance may already have created a ticket.
-      await s.from("point_tickets").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
-      await s.from("point_balances").delete().eq("member_id", identity.memberId).eq("point_card_id", card.data.id);
-      await s.from("point_card_rewards").delete().eq("id", reward.data.id);
-      await s.from("point_cards").delete().eq("id", card.data.id);
-      await s.from("ticket_templates").delete().eq("id", template.data.id);
+      // An issuance failure also requires ledger cleanup; removing only the
+      // balance/reward leaves a point_entries FK and prevents deleting the card.
+      try {
+        await cleanupHumanFixture(s, identity, "points", { fixtureTag: tag });
+        const remaining = await s.from("point_cards").select("id").eq("card_id", card.data.card_id).maybeSingle();
+        if (remaining.error || remaining.data) throw new Error("QA point fixture still exists");
+      } catch {
+        throw new ApiError(500, "QA_FIXTURE_CLEANUP_FAILED", "票券發放失敗，且無法完整清理已建立的 QA 資料。");
+      }
       throw new ApiError(
         500,
         "QA_FIXTURE_POINT_TICKET_FAILED",
