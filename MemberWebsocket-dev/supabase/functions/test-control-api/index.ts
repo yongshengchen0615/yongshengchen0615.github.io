@@ -1908,6 +1908,37 @@ Deno.serve(async (request: Request) => {
       });
     }
 
+    if (action === "admin.test-control.recycle-e2e-runtime") {
+      const leaseId = asText(body.leaseId, 80);
+      if (!UUID_RE.test(leaseId)) {
+        throw new ApiError(400, "INVALID_E2E_LEASE_ID", "E2E 執行鎖識別不正確。");
+      }
+      await expireAbandonedRuns(supabase);
+      const recycled = await supabase.rpc("admin_recycle_e2e_runtime", {
+        p_lease_id: leaseId,
+        p_actor: identity.lineUserId,
+      });
+      if (recycled.error) {
+        const reason = String(recycled.error.message || "");
+        if (reason.includes("E2E_RECYCLE_LEASE_INVALID") || reason.includes("E2E_RECYCLE_OTHER_RUN_ACTIVE") || reason.includes("E2E_RECYCLE_BACKEND_RUN_ACTIVE")) {
+          throw new ApiError(409, "E2E_RECYCLE_BUSY", "已有其他 E2E 測試正在執行，或執行鎖已失效，無法安全重置舊測試資料。");
+        }
+        if (reason.includes("E2E_RECYCLE_QA_ARTIFACTS_REMAIN") || reason.includes("TEST_DATA_CROSS_BOUNDARY")) {
+          throw new ApiError(409, "E2E_RECYCLE_BLOCKED", "部分舊測試資料仍有外部關聯，已取消新一輪測試以防止資料持續累積。");
+        }
+        throw new ApiError(503, "E2E_RECYCLE_FAILED", "無法安全重置上輪 E2E 測試資料，本輪測試已停止。");
+      }
+      const recycledSummary = recycled.data && typeof recycled.data === "object" ? recycled.data : {};
+      if (recycledSummary.cleanupComplete !== true) {
+        throw new ApiError(503, "E2E_RECYCLE_INCOMPLETE", "E2E 暫存資料回收未完成，已停止本輪測試。");
+      }
+      const deletedReceiptObjects = await purgeBookingReceiptCleanupQueue(supabase);
+      const summary = { ...recycledSummary, deletedReceiptObjects };
+      await audit(supabase, identity, "test_control.e2e_runtime.recycle", "test_data", leaseId, summary);
+      await emitRealtimeEvent(supabase, "test_mode.e2e_runtime.recycled");
+      return response(origin, { ok: true, status: 200, data: { recycle: summary } });
+    }
+
     if (action === "admin.test-control.e2e-profile") {
       return response(origin, {
         ok: true,
@@ -1928,6 +1959,20 @@ Deno.serve(async (request: Request) => {
     }
 
     if (action === "admin.test-control.prepare-e2e-fixtures") {
+      const leaseId = asText(body.leaseId, 80);
+      if (!UUID_RE.test(leaseId)) {
+        throw new ApiError(409, "E2E_RECYCLE_REQUIRED", "請先取得 E2E 執行鎖並清理上一輪測試資料。");
+      }
+      const lease = await supabase.from("test_execution_leases")
+        .select("id,runtime_recycled_at")
+        .eq("id", leaseId)
+        .eq("lease_type", "full_e2e")
+        .eq("actor_line_user_id", identity.lineUserId)
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+      if (lease.error || !lease.data?.runtime_recycled_at) {
+        throw new ApiError(409, "E2E_RECYCLE_REQUIRED", "未完成 E2E 執行前的測試資料回收，禁止新增測試資料。");
+      }
       const fixture = await prepareComplexFixtures(supabase, identity, body);
       return response(origin, {
         ok: true,

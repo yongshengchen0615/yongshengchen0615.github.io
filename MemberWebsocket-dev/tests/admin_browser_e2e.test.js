@@ -163,7 +163,7 @@ test('paired E2E creates complex admin fixtures before randomized user clients s
   const runner = read('admin/e2e-control.js');
   const migration = read('supabase/migrations/20260922063942_enhance_e2e_fixture_and_test_surface_sessions_v2.sql');
 
-  const fixtureCall = runner.indexOf('await prepareComplexE2EFixtures(profile)');
+  const fixtureCall = runner.indexOf('await prepareComplexE2EFixtures(profile, cleanupLeaseId)');
   const accountCall = runner.indexOf('await prepareTestAccounts(participantCount, preferredMemberIds)');
   const clientStart = runner.indexOf('runParticipantSurfaces(participant)');
   assert.ok(fixtureCall >= 0 && accountCall > fixtureCall && clientStart > fixtureCall);
