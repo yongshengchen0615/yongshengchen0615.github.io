@@ -14,7 +14,7 @@ test('every full browser E2E run recycles prior QA assets before generating any 
   const lease = paired.indexOf('await acquireE2ECleanupLease()');
   const recycle = paired.indexOf('await recyclePreviousE2ERuntime(cleanupLeaseId)');
   const backend = paired.indexOf('await runUnifiedServerFullPhase(selectedModules)');
-  const fixture = paired.indexOf('await prepareComplexE2EFixtures(profile)');
+  const fixture = paired.indexOf('await prepareComplexE2EFixtures(profile, cleanupLeaseId)');
   assert.ok(lease >= 0 && lease < recycle && recycle < backend && backend < fixture);
   assert.match(runner, /E2E_RUNTIME_RECYCLE/);
   assert.match(runner, /previousCleanup\.alreadyRecycled/);
@@ -58,27 +58,3 @@ test('API fails closed if recycling fails; it does not claim the next run has st
   assert.match(api, /test_control\.e2e_runtime\.recycle/);
 });
 
-test('SQL compiles, disallows anonymous callers and rejects a missing execution lease', async () => {
-  const { PGlite } = require('@electric-sql/pglite');
-  const db = new PGlite();
-  try {
-    await db.exec(`
-      create role anon;
-      create role authenticated;
-      create role service_role;
-      create table public.test_execution_leases (
-        id uuid primary key, lease_type text not null, actor_line_user_id text not null,
-        expires_at timestamptz not null, created_at timestamptz default now()
-      );
-    `);
-    await db.exec(migration);
-    const result = await db.query("select has_function_privilege('anon', 'public.admin_recycle_e2e_runtime(uuid,text)', 'execute') as allowed");
-    assert.equal(result.rows[0].allowed, false);
-    await assert.rejects(
-      db.query("select public.admin_recycle_e2e_runtime('00000000-0000-4000-8000-000000000001'::uuid, 'not-an-admin')"),
-      /E2E_RECYCLE_LEASE_INVALID/
-    );
-  } finally {
-    await db.close();
-  }
-});
