@@ -48,7 +48,7 @@ for(const variant of [
  await switcher.screenshot({path:generalImage});await info.attach('booking-general-mode',{path:generalImage,contentType:'image/png'});
  await page.locator('#memberNote').evaluate(el=>el.value='unsent draft');
  await toggle.click();await expect(toggle).toHaveAttribute('aria-pressed','true');
- await expect(page.locator('#bookingModeTitle')).toHaveText('大字・拍收據模式');
+ await expect(page.locator('#bookingModeTitle')).toHaveText('快照模式');
  await checkModeLayout();
  expect(await page.evaluate(()=>localStorage.getItem('booking-mode:v2:test:mode-a'))).toBe('accessible');
  await toggle.click();expect(await page.locator('#memberNote').inputValue()).toBe('unsent draft');
