@@ -179,7 +179,8 @@ test('missing membership terms are an environment skip instead of a duplicated E
   assert.match(api, /completedCases: counters\.passed \+ counters\.failed \+ counters\.skipped/);
   assert.match(api, /skippedCases: counters\.skipped/);
 
-  assert.match(api, /termsConfigured: false/);
+  assert.match(api, /termsConfigured: applicable\.some/);
+  assert.match(api, /skipCode: "MEMBERSHIP_RECONSENT_NOT_REQUIRED"/);
   assert.match(api, /currentConsentCount: memberIds\.length/);
   assert.doesNotMatch(
     api,
