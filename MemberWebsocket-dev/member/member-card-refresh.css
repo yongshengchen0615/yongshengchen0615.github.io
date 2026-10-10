@@ -58,20 +58,57 @@ html[data-theme] #memberView .member-pass {
 #memberView .pass-member-code .profile-inline-edit-button:focus-visible,
 #memberView .pass-actions .member-referral-trigger:focus-visible { outline: 3px solid var(--pass-soft); outline-offset: 3px; box-shadow: none; }
 #memberView .pass-member-code .profile-inline-edit-button:disabled { opacity: .6; }
-#memberView .pass-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: stretch; gap: 9px; min-width: 0; }
-#memberView .pass-actions .member-referral-trigger {
-  flex: 1 1 165px;
-  min-height: 42px;
-  margin: 0;
-  padding: 9px 12px;
-  border: 1px solid rgba(255,255,255,.34);
-  border-radius: 12px;
-  background: rgba(255,255,255,.12);
-  font-size: 12px;
-  line-height: 1.35;
-  text-align: center;
+/* One semantic action group for membership QR, friends and referral benefits. */
+#memberView .pass-actions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 9px;
+  min-width: 0;
 }
-#memberView .pass-actions .member-referral-trigger:hover { background: rgba(255,255,255,.22); }
+#memberView .pass-actions-heading {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+  color: rgba(255, 255, 255, .73);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .055em;
+}
+#memberView .pass-actions .member-referral-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 46px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,.34);
+  border-radius: 13px;
+  background: rgba(255,255,255,.11);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color .16s ease, border-color .16s ease;
+}
+#memberView .pass-actions .member-referral-trigger:hover { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.50); }
+#memberView .pass-actions .member-referral-trigger:disabled { cursor: not-allowed; opacity: .53; }
+#memberView .pass-actions #showMemberIdentityQr {
+  border-color: rgba(255,255,255,.92);
+  background: #fffdf8;
+  color: var(--pass-background);
+  font-weight: 900;
+}
+#memberView .pass-actions #showMemberIdentityQr:hover { background: var(--pass-soft); border-color: var(--pass-soft); }
+#memberView .pass-actions #openMemberReferral { border-color: rgba(255,255,255,.26); }
+
 
 html[data-theme] #memberView .membership-progress[data-membership-tier-style] {
   display: flex;
@@ -130,17 +167,21 @@ html[data-theme] #memberView .profile-details { margin-top: 0; border-radius: 22
   #memberView .identity h2 { font-size: clamp(24px, 7vw, 32px); }
   #memberView #memberCode { font-size: 19px; }
   #memberView .pass-member-code dt span { display: none; }
-  #memberView .pass-actions .member-referral-trigger { flex-basis: calc(50% - 5px); padding-inline: 8px; }
+  #memberView .pass-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #memberView .pass-actions #showMemberIdentityQr { grid-column: 1 / -1; }
+  #memberView .pass-actions .member-referral-trigger { padding-inline: 8px; }
+  #memberView .pass-actions-heading { margin-bottom: 0; }
   html[data-theme] #memberView .membership-progress[data-membership-tier-style] { padding: 19px; border-radius: 21px; }
   #memberView .member-feature-links > div { gap: 9px; }
   #memberView .member-feature-links a { min-height: 82px; padding: 15px 12px; border-radius: 15px; font-size: 14px; }
 }
 @media (max-width: 320px) {
   #memberView .pass-topline { flex-wrap: wrap; }
-  #memberView .pass-actions .member-referral-trigger { flex-basis: 100%; }
+  #memberView .pass-actions .member-referral-trigger { min-height: 44px; padding-inline: 6px; font-size: 12px; }
   #memberView .member-feature-links > div { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #memberView .member-feature-links a { transition: none; }
+  #memberView .member-feature-links a,
+  #memberView .pass-actions .member-referral-trigger { transition: none; }
   #memberView .member-feature-links a:hover { transform: none; }
 }
