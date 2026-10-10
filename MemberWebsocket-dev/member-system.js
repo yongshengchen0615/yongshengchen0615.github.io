@@ -568,6 +568,8 @@
     let queued = false;
     let lastRefreshAt = -Infinity;
     let subscribedOnce = false;
+    let safetySyncTimer;
+    const SAFETY_SYNC_MS = 30000;
     const queuedEventTypes = new Set();
     const queuedReasons = new Set();
     const hasActiveTestSession = () => {
@@ -622,6 +624,15 @@
     };
     const onPageShow = (event) => schedule(0, { reason: event && event.persisted ? 'bfcache' : 'pageshow' });
     const onOnline = () => schedule(0, { reason: 'online' });
+    // Safety net for lost Realtime messages or a disconnected mobile WebSocket.
+    // It refreshes only while the application is visible; background LIFF tabs do
+    // not poll. The normal Realtime path still invalidates immediately.
+    const safetySync = () => {
+      if (disposed) return;
+      schedule(0, { reason: 'periodic-reconcile' });
+      safetySyncTimer = window.setTimeout(safetySync, SAFETY_SYNC_MS);
+    };
+    safetySyncTimer = window.setTimeout(safetySync, SAFETY_SYNC_MS);
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pageshow', onPageShow);
     window.addEventListener('online', onOnline);
@@ -640,7 +651,11 @@
         const nextStatus = String(status || '');
         realtimeStatuses.set(clientType, nextStatus);
         emitRealtimeEvent('member-system:realtime-status', { clientType, status: nextStatus });
-        if (status !== 'SUBSCRIBED') return;
+        if (status !== 'SUBSCRIBED') {
+          // Do not rely on a full page reload when mobile Realtime disconnects.
+          schedule(0, { reason: 'realtime-disconnected' });
+          return;
+        }
         if (subscribedOnce) schedule(0, { reason: 'reconnect' });
         else subscribedOnce = true;
       });
@@ -649,6 +664,7 @@
       if (disposed) return;
       disposed = true;
       if (timer !== undefined) window.clearTimeout(timer);
+      if (safetySyncTimer !== undefined) window.clearTimeout(safetySyncTimer);
       queued = false;
       queuedEventTypes.clear();
       queuedReasons.clear();
