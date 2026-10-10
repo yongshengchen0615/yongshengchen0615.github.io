@@ -2096,6 +2096,10 @@ Deno.serve(async (request: Request) => {
     }
 
     if (action === "admin.test-control.purge-test-data") {
+      if (body.keepTestHistory !== undefined && typeof body.keepTestHistory !== "boolean") {
+        throw new ApiError(400, "INVALID_HISTORY_RETENTION", "保留測試紀錄選項必須為布林值。");
+      }
+      const keepTestHistory = body.keepTestHistory !== false;
       const running = await supabase
         .from("automation_test_runs")
         .select("id", { count: "exact", head: true })
@@ -2108,7 +2112,7 @@ Deno.serve(async (request: Request) => {
         throw new ApiError(409, "TEST_RUN_ACTIVE", "仍有測試執行中，請先停止或等待測試完成後再移除測試資料。");
       }
 
-      const purge = await supabase.rpc("admin_purge_all_test_data_converged");
+      const purge = await supabase.rpc("admin_purge_all_test_data_converged", { p_keep_history: keepTestHistory });
       if (purge.error) {
         const source = String(purge.error.message || purge.error.details || "");
         if (source.includes("TEST_EXECUTION_ACTIVE")) {
@@ -2120,10 +2124,12 @@ Deno.serve(async (request: Request) => {
         throw new ApiError(503, "TEST_DATA_PURGE_FAILED", "目前無法移除測試資料。", purge.error.message || null);
       }
       const deletedReceiptObjects = await purgeBookingReceiptCleanupQueue(supabase);
-      const deletedStorageObjects = await purgeE2EArtifactStorage(supabase);
+      // Failure artifacts belong to retained E2E history, not test-member runtime data.
+      const deletedStorageObjects = keepTestHistory ? 0 : await purgeE2EArtifactStorage(supabase);
       const baseSummary = purge.data && typeof purge.data === "object" ? purge.data : {};
       const summary = {
         ...(baseSummary as Json),
+        historyRetained: keepTestHistory,
         deletedStorageObjects,
         deletedReceiptObjects,
       };
