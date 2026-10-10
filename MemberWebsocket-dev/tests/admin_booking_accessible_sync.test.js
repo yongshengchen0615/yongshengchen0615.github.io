@@ -58,7 +58,8 @@ test('accessible receipt ticket review uses canonical benefit settlement', () =>
   assert.match(admin, /benefits,adminNote/);
   assert.match(receiptApi, /loadBookingBenefits/);
   assert.match(receiptApi, /validateAccessibleBenefits/);
-  assert.match(receiptApi, /register_accessible_receipt_with_benefits_request/);
+  assert.match(receiptApi, /register_snapshot_receipt_v2/);
+  assert.match(read('supabase/migrations/20261010084712_membership_snapshot_and_completion_controls.sql'), /return public\.register_accessible_receipt_with_benefits_request/);
   assert.match(migration, /replace_booking_benefit_selections_request/);
   assert.match(migration, /admin_confirm_booking_receipt_request/);
   assert.match(migration, /benefitCount/);

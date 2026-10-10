@@ -19,7 +19,7 @@ for (const status of ['pending_upload','awaiting_review','bound']) {
       crypto:require('node:crypto').webcrypto,extensionFor:() => 'jpg',
       ApiError:class extends Error {},dbError:(error) => error,
     });
-    vm.runInContext(stripTypeScriptTypes(code),context);
+    vm.runInContext(stripTypeScriptTypes(source.slice(source.indexOf('function effectiveSettlement('),source.indexOf('async function adminList('))+code),context);
     const db = {
       rpc:async () => ({ data:{ status,receiptId:'receipt',objectPath:'object',alreadyPrepared:true },error:null }),
       storage:{ from:() => ({ createSignedUploadUrl:async (path,options) => { signed.push({ path,upsert:options.upsert }); return { data:{ token:'fixture' } }; } }) },
@@ -39,7 +39,7 @@ for (const status of ['pending_upload','awaiting_review','bound']) {
 test('the member receipt list prefers the submitted snapshot over failed or pending replacements', async () => {
   const code = source.slice(source.indexOf('async function memberList('),source.indexOf('async function prepare('));
   const context = vm.createContext({localTaipeiNowMs:() => Date.now(),Date,ApiError:class extends Error {}});
-  vm.runInContext(stripTypeScriptTypes(code),context);
+  vm.runInContext(stripTypeScriptTypes(source.slice(source.indexOf('function effectiveSettlement('),source.indexOf('async function adminList('))+code),context);
   const rows = [{id:body.bookingId,status:'confirmed',booking_receipts:[
     { receipt_id:'old',status:'awaiting_review',created_at:'2026-10-01T00:00:00Z' },
     { receipt_id:'pending',status:'pending_upload',created_at:'2026-10-02T00:00:00Z' },
@@ -84,7 +84,7 @@ test('bound accessible receipt replay skips consumed benefit validation and reac
 
 test('accessible history preserves released ticket reason without exposing raw redemption metadata',async()=>{
   const code=source.slice(source.indexOf('async function adminList('),source.indexOf('async function adminUrl('));
-  const context=vm.createContext({ApiError:class extends Error {}});vm.runInContext(stripTypeScriptTypes(code),context);
+  const context=vm.createContext({ApiError:class extends Error {}});vm.runInContext(stripTypeScriptTypes(source.slice(source.indexOf('function effectiveSettlement('),source.indexOf('async function adminList('))+code),context);
   const row={receipt_id:'QA-RECEIPT',booking_id:body.bookingId,status:'bound',bookings:{id:body.bookingId,status:'completed',booking_benefit_selections:[
     {benefit_kind:'points',title_snapshot:'QA coupon',status:'cancelled',result:{cancellationReason:'booking_services_changed',privateMetadata:'not-public'}},
     {benefit_kind:'event',title_snapshot:'QA used',status:'redeemed',result:null},

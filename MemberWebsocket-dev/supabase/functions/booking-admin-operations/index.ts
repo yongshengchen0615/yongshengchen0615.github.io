@@ -59,6 +59,9 @@ function mapDatabaseError(error: unknown): ApiError {
   const raw = error as { message?: string; details?: string; code?: string };
   const message = `${raw?.message || ""} ${raw?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
+    ["CORRECTION_CONTEXT_REQUIRED",409,"CORRECTION_CONTEXT_REQUIRED","原訂單的獎勵技師紀錄無法唯一確認，不能安全補正，請先核對歷史資料。"],
+    ["CORRECTION_REASON_REQUIRED",400,"CORRECTION_REASON_REQUIRED","請填寫更正原因。"],
+    ["CORRECTION_PREVIEW_STALE",409,"CORRECTION_PREVIEW_STALE","補正差額已變更，請重新預覽後確認。"],
     ["BOOKING_COMPLETION_REQUIRES_SETTLEMENT",409,"BOOKING_COMPLETION_CANONICAL_REQUIRED","完成預約必須使用完整結算流程。"],
     ["BOOKING_BENEFIT_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一項預約優惠目前已不可使用，請先和會員確認。"],
     ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券需要定位核銷，無法綁定至預約自動核銷。"],
@@ -572,6 +575,24 @@ async function completeBooking(supabase: SupabaseClient, identity: Identity, bod
   return { booking: await hydrateBooking(supabase, bookingId), settlement, receiptId };
 }
 async function route(supabase: SupabaseClient, identity: Identity, action: string, body: Json): Promise<Json> {
+  if (action === "admin.booking.completed.preview" || action === "admin.booking.completed.correct") {
+    const bookingId=requireUuid(body.bookingId,"預約");
+    if (!Array.isArray(body.participants) || body.participants.length<1 || body.participants.length>10) throw new ApiError(400,"INVALID_BOOKING_PARTICIPANTS","請提供每位預約人的實際項目。");
+    const participants=body.participants.map((raw:any)=>{
+      if (!Number.isInteger(raw?.position) || !Array.isArray(raw?.items) || raw.items.length>20) throw new ApiError(400,"INVALID_BOOKING_ITEMS","實際項目格式不正確。");
+      return {position:raw.position,items:raw.items.map((item:any)=>{
+        if (!Number.isInteger(item?.quantity) || item.quantity<1 || item.quantity>2 || !Number.isInteger(item?.minutes) || item.minutes<1 || item.minutes>720) throw new ApiError(400,"INVALID_BOOKING_ITEMS","數量須為 1–2，實際分鐘須為 1–720 的整數。");
+        return {serviceId:requireUuid(item.serviceId,"服務項目"),quantity:item.quantity,minutes:item.minutes};
+      })};
+    });
+    const result=await supabase.rpc("correct_completed_booking_request",{
+      p_booking_id:bookingId,p_expected_updated_at:asText(body.expectedUpdatedAt,100)||null,p_actor:identity.lineUserId,
+      p_request_id:asText(body.requestId,120),p_reason:asText(body.reason,501),p_participants:participants,
+      p_apply:action==="admin.booking.completed.correct",p_expected_preview:body.expectedPreview??null,
+    });
+    if(result.error) throw mapDatabaseError(result.error);
+    return {adjustment:result.data,booking:await hydrateBooking(supabase,bookingId)};
+  }
   if (action === "admin.booking.participants.items.update") return await updateParticipantItems(supabase, identity, body);
   if (action === "admin.booking.participants.technicians.update") return await updateParticipantTechnicians(supabase, identity, body);
   if (action === "admin.booking.items.update") return await updateItems(supabase, identity, body);

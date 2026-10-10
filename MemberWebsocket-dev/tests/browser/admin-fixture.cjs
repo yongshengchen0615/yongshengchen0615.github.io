@@ -121,6 +121,14 @@ function transport(s, action, p={}, slug='api',record=true) {
   if(action==='admin.list')return {requests:s.bookings.filter(b=>b.cancellationRequestedAt)};
   if(action==='admin.approve'||action==='admin.reject'){const b=s.bookings.find(b=>b.bookingId===p.bookingId);if(b){if(action==='admin.approve')b.status='cancelled';b.cancellationRequestedAt=null;}return {booking:b};}
   if(action==='admin.booking.items.update'){const b=s.bookings.find(b=>b.bookingId===p.bookingId);b.items=p.items.map(i=>({...i,serviceTitle:s.services.find(s=>s.serviceId===i.serviceId).title}));b.updatedAt=stamp();return {booking:b};}
+  if(action==='admin.booking.completed.preview'||action==='admin.booking.completed.correct'){
+    const b=s.bookings.find(b=>b.bookingId===p.bookingId);
+    const before=b.items.reduce((n,i)=>n+i.unitDurationMinutes*i.quantity,0);
+    const after=p.participants.flatMap(person=>person.items).reduce((n,i)=>n+i.minutes*i.quantity,0);
+    const adjustment={before:{serviceMinutes:before,friendRewardMinutes:0},after:{serviceMinutes:after,friendRewardMinutes:0},serviceMinutesDelta:after-before,pointDeltas:[{memberId:b.memberId,cardTitle:'QA card',delta:Math.floor(after/30)-Math.floor(before/30)}]};
+    if(action.endsWith('.correct')){b.items=p.participants[0].items.map(i=>({...i,unitDurationMinutes:i.minutes,serviceTitle:s.services.find(x=>x.serviceId===i.serviceId)?.title}));b.updatedAt=stamp();}
+    return {adjustment,booking:b};
+  }
   if(action==='admin.booking.benefits.list')return {booking:s.bookings.find(b=>b.bookingId===p.bookingId),catalog:s.benefitCatalog};
   if(action==='admin.booking.benefits.update'){const b=s.bookings.find(b=>b.bookingId===p.bookingId);b.benefits=p.benefits.map(i=>({...i,status:'pending',title:'QA selected benefit'}));b.updatedAt=stamp();return {booking:b};}
   if(action==='admin.booking.participants.items.update'||action==='admin.booking.participants.technicians.update'){const group=s.groups[p.bookingId];group.participants=p.participants.map((v,i)=>({...group.participants[i],...v}));s.bookings.find(b=>b.bookingId===p.bookingId).updatedAt=stamp();return {group};}

@@ -48,5 +48,5 @@ test('admin booking ticket editor assets are cache-busted', () => {
   const coreVersion = /booking-panel-core\.js', '([^']+)'/.exec(read('admin/booking-panel.js'))?.[1];
   assert.ok(htmlVersion && coreVersion, 'booking loader versions must be present');
   assert.equal(htmlVersion, coreVersion, 'HTML must load the same booking core version');
-  assert.match(coreVersion, /-snapshot-20261010-1$/, 'latest booking badge must not be cached');
+  assert.match(coreVersion, /-controls-20261010-2$/, 'latest booking badge must not be cached');
 });

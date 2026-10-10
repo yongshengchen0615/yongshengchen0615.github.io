@@ -64,7 +64,7 @@
       throw error;
     });
     const config = await configPromise;
-    const idToken = String(window.liff?.getIDToken?.() || '');
+    const idToken = String(window.MemberAdminSession?.get?.()?.idToken || window.liff?.getIDToken?.() || '');
     if (!idToken) throw clientError('AUTH_REQUIRED', '管理端登入尚未完成。');
 
     const endpoint = `${String(config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-group-details-api`;
@@ -104,7 +104,8 @@
     const startDate = String(card.dataset.bookingStartAt || '').slice(0, 10) || card.dataset.bookingDate;
     const endDate = String(card.dataset.bookingEndAt || '').slice(0, 10) || card.dataset.bookingDate;
     const endTime = String(card.dataset.bookingEndTime || '').slice(0, 5);
-    lines.push(`營業日 ${card.dataset.bookingDate}｜${startDate} ${startTime(card)}–${endDate} ${endTime || '—'}`);
+    const nextDay = endDate > startDate ? '（隔日）' : '';
+    lines.push(`營業日 ${card.dataset.bookingDate || '—'}｜${startTime(card)}–${endTime || '—'}${nextDay}`);
     lines.push(contactName(card));
     lines.push(`電話：${contactPhone(card)}`);
 
@@ -242,18 +243,16 @@
 
   async function copyText(text) {
     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function' && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return;
+      try { await navigator.clipboard.writeText(text); return; } catch (_) { /* Try the browser's copy fallback. */ }
     }
     const textarea = document.createElement('textarea');
     textarea.value = text;
     textarea.setAttribute('readonly', '');
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
+    textarea.className = 'booking-cancellation-copy-buffer';
     document.body.appendChild(textarea);
     textarea.select();
-    const copied = document.execCommand('copy');
-    textarea.remove();
+    let copied = false;
+    try { copied = document.execCommand('copy'); } finally { textarea.remove(); }
     if (!copied) throw clientError('COPY_FAILED', '無法複製預約內容。');
   }
 

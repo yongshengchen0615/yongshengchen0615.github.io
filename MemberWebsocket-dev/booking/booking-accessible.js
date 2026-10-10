@@ -44,10 +44,21 @@
   function renderStatus(submissions) {
     const status = el('bookingAccessibleStatus');
     if (!status) return;
-    const latest = (Array.isArray(submissions) ? submissions : []).find(r => ['awaiting_review','bound'].includes(r.status) || r.dismissed);
+    const latest = (Array.isArray(submissions) ? submissions : []).find(r => ['awaiting_review','bound'].includes(r.status) || r.dismissed || r.cancelled);
     if (!latest) { status.textContent = '尚未送出收據。'; return; }
     if (latest.status === 'awaiting_review') {
       status.textContent = '收據已送出，等待管理員登記。再次拍攝會取代目前待登記收據。';
+      if (latest.requestedBenefits?.length) status.textContent += ` 登記票券：${latest.requestedBenefits.map(item => item.title || item.id).join('、')}。`;
+      const cancel = document.createElement('button'); cancel.type='button'; cancel.className='button button-outline'; cancel.textContent='撤回登記';
+      cancel.addEventListener('click', async () => {
+        if (!window.confirm('撤回這次收據與票券登記？尚未核准的票券不會核銷。')) return;
+        cancel.disabled=true;
+        try { const session=window.BookingSystem.getSession(); await window.BookingSystem.request(session.config,'booking',session.idToken,'user.booking.receipt.cancel',{receiptId:latest.receiptId,expectedUpdatedAt:latest.updatedAt}); await window.BookingReceipts.refresh(); }
+        catch(error) {status.textContent=error?.message||'無法撤回，請重新整理後確認狀態。';}
+      });
+      status.append(cancel);
+    } else if (latest.cancelled) {
+      status.textContent = '已撤回收據與票券登記，未執行核銷。';
     } else if (latest.dismissed) {
       status.textContent = '管理員請您重新提供收據，請確認內容後再次拍攝。';
     } else {

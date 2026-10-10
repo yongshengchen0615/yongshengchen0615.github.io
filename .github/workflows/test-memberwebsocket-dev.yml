@@ -93,6 +93,7 @@ jobs:
             MemberWebsocket-dev/tests/integration/friends_ui.cjs \
             MemberWebsocket-dev/tests/integration/qr_modal_lifecycle.cjs \
             MemberWebsocket-dev/tests/integration/snapshot_location.cjs \
+            MemberWebsocket-dev/tests/integration/snapshot_completion_controls.cjs \
             MemberWebsocket-dev/tests/integration/friend_qr_scanner.cjs
           node --max-old-space-size=1024 --test MemberWebsocket-dev/tests/integration/admin_human_journeys.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs

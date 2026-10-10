@@ -381,6 +381,15 @@
     const article = document.createElement('article');
     article.className = 'booking-admin-booking booking-summary-normalized';
     article.dataset.bookingId = String(row.bookingId || '');
+    article.dataset.bookingDate = String(row.bookingDate || '');
+    article.dataset.bookingStartTime = String(row.startTime || '');
+    article.dataset.bookingEndTime = String(row.endTime || '');
+    article.dataset.bookingStartAt = String(row.startAt || '');
+    article.dataset.bookingEndAt = String(row.endAt || '');
+    article.dataset.bookingCopyContactName = bookingContactName(row);
+    article.dataset.bookingCopyPhone = String(row.contactPhone || '—');
+    article.dataset.bookingCopyGroup = JSON.stringify({ partySize: row.partySize || row.participants?.length || 1, participants: row.participants?.length ? row.participants : Number(row.partySize || 1) === 1 ? [{ position: 1, technicianName: row.technicianName || '現場安排', items: row.items || [] }] : [] });
+    article.dataset.bookingCopyItems = JSON.stringify(row.items || []);
 
     const heading = document.createElement('div');
     heading.className = 'booking-admin-booking-heading';
@@ -612,7 +621,7 @@
   function bookingDateTime(row) {
     const startDate = String(row.startAt || '').slice(0, 10) || row.bookingDate;
     const endDate = String(row.endAt || '').slice(0, 10) || row.bookingDate;
-    return `營業日 ${row.bookingDate}｜${startDate} ${String(row.startTime || '—').slice(0, 5)}–${endDate} ${String(row.endTime || '—').slice(0, 5)}`;
+    return `營業日 ${row.bookingDate}｜${String(row.startTime || '—').slice(0, 5)}–${String(row.endTime || '—').slice(0, 5)}${endDate > startDate ? '（隔日）' : ''}`;
   }
   function formatDateTime(value) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-Hant-TW', { timeZone: 'Asia/Taipei', hour12: false }); }
   function formatMoney(value) { const amount = Number(value || 0); return Number.isFinite(amount) ? `NT$${Math.round(amount).toLocaleString('zh-Hant-TW')}` : ''; }
