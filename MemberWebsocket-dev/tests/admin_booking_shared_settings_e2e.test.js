@@ -109,6 +109,6 @@ test('global ticket booking requirement is discoverable in both ticket managemen
   assert.match(core, /els\.bookingAdminTicketBookingRequired\.checked = settings\.ticketBookingRequired !== false/);
   assert.match(api, /typeof body\.ticketBookingRequired !== "boolean"/);
   assert.match(api, /p_ticket_booking_required: body\.ticketBookingRequired \?\? null/);
-  assert.match(loader, /booking-panel-core\.js', '.*policy-entry-20261010-1'/);
-  assert.match(html, /booking-panel\.js\?v=[^"]*policy-entry-20261010-1/);
+  assert.match(loader, /booking-panel-core\.js', '.*policy-entry-20261010-1-controls-20261010-2'/);
+  assert.match(html, /booking-panel\.js\?v=[^"]*policy-entry-20261010-1-controls-20261010-2/);
 });
