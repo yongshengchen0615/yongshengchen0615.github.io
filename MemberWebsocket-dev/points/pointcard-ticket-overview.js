@@ -21,9 +21,6 @@
   let useButton = null;
   let groups = null;
   let locationTracker = null;
-  let locationName = '';
-  let locationNameFix = null;
-  let locationGeneration = 0;
 
   function extensionUrl() {
     return `${String(state.config && state.config.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/pointcard-extension-api`;
@@ -64,11 +61,25 @@
 
 
   function stopLiveLocation() {
-    locationGeneration += 1;
     locationTracker?.stop();
     locationTracker = null;
-    locationName = '';
-    locationNameFix = null;
+  }
+
+  function locationChecks(fix, tickets = selectedTickets()) {
+    return tickets.filter((ticket) => ticket.requiresLocation).map((ticket) => ({
+      ticket,
+      check: window.TicketLiveLocation.evaluate(fix, ticket.redemptionLocations)
+    }));
+  }
+
+  function selectedLocationSignature() {
+    return JSON.stringify(selectedTickets().map((ticket) =>
+      [ticket.ticketId, ticket.requiresLocation, ticket.redemptionLocations]));
+  }
+
+  function permittedPlaces(tickets = selectedTickets()) {
+    return tickets.filter((ticket) => ticket.requiresLocation).map((ticket) =>
+      `${ticket.ticketTitle}：${window.TicketLiveLocation.allowedLocationLabel(ticket.redemptionLocations)}`).join('；');
   }
 
   function liveLocationStatus(message) {
@@ -76,48 +87,58 @@
     if (status) status.textContent = message;
   }
 
+  function applyLiveLocationState() {
+    const modal = document.getElementById('ticketBatchModal');
+    if (!modal || modal.classList.contains('hidden') || !window.TicketLiveLocation) return;
+    const tickets = selectedTickets();
+    const checks = locationChecks(locationTracker?.latest(), tickets);
+    const pending = checks.find((entry) => !entry.check.allowed);
+    const locations = permittedPlaces(tickets);
+    const status = !checks.length ? '' : pending
+      ? pending.check.reason === 'missing'
+        ? '尚未取得管理端地點設定，暫時無法核銷。'
+        : pending.check.reason === 'waiting'
+          ? '正在取得精度 100 公尺內的最新 GPS 位置…'
+          : '目前不在所有指定可使用範圍內，請前往上述地點後再使用。'
+      : `目前 GPS 符合：${checks.map((entry) =>
+          `${entry.ticket.ticketTitle} →「${entry.check.matched.name}」`).join('；')}。`;
+    if (checks.length) liveLocationStatus(`管理端可使用地點：${locations}。 ${status}`);
+    const bookingChoice = modal.querySelector('[data-ticket-booking-choice]');
+    const confirm = modal.querySelector('.ticket-batch-confirm');
+    if (confirm && confirm.dataset.mode !== 'close') {
+      confirm.disabled = state.busy || !window.TicketBookingChoice?.selected(bookingChoice) || Boolean(pending);
+    }
+  }
+
   function liveLocation() {
     if (!window.TicketLiveLocation) throw new Error('GPS 模組尚未載入，請重新開啟票券。');
     if (!locationTracker) locationTracker = window.TicketLiveLocation.create({
-      onUpdate: (fix, fresh) => {
-        if (locationNameFix && window.TicketLiveLocation.distanceMeters(locationNameFix, fix) > 120) {
-          locationName = '';
-          locationNameFix = null;
-        }
-        const position = locationName ? `目前附近：「${locationName}」` : '請確認目前地點名稱';
-        liveLocationStatus(`${fresh ? '即時 GPS 已更新' : 'GPS 精度不足或座標已過期'}（約 ±${Math.round(fix.accuracy)} 公尺）。${position}。`);
-      },
-      onError: liveLocationStatus
+      onUpdate: applyLiveLocationState,
+      onError: (message) => {
+        liveLocationStatus(`${message}。管理端可使用地點：${permittedPlaces()}。`);
+        const confirm = document.querySelector('#ticketBatchModal .ticket-batch-confirm');
+        if (confirm) confirm.disabled = true;
+      }
     });
     return locationTracker;
   }
 
   async function currentRedemptionLocation() {
-    liveLocationStatus('正在取得最新 GPS，需精度 100 公尺內…');
     return liveLocation().read();
   }
 
-  async function confirmLiveLocationName(fix = null) {
-    const generation = locationGeneration;
+  async function refreshLiveLocation() {
     const modal = document.getElementById('ticketBatchModal');
-    const lookup = modal?.querySelector('[data-live-location-button]');
-    if (lookup) lookup.disabled = true;
+    if (!modal || modal.classList.contains('hidden')) return;
+    applyLiveLocationState();
     try {
-      const position = fix || await currentRedemptionLocation();
-      liveLocationStatus('正在確認 GPS 所在地點（地圖資料來源：OpenStreetMap）…');
-      const name = await window.TicketLiveLocation.placeName(position);
-      if (generation !== locationGeneration) return;
-      if (window.TicketLiveLocation.distanceMeters(position, liveLocation().latest()) > 120) {
-        liveLocationStatus('GPS 位置已有變動，請重新確認地點名稱。');
-        return;
-      }
-      locationName = name;
-      locationNameFix = position;
-      liveLocationStatus(`GPS 約定位在「${name}」，精度 ±${Math.round(position.accuracy)} 公尺。請確認所在地點，核銷仍由伺服器驗證。`);
+      await liveLocation().read();
+      applyLiveLocationState();
     } catch (error) {
-      if (generation === locationGeneration) liveLocationStatus(`無法確認地點名稱：${error?.message || '稍後再試'}。GPS 仍可正常進行核銷驗證。`);
-    } finally {
-      if (lookup && generation === locationGeneration) lookup.disabled = false;
+      if (!modal.classList.contains('hidden')) {
+        liveLocationStatus(`${error?.message || '無法取得 GPS'}。管理端可使用地點：${permittedPlaces()}。`);
+        modal.querySelector('.ticket-batch-confirm').disabled = true;
+      }
     }
   }
 
@@ -265,6 +286,7 @@
           usageInstructions: String(ticket ? ticket.usageInstructions : reward.usageInstructions || ''),
           prizes: Array.isArray(ticket ? ticket.prizes : reward.prizes) ? (ticket ? ticket.prizes : reward.prizes) : [],
           requiresLocation: Boolean(ticket && ticket.requiresLocation),
+          redemptionLocations: Array.isArray(ticket?.redemptionLocations) ? ticket.redemptionLocations : [],
           reservedForBooking,
           eligibleBookings: Array.isArray(ticket?.eligibleBookings) ? ticket.eligibleBookings : [],
           shortage,
@@ -603,22 +625,22 @@
       button.type = 'button';
       button.className = 'ticket-live-location-confirm';
       button.dataset.liveLocationButton = '';
-      button.textContent = '確認目前 GPS 地點名稱（OpenStreetMap）';
-      button.addEventListener('click', () => { void confirmLiveLocationName(); });
+      button.textContent = '重新檢查是否位於可使用地點';
+      button.addEventListener('click', () => { void refreshLiveLocation(); });
       livePanel.append(status, button);
       modal.querySelector('[data-batch-list]').before(livePanel);
     }
     livePanel.hidden = !needsLocation;
-    if (needsLocation) liveLocationStatus('按「確認目前 GPS 地點名稱」後開始即時更新；僅在開啟核銷視窗期間定位。');
+    if (needsLocation) liveLocationStatus(`管理端可使用地點：${permittedPlaces(tickets)}。正在檢查所在範圍…`);
     modal.querySelector('[data-batch-message]').textContent = needsLocation
-      ? '此選取包含需 GPS 定位的票券。確認後會讀取目前位置；位置符合指定地點後才會立即扣點與核銷。'
+      ? '須位於管理端設定的可使用地點範圍內才能使用；系統會即時判斷，不會以手機附近地名代替指定地點。'
       : '送出後將立即完成扣點與票券核銷，此操作無法取消或復原。';
 
     let bookingChoice = modal.querySelector('[data-ticket-booking-choice]');
     if (!bookingChoice) { bookingChoice = document.createElement('div'); bookingChoice.dataset.ticketBookingChoice = ''; modal.querySelector('[data-batch-list]').before(bookingChoice); }
     bookingChoice.hidden = false;
     const eligibleBookings = window.TicketBookingChoice?.common(tickets) || [];
-    window.TicketBookingChoice?.mount(bookingChoice, eligibleBookings, () => { modal.querySelector('.ticket-batch-confirm').disabled = !window.TicketBookingChoice.selected(bookingChoice); });
+    window.TicketBookingChoice?.mount(bookingChoice, eligibleBookings, () => { modal.querySelector('.ticket-batch-confirm').disabled = !window.TicketBookingChoice?.selected(bookingChoice); applyLiveLocationState(); });
     const list = modal.querySelector('[data-batch-list]');
     list.replaceChildren(...tickets.map((ticket) => {
       const line = document.createElement('article');
@@ -659,6 +681,8 @@
     confirm.disabled = !window.TicketBookingChoice?.selected(bookingChoice);
     confirm.textContent = '確認使用';
     modal.classList.remove('hidden');
+    applyLiveLocationState();
+    if (needsLocation) void refreshLiveLocation();
     confirm.focus();
   }
 
@@ -698,11 +722,15 @@
       let location = null;
       if (needsLocation) {
         confirm.textContent = '取得 GPS 中…';
-        message.textContent = '正在取得目前位置並確認定位精度…';
+        message.textContent = '正在判斷是否位於管理端的可使用地點…';
         location = await currentRedemptionLocation();
-        if (!locationName) await confirmLiveLocationName(location);
-        const placeDescription = locationName || '尚無可辨識名稱，請自行確認實際所在地點';
-        if (!window.confirm(`GPS 目前推定位置：${placeDescription}（約 ±${Math.round(location.accuracy)} 公尺）。\n確定在此地點使用票券嗎？`)) {
+        const check = locationChecks(location, tickets);
+        if (check.some((entry) => !entry.check.allowed)) {
+          throw new Error(`目前不在指定可使用範圍內，請至 ${permittedPlaces(tickets)} 後再使用。`);
+        }
+        const matched = check.map((entry) =>
+          `${entry.ticket.ticketTitle}：${entry.check.matched.name}`).join('；');
+        if (!window.confirm(`管理端可使用地點：${permittedPlaces(tickets)}\n目前 GPS 符合：${matched}（精度 ±${Math.round(location.accuracy)} 公尺）。\n確定使用這些票券嗎？`)) {
           message.textContent = '已取消這次使用，票券尚未核銷。';
           confirm.dataset.mode = 'redeem';
           confirm.disabled = false;
@@ -710,8 +738,12 @@
           cancel.hidden = false;
           return;
         }
-        // Renew the snapshot after confirmation; do not send a stale coordinate.
+        // Renew the fix and compare against any policy updated while confirming.
         location = await currentRedemptionLocation();
+        const latestTickets = selectedTickets();
+        if (locationChecks(location, latestTickets).some((entry) => !entry.check.allowed)) {
+          throw new Error(`定位規則已變更或目前不在範圍內，請至 ${permittedPlaces(latestTickets)} 後再試。`);
+        }
         confirm.textContent = '使用中…';
         message.textContent = 'GPS 已更新，正在確認使用地點並核銷票券…';
       }
@@ -789,6 +821,7 @@
         updateSelection();
         render();
       }
+      if (!redeemed) applyLiveLocationState();
     }
   }
 
@@ -825,8 +858,19 @@
       error.code = 'TICKET_OVERVIEW_NOT_INITIALIZED';
       throw error;
     }
+    const modal = document.getElementById('ticketBatchModal');
+    const wasOpen = Boolean(modal && !modal.classList.contains('hidden') && !state.busy && modal.querySelector('.ticket-batch-confirm')?.dataset.mode !== 'close');
+    const beforeRules = wasOpen ? selectedLocationSignature() : '';
     state.snapshot = snapshot && typeof snapshot === 'object' ? snapshot : { cards: [], cardDetails: {} };
     render();
+    if (wasOpen && beforeRules !== selectedLocationSignature()) {
+      stopLiveLocation();
+      if (selectedTickets().length) openConfirmModal();
+      else {
+        modal.classList.add('hidden');
+        overviewError('管理端已更新票券設定，請重新選擇票券。');
+      }
+    } else if (wasOpen) applyLiveLocationState();
   }
 
   window.addEventListener('pagehide', stopLiveLocation);

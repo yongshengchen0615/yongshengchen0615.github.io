@@ -1020,6 +1020,7 @@ function pointTicketClient(row: any, cardId = "", reservedForBooking = false): J
     status: row.status,
     reservedForBooking: Boolean(reservedForBooking),
     requiresLocation: Boolean(row.requires_location),
+    redemptionLocations: Boolean(row.requires_location) && Array.isArray(row.redemption_locations) ? row.redemption_locations : [],
     earnedAt: row.earned_at,
     usedAt: row.used_at || "",
     result: row.result || null,
@@ -1132,8 +1133,10 @@ function eventTicketClient(row: any, claimedCount = 0, admin = false): Json {
     requiresLocation: Boolean(row.requires_location),
     redemptionLocationNames: Boolean(row.requires_location) && Array.isArray(row.redemption_locations)
       ? row.redemption_locations.map((location:any) => String(location.name || "")).filter(Boolean) : [],
+    // Current admin-defined centres/radii: the server RPC still makes the authorization decision.
+    redemptionLocations: Boolean(row.requires_location) && Array.isArray(row.redemption_locations)
+      ? row.redemption_locations : [],
     ...(admin ? {
-      redemptionLocations: Array.isArray(row.redemption_locations) ? row.redemption_locations : [],
       redemptionLatitude: row.redemption_locations?.[0]?.latitude ?? null,
       redemptionLongitude: row.redemption_locations?.[0]?.longitude ?? null,
       redemptionRadiusMeters: row.redemption_locations?.[0]?.radiusMeters ?? null,
