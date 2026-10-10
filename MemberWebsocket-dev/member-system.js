@@ -560,7 +560,37 @@
     const existing = realtimeSubscriptions.get(clientType);
     if (existing) return existing.unsubscribe;
     const client = realtimeClientFor(config);
-    if (!client) return () => {};
+    if (!client) {
+      // When the Realtime SDK/CDN is unavailable, keep member data synchronized
+      // through the existing authenticated bootstrap instead of requiring reload.
+      let disposed = false;
+      let pending = false;
+      const refresh = () => {
+        if (disposed || pending || document.visibilityState === 'hidden' ||
+          (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+        pending = true;
+        Promise.resolve().then(() => onUpdate({
+          clientType, eventTypes: [], reasons: ['periodic-reconcile']
+        })).catch(() => {}).finally(() => { pending = false; });
+      };
+      const interval = typeof window.setInterval === 'function'
+        ? window.setInterval(refresh, 30000) : undefined;
+      const onResume = () => refresh();
+      document.addEventListener('visibilitychange', onResume);
+      window.addEventListener('pageshow', onResume);
+      window.addEventListener('online', onResume);
+      const unsubscribe = () => {
+        if (disposed) return;
+        disposed = true;
+        if (interval !== undefined) window.clearInterval(interval);
+        document.removeEventListener('visibilitychange', onResume);
+        window.removeEventListener('pageshow', onResume);
+        window.removeEventListener('online', onResume);
+        realtimeSubscriptions.delete(clientType);
+      };
+      realtimeSubscriptions.set(clientType, { unsubscribe });
+      return unsubscribe;
+    }
 
     let disposed = false;
     let timer;
