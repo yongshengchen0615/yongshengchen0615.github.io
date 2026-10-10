@@ -20,6 +20,10 @@
   let selectionHint = null;
   let useButton = null;
   let groups = null;
+  let locationTracker = null;
+  let locationName = '';
+  let locationNameFix = null;
+  let locationGeneration = 0;
 
   function extensionUrl() {
     return `${String(state.config && state.config.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/pointcard-extension-api`;
@@ -59,38 +63,62 @@
   }
 
 
-  function currentRedemptionLocation() {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        const error = new Error('此裝置不支援 GPS 定位，無法使用需要定位的票券。');
-        error.code = 'LOCATION_UNAVAILABLE';
-        reject(error);
+  function stopLiveLocation() {
+    locationGeneration += 1;
+    locationTracker?.stop();
+    locationTracker = null;
+    locationName = '';
+    locationNameFix = null;
+  }
+
+  function liveLocationStatus(message) {
+    const status = document.querySelector('#ticketBatchModal [data-live-location-status]');
+    if (status) status.textContent = message;
+  }
+
+  function liveLocation() {
+    if (!window.TicketLiveLocation) throw new Error('GPS 模組尚未載入，請重新開啟票券。');
+    if (!locationTracker) locationTracker = window.TicketLiveLocation.create({
+      onUpdate: (fix, fresh) => {
+        if (locationNameFix && window.TicketLiveLocation.distanceMeters(locationNameFix, fix) > 120) {
+          locationName = '';
+          locationNameFix = null;
+        }
+        const position = locationName ? `目前附近：「${locationName}」` : '請確認目前地點名稱';
+        liveLocationStatus(`${fresh ? '即時 GPS 已更新' : 'GPS 精度不足或座標已過期'}（約 ±${Math.round(fix.accuracy)} 公尺）。${position}。`);
+      },
+      onError: liveLocationStatus
+    });
+    return locationTracker;
+  }
+
+  async function currentRedemptionLocation() {
+    liveLocationStatus('正在取得最新 GPS，需精度 100 公尺內…');
+    return liveLocation().read();
+  }
+
+  async function confirmLiveLocationName(fix = null) {
+    const generation = locationGeneration;
+    const modal = document.getElementById('ticketBatchModal');
+    const lookup = modal?.querySelector('[data-live-location-button]');
+    if (lookup) lookup.disabled = true;
+    try {
+      const position = fix || await currentRedemptionLocation();
+      liveLocationStatus('正在確認 GPS 所在地點（地圖資料來源：OpenStreetMap）…');
+      const name = await window.TicketLiveLocation.placeName(position);
+      if (generation !== locationGeneration) return;
+      if (window.TicketLiveLocation.distanceMeters(position, liveLocation().latest()) > 120) {
+        liveLocationStatus('GPS 位置已有變動，請重新確認地點名稱。');
         return;
       }
-      navigator.geolocation.getCurrentPosition((position) => {
-        const latitude = Number(position.coords.latitude);
-        const longitude = Number(position.coords.longitude);
-        const accuracy = Number(position.coords.accuracy);
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) {
-          const error = new Error('目前 GPS 精度不足（需在 100 公尺內），請移至較空曠處重新定位。');
-          error.code = 'LOCATION_INVALID';
-          reject(error);
-          return;
-        }
-        resolve({
-          latitude,
-          longitude,
-          accuracy,
-          observedAt: new Date(Number(position.timestamp) || Date.now()).toISOString()
-        });
-      }, (cause) => {
-        const error = new Error(cause && cause.code === 1
-          ? '請允許位置權限後再使用需要 GPS 定位的票券。'
-          : '暫時無法取得目前 GPS 位置，請稍後再試。');
-        error.code = 'LOCATION_REQUIRED';
-        reject(error);
-      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
-    });
+      locationName = name;
+      locationNameFix = position;
+      liveLocationStatus(`GPS 約定位在「${name}」，精度 ±${Math.round(position.accuracy)} 公尺。請確認所在地點，核銷仍由伺服器驗證。`);
+    } catch (error) {
+      if (generation === locationGeneration) liveLocationStatus(`無法確認地點名稱：${error?.message || '稍後再試'}。GPS 仍可正常進行核銷驗證。`);
+    } finally {
+      if (lookup && generation === locationGeneration) lookup.disabled = false;
+    }
   }
 
   function hasMemberAuth() {
@@ -523,14 +551,15 @@
     document.body.append(modal);
 
     modal.querySelector('.ticket-batch-cancel').addEventListener('click', () => {
-      if (!state.busy) modal.classList.add('hidden');
+      if (!state.busy) { stopLiveLocation(); modal.classList.add('hidden'); }
     });
     modal.addEventListener('click', (event) => {
-      if (event.target === modal && !state.busy) modal.classList.add('hidden');
+      if (event.target === modal && !state.busy) { stopLiveLocation(); modal.classList.add('hidden'); }
     });
     modal.querySelector('.ticket-batch-confirm').addEventListener('click', () => {
       const confirm = modal.querySelector('.ticket-batch-confirm');
       if (confirm.dataset.mode === 'close') {
+        stopLiveLocation();
         modal.classList.add('hidden');
         return;
       }
@@ -560,6 +589,27 @@
       ? `確認同時使用 ${tickets.length} 張票券`
       : '確認使用票券';
     const needsLocation = tickets.some((ticket) => ticket.requiresLocation);
+    stopLiveLocation();
+    let livePanel = modal.querySelector('[data-live-location-panel]');
+    if (!livePanel) {
+      livePanel = document.createElement('div');
+      livePanel.dataset.liveLocationPanel = '';
+      livePanel.className = 'ticket-live-location-panel';
+      const status = document.createElement('p');
+      status.dataset.liveLocationStatus = '';
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ticket-batch-cancel';
+      button.dataset.liveLocationButton = '';
+      button.textContent = '確認目前 GPS 地點名稱（OpenStreetMap）';
+      button.addEventListener('click', () => { void confirmLiveLocationName(); });
+      livePanel.append(status, button);
+      modal.querySelector('[data-batch-list]').before(livePanel);
+    }
+    livePanel.hidden = !needsLocation;
+    if (needsLocation) liveLocationStatus('按「確認目前 GPS 地點名稱」後開始即時更新；僅在開啟核銷視窗期間定位。');
     modal.querySelector('[data-batch-message]').textContent = needsLocation
       ? '此選取包含需 GPS 定位的票券。確認後會讀取目前位置；位置符合指定地點後才會立即扣點與核銷。'
       : '送出後將立即完成扣點與票券核銷，此操作無法取消或復原。';
@@ -650,6 +700,16 @@
         confirm.textContent = '取得 GPS 中…';
         message.textContent = '正在取得目前位置並確認定位精度…';
         location = await currentRedemptionLocation();
+        if (!locationName) await confirmLiveLocationName(location);
+        const placeDescription = locationName || '尚無可辨識名稱，請自行確認實際所在地點';
+        if (!window.confirm(`GPS 目前推定位置：${placeDescription}（約 ±${Math.round(location.accuracy)} 公尺）。\n確定在此地點使用票券嗎？`)) {
+          message.textContent = '已取消這次使用，票券尚未核銷。';
+          confirm.dataset.mode = 'redeem';
+          confirm.disabled = false;
+          confirm.textContent = '確認使用';
+          cancel.hidden = false;
+          return;
+        }
         confirm.textContent = '使用中…';
         message.textContent = 'GPS 已取得，正在確認使用地點並核銷票券…';
       }
@@ -662,6 +722,7 @@
         ...(location ? { location } : {})
       });
       redeemed = true;
+      stopLiveLocation();
       state.usageAttempt = null;
       bookingChoice.hidden = true;
 
@@ -766,5 +827,9 @@
     render();
   }
 
+  window.addEventListener('pagehide', stopLiveLocation);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') stopLiveLocation();
+  });
   window.PointCardTicketOverview = Object.freeze({ initialize, refreshSettings, renderSnapshot });
 })();
