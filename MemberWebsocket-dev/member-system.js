@@ -123,9 +123,8 @@
     if (!publishableKey || publishableKey.includes('REPLACE_')) {
       throw clientError('CONFIG_ERROR', '尚未設定 Supabase Publishable Key。');
     }
-    if (config.realtimeEnabled !== false && (!window.supabase || typeof window.supabase.createClient !== 'function')) {
-      throw clientError('CONFIG_ERROR', 'Supabase Realtime SDK 載入失敗。');
-    }
+    // Realtime is optional for initial authentication and API access. If the
+    // SDK fails to load, subscribeRealtime uses authenticated periodic reads.
     if (!key || !liffId || liffId.includes('REPLACE_WITH_')) {
       const label = surface === 'admin' ? 'Admin' : surface === 'points' ? 'Points' : surface === 'event' ? 'Event' : surface === 'calendar' ? 'Calendar' : surface === 'booking' ? 'Booking' : 'Member';
       throw clientError('CONFIG_ERROR', `尚未設定 ${label} LIFF ID。`);
