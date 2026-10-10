@@ -49,7 +49,7 @@ test('booking badge renders unread, pending, and accessible review counts', () =
   assert.match(section, /setAttribute\('aria-label'/);
   assert.match(section, /筆未讀更新/);
   assert.match(section, /一般預約待確認/);
-  assert.match(section, /無障礙預約待審核/);
+  assert.match(section, /快照預約待審核/);
 });
 
 test('booking realtime refreshes only the badge while booking panel is hidden', () => {
@@ -134,7 +134,7 @@ test('booking nav badge counts both pending queues, not unrelated unread notific
   assert.equal(els.bookingAdminPendingCount.textContent, '13');
   assert.equal(els.bookingAdminAccessiblePendingCount.textContent, '1');
   assert.match(tab['aria-label'], /13 筆一般預約待確認/);
-  assert.match(tab['aria-label'], /1 筆無障礙預約待審核/);
+  assert.match(tab['aria-label'], /1 筆快照預約待審核/);
 
   render(5, 0, 0);
   assert.equal(tab.dataset.badgeCount, '0', 'unread notification count is not pending work');

@@ -142,8 +142,17 @@
       trigger.className = 'member-referral-trigger';
       trigger.setAttribute('aria-haspopup', 'dialog');
       trigger.setAttribute('aria-controls', 'memberReferralModal');
-      trigger.textContent = '好友';
+      trigger.textContent = '邀請優惠';
       pass.append(trigger);
+    }
+
+    if (!document.getElementById('showMemberIdentityQr')) {
+      const identityQr = document.createElement('button');
+      identityQr.id = 'showMemberIdentityQr'; identityQr.type = 'button';
+      identityQr.className = 'member-referral-trigger'; identityQr.textContent = '顯示會員 QR Code';
+      identityQr.setAttribute('aria-haspopup', 'dialog');
+      identityQr.addEventListener('click', () => window.QRDisplayDialog?.show({memberCode: state.profile?.memberCode, opener: identityQr}));
+      pass.append(identityQr);
     }
 
     let modal = document.getElementById('memberReferralModal');
@@ -165,23 +174,23 @@
     const headingCopy = document.createElement('div');
     const kicker = document.createElement('p');
     kicker.className = 'kicker';
-    kicker.textContent = 'Friends';
+    kicker.textContent = 'Referral rewards';
     const title = document.createElement('h2');
     title.id = 'memberReferralTitle';
-    title.textContent = '好友中心';
+    title.textContent = '邀請優惠';
     headingCopy.append(kicker, title);
     const close = document.createElement('button');
     close.id = 'closeMemberReferral';
     close.type = 'button';
     close.className = 'member-referral-close';
-    close.setAttribute('aria-label', '關閉好友中心');
+    close.setAttribute('aria-label', '關閉邀請優惠');
     close.textContent = '×';
     heading.append(headingCopy, close);
 
     const description = document.createElement('p');
     description.id = 'memberReferralDescription';
     description.className = 'member-referral-description';
-    description.textContent = '好友關係與邀請優惠分開管理：加好友與邀請好友在「好友」，推薦獎勵只在「邀請優惠」。';
+    description.textContent = '輸入或掃描被邀請者的會員編號，確認後領取優惠票券。';
 
     const share = document.createElement('section');
     share.className = 'member-referral-section';
@@ -213,7 +222,12 @@
     shareButton.type = 'button';
     shareButton.className = 'button button-refresh';
     shareButton.textContent = '分享邀請優惠';
-    shareRow.append(code, copy, shareButton);
+    const showQr = document.createElement('button');
+    showQr.id = 'showMemberReferralQr'; showQr.type = 'button';
+    showQr.className = 'button button-refresh'; showQr.textContent = '顯示 QR Code';
+    showQr.setAttribute('aria-haspopup', 'dialog');
+    showQr.addEventListener('click', () => window.QRDisplayDialog?.show({title: '邀請優惠 QR Code', memberCode: state.profile?.memberCode, value: referralShareUrl(), opener: showQr}));
+    shareRow.append(code, showQr, copy, shareButton);
     const shareHelp = document.createElement('small');
     shareHelp.textContent = '將自己的會員編號或 QR Code 出示給邀請者 A，由 A 掃描或輸入。A 確認後獲得 1 張活動票券；同一位被邀請者只能被登記一次。';
     shareActions.append(shareRow, shareHelp);
@@ -303,6 +317,7 @@
     let previousInert = null;
     const closeModal = () => {
       stopReferralScan();
+      window.QRDisplayDialog?.close();
       if (shell && previousInert !== null) { shell.inert = previousInert; previousInert = null; }
       modal.classList.add('hidden');
       window.dispatchEvent(new Event('member-referral:closed'));
@@ -310,6 +325,7 @@
       trigger.focus();
     };
     const openModal = () => {
+      document.getElementById('closeMemberFriends')?.click();
       if (shell && previousInert === null) { previousInert = shell.inert; shell.inert = true; }
       renderInviteCode(state.profile);
       showReferralStatus('');
@@ -328,7 +344,7 @@
       if (event.target === modal) closeModal();
     });
     document.addEventListener('keydown', (event) => {
-      if (modal.classList.contains('hidden')) return;
+      if (modal.classList.contains('hidden') || window.MemberPanelDialog?.isOpen()) return;
       if (event.key === 'Escape') { event.preventDefault(); closeModal(); }
       if (event.key === 'Tab') {
         const items = Array.from(modal.querySelectorAll('button:not(:disabled),input:not(:disabled),a[href],[tabindex="0"]')).filter(item => item.getClientRects().length && !item.closest('[hidden]'));
@@ -467,8 +483,10 @@
     const codeEl = document.getElementById('memberReferralOwnCode');
     if (!codeEl) return;
     const code = String(profile?.memberCode || '').trim().toUpperCase();
+    const identityButton = document.getElementById('showMemberIdentityQr');
+    if (identityButton) identityButton.disabled = !code;
     codeEl.textContent = code ? '會員編號 · ' + code : '建立中';
-    for (const id of ['copyMemberInviteCode', 'shareMemberReferral']) {
+    for (const id of ['copyMemberInviteCode', 'shareMemberReferral', 'showMemberReferralQr']) {
       const button = document.getElementById(id);
       if (button) button.disabled = !code;
     }
@@ -476,11 +494,7 @@
     const canvas = document.getElementById('memberReferralQr');
     if (!canvas) return;
     canvas.hidden = true;
-    const url = referralShareUrl();
-    if (!url || !window.FriendQRCode) return;
-    canvas.hidden = false;
-    window.FriendQRCode.toCanvas(canvas, url, { width: 192, margin: 2 })
-      .catch(() => { canvas.hidden = true; });
+
   }
 
   async function sendJoinCompletionMessage() {

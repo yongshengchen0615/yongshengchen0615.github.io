@@ -67,105 +67,53 @@
     if (el('friendQrScanner')) el('friendQrScanner').hidden = true;
   }
 
-  function selectMemberTab(name, focus = false) {
+  function selectMemberTab(name) {
     if (booking) return;
-    const selected = name === 'reward' ? 'reward' : 'friends';
-    for (const tabName of ['friends', 'reward']) {
-      const suffix = tabName === 'friends' ? 'Friends' : 'Reward';
-      const button = el('memberReferralTab' + suffix);
-      const panel = el('memberReferral' + suffix + 'TabPanel');
-      const active = tabName === selected;
-      if (button) {
-        button.setAttribute('aria-selected', active ? 'true' : 'false');
-        button.tabIndex = active ? 0 : -1;
-      }
-      if (panel) panel.hidden = !active;
-    }
-    if (selected !== 'friends') stopScan();
-    if (selected !== 'reward') window.MemberReferral?.stopScan?.();
-    if (focus) el(selected === 'reward' ? 'memberReferralTabReward' : 'memberReferralTabFriends')?.focus();
+    el(name === 'reward' ? 'openMemberReferral' : 'openMemberFriends')?.click();
   }
 
   function installMemberTabs(modal, rewardShare, rewardForm) {
-    const existing = el('memberReferralSubtabs');
-    if (existing) {
-      return {
-        tablist: existing,
-        friendsPanel: el('memberReferralFriendsTabPanel'),
-        rewardPanel: el('memberReferralRewardTabPanel'),
-      };
-    }
-    const dialog = modal?.querySelector('.member-referral-dialog');
-    if (!dialog || !rewardShare || !rewardForm) return null;
-
-    const tablist = document.createElement('div');
-    tablist.id = 'memberReferralSubtabs';
-    tablist.className = 'friend-subtabs';
-    tablist.setAttribute('role', 'tablist');
-    tablist.setAttribute('aria-label', '好友與邀請優惠');
-
-    const makeTab = (id, label, panelId, selected) => {
-      const button = document.createElement('button');
-      button.id = id;
-      button.type = 'button';
-      button.className = 'friend-subtab';
-      button.setAttribute('role', 'tab');
-      button.setAttribute('aria-controls', panelId);
-      button.setAttribute('aria-selected', selected ? 'true' : 'false');
-      button.tabIndex = selected ? 0 : -1;
-      button.textContent = label;
-      return button;
+    if (el('memberFriendsModal')) return { friendsPanel: el('memberReferralFriendsTabPanel') };
+    const pass = el('memberPass');
+    if (!pass || !modal || !rewardShare || !rewardForm) return null;
+    const friendsModal = document.createElement('div');
+    friendsModal.id = 'memberFriendsModal';
+    friendsModal.className = 'member-referral-modal hidden';
+    friendsModal.setAttribute('role', 'dialog');
+    friendsModal.setAttribute('aria-modal', 'true');
+    friendsModal.setAttribute('aria-labelledby', 'memberFriendsTitle');
+    friendsModal.innerHTML = '<section class="member-referral-dialog"><div class="member-referral-heading"><h2 id="memberFriendsTitle">好友中心</h2><button id="closeMemberFriends" type="button" class="member-referral-close" aria-label="關閉好友中心">×</button></div><section id="memberReferralFriendsTabPanel"></section></section>';
+    document.body.append(friendsModal);
+    const trigger = document.createElement('button');
+    trigger.id = 'openMemberFriends'; trigger.type = 'button';
+    trigger.className = 'member-referral-trigger'; trigger.textContent = '好友';
+    trigger.setAttribute('aria-haspopup', 'dialog');
+    trigger.setAttribute('aria-controls', friendsModal.id);
+    pass.append(trigger);
+    const shell = document.querySelector('.app-shell');
+    let previousInert = null;
+    const closeFriends = () => {
+      stopScan();
+      window.QRDisplayDialog?.close();
+      friendsModal.classList.add('hidden');
+      if (shell && previousInert !== null) { shell.inert = previousInert; previousInert = null; }
+      trigger.setAttribute('aria-expanded', 'false'); trigger.focus();
     };
-
-    const friendsTab = makeTab(
-      'memberReferralTabFriends',
-      '好友',
-      'memberReferralFriendsTabPanel',
-      true
-    );
-    const rewardTab = makeTab(
-      'memberReferralTabReward',
-      '邀請優惠',
-      'memberReferralRewardTabPanel',
-      false
-    );
-    tablist.append(friendsTab, rewardTab);
-
-    const friendsPanel = document.createElement('section');
-    friendsPanel.id = 'memberReferralFriendsTabPanel';
-    friendsPanel.className = 'friend-subtab-panel';
-    friendsPanel.setAttribute('role', 'tabpanel');
-    friendsPanel.setAttribute('aria-labelledby', friendsTab.id);
-
+    trigger.addEventListener('click', () => {
+      window.MemberReferral?.close();
+      if (shell && previousInert === null) { previousInert = shell.inert; shell.inert = true; }
+      friendsModal.classList.remove('hidden'); trigger.setAttribute('aria-expanded', 'true');
+      friendsModal.tabIndex = -1; friendsModal.focus({preventScroll:true});
+    });
+    el('closeMemberFriends').addEventListener('click', closeFriends);
+    friendsModal.addEventListener('click', event => { if (event.target === friendsModal) closeFriends(); });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !friendsModal.classList.contains('hidden')) { event.preventDefault(); closeFriends(); }
+    });
     const rewardPanel = document.createElement('section');
     rewardPanel.id = 'memberReferralRewardTabPanel';
-    rewardPanel.className = 'friend-subtab-panel';
-    rewardPanel.setAttribute('role', 'tabpanel');
-    rewardPanel.setAttribute('aria-labelledby', rewardTab.id);
-    rewardPanel.hidden = true;
-
-    rewardShare.before(tablist);
-    rewardPanel.append(rewardShare, rewardForm);
-    tablist.after(friendsPanel, rewardPanel);
-
-    friendsTab.addEventListener('click', () => selectMemberTab('friends'));
-    rewardTab.addEventListener('click', () => selectMemberTab('reward'));
-    tablist.addEventListener('keydown', event => {
-      const current = event.target.closest?.('[role="tab"]');
-      if (!current || !tablist.contains(current)) return;
-      const tabs = [friendsTab, rewardTab];
-      let index = tabs.indexOf(current);
-      if (event.key === 'ArrowRight') index = (index + 1) % tabs.length;
-      else if (event.key === 'ArrowLeft') index = (index - 1 + tabs.length) % tabs.length;
-      else if (event.key === 'Home') index = 0;
-      else if (event.key === 'End') index = tabs.length - 1;
-      else return;
-      event.preventDefault();
-      selectMemberTab(index === 1 ? 'reward' : 'friends', true);
-    });
-
-    selectMemberTab('friends');
-    return { tablist, friendsPanel, rewardPanel };
+    rewardShare.before(rewardPanel); rewardPanel.append(rewardShare, rewardForm);
+    return { friendsPanel: el('memberReferralFriendsTabPanel') };
   }
 
   function invalidate() {
@@ -244,7 +192,7 @@
       inviteSection.innerHTML = '<strong>邀請好友</strong><small>這個連結與 QR Code 只用來建立好友關係，不會綁定或發放邀請優惠。</small>';
       const sharing = document.createElement('div');
       sharing.className = 'friend-sharing';
-      sharing.innerHTML = '<canvas id="friendQr" class="friend-qr" aria-label="好友邀請 QR Code" hidden></canvas><div class="friend-link-actions"><button id="copyFriendInviteLink" type="button" class="button button-refresh">複製好友邀請連結</button><button id="shareFriendLink" type="button" class="button button-refresh">分享好友邀請連結</button><small>好友開啟後仍需查找並確認送出邀請，不會自動成為好友。</small></div>';
+      sharing.innerHTML = '<canvas id="friendQr" class="friend-qr" aria-label="好友邀請 QR Code" hidden></canvas><button id="showFriendQr" type="button" class="button button-refresh" aria-haspopup="dialog">顯示 QR Code</button><div class="friend-link-actions"><button id="copyFriendInviteLink" type="button" class="button button-refresh">複製好友邀請連結</button><button id="shareFriendLink" type="button" class="button button-refresh">分享好友邀請連結</button><small>好友開啟後仍需查找並確認送出邀請，不會自動成為好友。</small></div>';
       inviteSection.append(sharing);
 
       const addForm = document.createElement('form');
@@ -330,6 +278,7 @@
           button.disabled = false;
         }
       });
+      el('showFriendQr').addEventListener('click', event => window.QRDisplayDialog?.show({ title: '好友邀請 QR Code', memberCode: profile?.memberCode, value: invitationUrl, opener: event.currentTarget }));
       el('copyFriendInviteLink').addEventListener('click', copyInvitationLink);
       el('shareFriendLink').addEventListener('click', shareInvitationLink);
     }
@@ -353,7 +302,7 @@
       const field = document.createElement('textarea');
       field.value = url;
       field.className = 'friend-copy-buffer';
-      el('memberReferralModal')?.append(field);
+      el('memberFriendsModal')?.append(field);
       field.select();
       let copied = false;
       try { copied = document.execCommand?.('copy') === true; } catch (_) { /* report below */ }
@@ -524,6 +473,7 @@
       selectedCode = '';
       lockedRecipient = null;
       window.MemberReferral?.close();
+      el('closeMemberFriends')?.click();
       return;
     }
 
@@ -560,13 +510,8 @@
         if (button) button.disabled = !invitationUrl;
       }
 
-      const canvas = el('friendQr');
-      canvas.hidden = true;
-      if (window.FriendQRCode && profile.memberCode) {
-        canvas.hidden = false;
-        window.FriendQRCode.toCanvas(canvas, url.href, { width: 192, margin: 2 })
-          .catch(() => { canvas.hidden = true; });
-      }
+      el('friendQr').hidden = true;
+      el('showFriendQr').disabled = !invitationUrl;
 
       const hash = new URLSearchParams(location.hash.slice(1));
       const search = new URLSearchParams(location.search);
@@ -576,7 +521,6 @@
       const referralIncoming = rewardIncoming || legacyInvite;
 
       if (changed) {
-        selectMemberTab('friends');
         if (friendIncoming && input()) {
           input().value = friendIncoming.slice(0, 2048);
           input().dispatchEvent(new Event('input', { bubbles: true }));
@@ -592,7 +536,6 @@
 
       if (changed && (location.hash === '#friends' || friendIncoming || referralIncoming)) {
         selectMemberTab(referralIncoming && !friendIncoming ? 'reward' : 'friends');
-        el('openMemberReferral')?.click();
       }
     }
 

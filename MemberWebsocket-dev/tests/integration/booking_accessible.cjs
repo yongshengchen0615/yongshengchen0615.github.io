@@ -205,13 +205,13 @@ test('accessible E2E screen snapshot hook is test-session gated and skips the ph
     w.supabase={createClient:()=>({storage:{from:()=>({uploadToSignedUrl:async()=>({})})}})};
     w.eval(read('booking/booking-receipt.js'));
 
-    assert.throws(
+    await assert.rejects(
       ()=>w.BookingReceipts.openAccessibleE2ESnapshot(new w.Blob(['snapshot'],{type:'image/webp'})),
       error=>error?.code==='TEST_SESSION_REQUIRED'
     );
 
     w.TestModeClient={getSessionToken:()=> 'qa-test-session'};
-    const meta=w.BookingReceipts.openAccessibleE2ESnapshot(new w.Blob(['snapshot'],{type:'image/webp'}));
+    const meta=await w.BookingReceipts.openAccessibleE2ESnapshot(new w.Blob(['snapshot'],{type:'image/webp'}));
     assert.equal(meta.mimeType,'image/webp');
     assert.ok(meta.sizeBytes>0);
     await tick();

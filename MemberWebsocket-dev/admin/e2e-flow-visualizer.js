@@ -112,7 +112,7 @@
     const key = String(row?.key || '');
     const domain = String(row?.domain || '');
     if (key === 'UNIFIED_SERVER_FULL_E2E') return '後端共用安全 QA';
-    if (/ACCESSIBLE/.test(key)) return '無障礙預約審核';
+    if (/ACCESSIBLE/.test(key)) return '快照預約審核';
     if (/BOOKING/.test(key) && /CONFIRM/.test(key)) return '預約確認';
     if (/BOOKING/.test(key) && /COMPLETE/.test(key)) return '預約完成與核銷';
     if (/CANCELLATION|CANCEL/.test(key)) return '取消／改約處理';

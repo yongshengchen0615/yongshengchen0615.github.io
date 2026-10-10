@@ -45,7 +45,7 @@ test('the member receipt list prefers the submitted snapshot over failed or pend
     { receipt_id:'pending',status:'pending_upload',created_at:'2026-10-02T00:00:00Z' },
     { receipt_id:'failed',status:'failed',created_at:'2026-10-03T00:00:00Z' },
   ]}];
-  const q = { select(){return q;},eq(){return q;},in(){return q;},order(){return q;},limit:async () => ({ data:rows }) };
+  const q = { select(){return q;},eq(){return q;},in(){return q;},order(){return q;},single:async () => ({data:{snapshot_location_required:false}}),limit:async () => ({ data:rows }) };
   const result = await context.memberList({ from:() => q },member);
   assert.equal(result.bookings[0].receipt.receiptId,'old');
   assert.equal(result.bookings[0].canSubmitReceipt,true);

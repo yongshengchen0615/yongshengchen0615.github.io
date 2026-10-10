@@ -7,4 +7,10 @@
 .qr-scan-dialog-overlay p{line-height:1.6;color:var(--theme-text-muted,#555);}
 .qr-scan-dialog-overlay button:focus-visible{outline:3px solid var(--theme-focus-ring,#5277bf);outline-offset:3px;}
 .qr-scan-dialog-overlay [hidden]{display:none!important}
+.qr-display-panel{display:grid;justify-items:center;gap:12px;text-align:center;overflow-wrap:anywhere}
+.qr-display-panel canvas{max-width:100%;height:auto;background:#fff;border-radius:12px}
+.friend-qr[hidden],.qr-display-panel[hidden]{display:none!important}
+.qr-display-panel strong{font-size:18px;letter-spacing:.06em}
+.qr-scan-dialog-overlay .point-transfer-friend-picker{display:grid;gap:12px}
+.qr-scan-dialog-overlay select{width:100%;min-height:44px;font:inherit;background:var(--theme-surface,#fff);color:var(--theme-text,#222);border:1px solid var(--theme-border,#aaa);border-radius:10px;padding:8px}
 @media(max-width:600px){.qr-scan-dialog-overlay{align-items:end}.qr-scan-dialog-card{max-height:92dvh;width:100%;border-radius:20px 20px 12px 12px;}}

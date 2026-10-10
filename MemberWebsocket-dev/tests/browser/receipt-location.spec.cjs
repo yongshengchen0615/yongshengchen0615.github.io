@@ -52,7 +52,7 @@ test.beforeAll(async()=>{
           if(url.searchParams.get('mode')==='uncertain'&&state.finalize.length===1)return json(res,{code:'API_RESPONSE_UNCERTAIN',message:'Uncertain result'},503);
           return json(res,{receiptId:'QA-RECEIPT',status:'awaiting_review',alreadyApplied:state.finalize.length>1});
         }
-        if(action==='user.booking.receipt.list')return json(res,{bookings:[],submissions:[]});
+        if(action==='user.booking.receipt.list')return json(res,{snapshotLocationRequired:url.searchParams.get('mode')==='location-required',bookings:[],submissions:[]});
         if(action==='user.event.bootstrap')return json(res,{profile:{displayName:'QA',tierKey:'general'},usedTickets:[],usedTicketCount:0,offers:[{
           ticket:{eventTicketId:'QA-GEO',title:'GPS QA',ticketType:'coupon',description:'GPS receipt QA',usageMethod:'Once',usageInstructions:'Once',requiresLocation:true,allowedTierKeys:['general'],prizes:[]},
           claim:{claimId:'QA-CLAIM',status:'claimed',ticketTitle:'GPS QA',ticketDescription:'GPS receipt QA',ticketType:'coupon'},eligibleBookings:[{bookingId:'00000000-0000-4000-8000-000000000001',bookingDate:'2099-01-01',startTime:'10:00',title:'GPS booking'}],canUse:true,availability:'open',tierEligible:true
@@ -78,6 +78,20 @@ async function open(page,run,mode='',accessible=true) {
   expect(await page.evaluate(()=>typeof window.BookingSystem?.getSession)).toBe('function');
   await page.evaluate(accessible=>accessible?window.BookingReceipts.openAccessible():window.BookingReceipts.openBooking('QA-BOOKING','version-1'),accessible);
 }
+
+test('snapshot positioning policy blocks denied GPS and successful retries send fresh evidence',async({page,context})=>{
+ const run='snapshot-location-policy';
+ await open(page,run,'location-required');
+ await expect(page.locator('#bookingReceiptMessage')).toContainText('定位權限未開啟');
+ await expect(page.locator('#bookingReceiptFile')).toBeDisabled();expect(runs.get(run).prepare).toHaveLength(0);
+ await context.grantPermissions(['geolocation'],{origin:base});await context.setGeolocation({latitude:25.033964,longitude:121.564472,accuracy:10});
+ await page.locator('#bookingReceiptCapture').click();await expect(page.locator('#bookingReceiptCapture')).toHaveText('拍攝收據');
+ await page.locator('#bookingReceiptCapture').click();await expect(page.locator('#bookingReceiptSubmit')).toBeEnabled();
+ await page.locator('#bookingReceiptSubmit').click();await expect(page.locator('#bookingReceiptModal')).toBeHidden();
+ const state=runs.get(run);expect(state.prepare).toHaveLength(1);expect(state.finalize).toHaveLength(1);
+ expect(state.prepare[0].location).toMatchObject({latitude:25.033964,longitude:121.564472,accuracy:10});
+ expect(state.finalize[0].location.timestamp).toBeGreaterThan(Date.now()-120000);
+});
 async function capture(page,{screenSnapshot=false}={}) {
   let snapshotSize=0;
   await expect(page.locator('#bookingReceiptCapture')).toHaveText('拍攝收據');
@@ -86,9 +100,9 @@ async function capture(page,{screenSnapshot=false}={}) {
       const existing=document.getElementById('e2eReceiptSnapshotSource'); if(existing)existing.remove();
       const source=document.createElement('article');
       source.id='e2eReceiptSnapshotSource';
-      source.setAttribute('aria-label','E2E 無障礙收據替代快照');
+      source.setAttribute('aria-label','E2E 快照收據替代快照');
       source.style.cssText='width:360px;padding:24px;background:#fff;color:#111;border:2px solid #222;font:16px/1.6 sans-serif';
-      source.innerHTML='<strong>E2E 無障礙收據快照</strong><p>測試服務：QA Body Service</p><p>金額：NT$ 100</p><p>用途：以螢幕快照代替實體收據照片</p>';
+      source.innerHTML='<strong>E2E 快照收據快照</strong><p>測試服務：QA Body Service</p><p>金額：NT$ 100</p><p>用途：以螢幕快照代替實體收據照片</p>';
       document.querySelector('.booking-receipt-modal-card')?.append(source);
     });
     const snapshot=await page.locator('#e2eReceiptSnapshotSource').screenshot({type:'jpeg',quality:84});

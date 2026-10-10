@@ -11,8 +11,8 @@
     el('bookingAccessiblePanel')?.classList.toggle('hidden', !enabled);
     const toggle = el('bookingAccessibleToggle');
     toggle?.setAttribute('aria-pressed', String(enabled));
-    if (toggle) toggle.textContent = enabled ? '返回一般預約模式' : '開啟無障礙模式（大字・拍收據）';
-    if (el('bookingModeTitle')) el('bookingModeTitle').textContent = enabled ? '大字・拍收據模式' : '一般預約模式';
+    if (toggle) toggle.textContent = enabled ? '返回一般預約模式' : '開啟快照模式';
+    if (el('bookingModeTitle')) el('bookingModeTitle').textContent = enabled ? '快照模式' : '一般預約模式';
     if (el('bookingModeDescription')) el('bookingModeDescription').textContent = enabled
       ? '完成服務後拍收據，交由管理員核對登記。'
       : '自行選擇日期、服務項目與時段。';

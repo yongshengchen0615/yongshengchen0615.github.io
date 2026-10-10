@@ -61,6 +61,7 @@ async function transferPage(){
   }
   throw new Error('Unexpected action '+action);
  }};
+ w.eval(read('qr-scan-dialog.js'));
  w.eval(read('points/point-transfer.js'));
  w.document.getElementById('pointsView').classList.remove('hidden');
  w.dispatchEvent(new w.CustomEvent('user-tour:ready',{detail:{surface:'points',profile:{memberCode:'AAAA'}}}));
