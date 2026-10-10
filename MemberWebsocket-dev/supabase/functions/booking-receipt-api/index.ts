@@ -745,11 +745,9 @@ Deno.serve(async(request:Request)=>{
       if(action==="user.booking.receipt.list") data=await memberList(supabase,member);
       else if(action==="user.booking.receipt.options") {
         const catalog=await accessibleBenefitCatalog(supabase,member);
-        const choices=await supabase.rpc("member_ticket_booking_options",{p_member_id:member.id});
-        const policy=await supabase.from("booking_settings").select("ticket_booking_required").eq("id",1).single();
-        if(choices.error||policy.error) throw new ApiError(503,"SNAPSHOT_POLICY_UNAVAILABLE","目前無法確認票券政策。");
-        data={...catalog,ticketBookingRequired:policy.data.ticket_booking_required!==false,
-          items:(catalog.items as any[]).map(item=>({...item,eligibleBookings:(choices.data as any)?.[item.kind]?.[item.selectionId]||[]}))};
+        // Snapshot receipts register member-held tickets without an advance reservation.
+        // Normal ticket redemption keeps the global ticket_booking_required policy.
+        data={...catalog,ticketBookingRequired:false};
       } else if(action==="user.booking.receipt.cancel") {
         const cancelled=await supabase.rpc("cancel_snapshot_receipt_request",{p_receipt_id:asText(body.receiptId,80),p_member_id:member.id,p_actor:identity.lineUserId,p_expected_updated_at:asText(body.expectedUpdatedAt,100)||null});
         if(cancelled.error) throw dbError(cancelled.error);

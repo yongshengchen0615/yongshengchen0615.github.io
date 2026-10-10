@@ -293,33 +293,6 @@ body.booking-receipt-modal-open{overflow:hidden;}
 #snapshotTicketChoices .is-unavailable .snapshot-ticket-choice-status{
   color:var(--theme-text-muted,#627168);
 }
-#snapshotTicketFields .snapshot-ticket-booking-label{
-  display:grid;
-  gap:6px;
-  margin-top:8px;
-  color:var(--theme-text,#18241f);
-  font-size:14px;
-  font-weight:750;
-}
-#snapshotTicketFields .snapshot-ticket-booking-label.hidden{display:none}
-#snapshotTicketBooking{
-  display:block;
-  width:100%;
-  min-height:48px;
-  margin:0;
-  padding:8px 10px;
-  border:1px solid var(--theme-border-strong,rgba(24,36,31,.18));
-  border-radius:11px;
-  background:var(--theme-surface-raised,#fff);
-  color:var(--theme-text,#18241f);
-  font:inherit;
-}
-#snapshotTicketBookingHelp{
-  font-size:14px;
-  font-weight:500;
-  line-height:1.5;
-  color:var(--theme-text-muted,#627168);
-}
 @media(max-width:600px){
   #snapshotTicketFields{padding:12px;border-radius:15px}
   #snapshotTicketChoices .snapshot-ticket-choice{padding:12px;gap:6px 10px}

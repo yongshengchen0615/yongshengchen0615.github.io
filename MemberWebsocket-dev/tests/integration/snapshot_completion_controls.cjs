@@ -7,7 +7,7 @@ test('ticket policy, snapshot intent/review and append-only order corrections us
  const db=await load();const one=async(q,args=[]) => (await db.query(q,args)).rows[0];
  const run=(q,args=[])=>db.query(q,args);
  try{
-  for(const name of ['20261006023020_booking_ticket_usage_consistency.sql','20261006081433_booking_primary_requirement_fixed_notification_time.sql','20261006133127_member_p2_features.sql','20261010021829_snapshot_location_policy.sql',migration]) await db.exec(fs.readFileSync(path.join(__dirname,'../../supabase/migrations',name),'utf8'));
+  for(const name of ['20261006023020_booking_ticket_usage_consistency.sql','20261006081433_booking_primary_requirement_fixed_notification_time.sql','20261006133127_member_p2_features.sql','20261010021829_snapshot_location_policy.sql',migration,'20261010145511_snapshot_tickets_without_advance_booking.sql']) await db.exec(fs.readFileSync(path.join(__dirname,'../../supabase/migrations',name),'utf8'));
   await db.exec("select maintenance.ensure_required_system_baseline();select maintenance.ensure_event_ticket_settings_baseline();insert into admins(line_user_id,role,status)values('test:controls-admin','admin','active');");
   const member=(await one("insert into members(line_user_id,member_code,status,membership_status,is_test_account,surname,salutation,phone)values('test:controls-member','QA-CONTROLS','active','active',true,'測試','mr','+886912345678')returning id")).id;
   const other=(await one("insert into members(line_user_id,member_code,status,membership_status,is_test_account)values('test:controls-other','QA-OTHER','active','active',true)returning id")).id;
@@ -58,13 +58,15 @@ test('ticket policy, snapshot intent/review and append-only order corrections us
   const benefits=[{kind:'event',id:'QA-SNAPSHOT-CLAIM'}];
   const prepare=async(key,values=benefits,owner=member,book=null)=>(await one("select prepare_snapshot_receipt_v2($1,$2,$3,'image/jpeg',100,null,$4,$5)result",[owner,key,`${owner}/accessible/${key}.jpg`,JSON.stringify(values),book])).result;
   const finalize=async(id=receipt,owner=member)=>(await one("select finalize_snapshot_receipt_v2($1,$2,'test:controls-member','image/jpeg',100,$3,null)result",[id,owner,'a'.repeat(64)])).result;
-  await t.test('snapshot stores intent without consuming; policy changes and forged ownership fail atomically',async()=>{
+  await t.test('snapshot submits without booking but normal redemption still needs one',async()=>{
+   await save(true);
+   await assert.rejects(redeem('event',['QA-SNAPSHOT-CLAIM'],'QA-DIRECT-BLOCKED'),/BOOKING_TICKET_CONFIRMATION_REQUIRED/);
    receipt=(await prepare('QA-SNAPSHOT-REQUEST')).receiptId;
+   assert.equal((await one('select requested_booking_id from booking_receipts where receipt_id=$1',[receipt])).requested_booking_id,null);
    assert.equal((await one("select status from event_ticket_claims where claim_id='QA-SNAPSHOT-CLAIM'")).status,'claimed');
    await assert.rejects(prepare('QA-SNAPSHOT-REQUEST',[]),/REQUEST_ID_CONFLICT/);
    await assert.rejects(finalize(receipt,other),/RECEIPT_NOT_OWNED/);
-   await save(true);await assert.rejects(finalize(),/BOOKING_TICKET_CONFIRMATION_REQUIRED/);
-   await save(false);
+   assert.equal(await save(true),true);
    await run("update event_tickets set ends_on=(clock_timestamp()at time zone'Asia/Taipei')::date-1 where id=$1",[snapshotEvent]);
    await assert.rejects(finalize(),/BOOKING_BENEFIT_NOT_AVAILABLE/);
    await run("update event_tickets set ends_on=(clock_timestamp()at time zone'Asia/Taipei')::date+1 where id=$1",[snapshotEvent]);
@@ -145,5 +147,19 @@ test('ticket policy, snapshot intent/review and append-only order corrections us
    assert.match(String(results.find(r=>r.status==='rejected').reason),/BOOKING_CONFLICT/);
    assert.equal((await one('select count(*)::int n from point_entries where member_id=$1',[other])).n,0);
   });
+   await t.test('snapshot review creates retrospective booking and consumes ticket without prior reservation',async()=>{
+    const separateEvent=(await one("insert into event_tickets(event_ticket_id,title,ticket_type,status,starts_on,ends_on,created_by,updated_by)values('QA-SNAPSHOT-NO-BOOKING-EVENT','QA extra snapshot event','coupon','active',(clock_timestamp()at time zone'Asia/Taipei')::date-1,(clock_timestamp()at time zone'Asia/Taipei')::date+1,'test:controls-admin','test:controls-admin')returning id")).id;
+    await run("insert into event_ticket_claims(claim_id,event_ticket_id,member_id,ticket_type,ticket_title)values('QA-SNAPSHOT-NO-BOOKING',$1,$2,'coupon','QA snapshot no booking')",[separateEvent,member]);
+    const newBenefits=[{kind:'event',id:'QA-SNAPSHOT-NO-BOOKING'}];
+    const newReceipt=(await prepare('QA-NO-ADVANCE-BOOKING',newBenefits)).receiptId;
+    assert.equal((await finalize(newReceipt)).status,'awaiting_review');
+    await run('update booking_settings set require_primary_technician=false where id=1');
+    const items=[{serviceId:service,quantity:1,minutes:60}];
+    const result=(await one("select register_snapshot_receipt_v2($1,updated_at,'test:controls-admin',null,'2026-01-01','12:00',$2,$3,'QA retrospective review') result from booking_receipts where receipt_id=$1",[newReceipt,JSON.stringify(items),JSON.stringify(newBenefits)])).result;
+    assert.ok(result.bookingId);
+    assert.equal((await one('select status from event_ticket_claims where claim_id=$1',['QA-SNAPSHOT-NO-BOOKING'])).status,'used');
+    assert.equal((await one('select booking_id from booking_receipts where receipt_id=$1',[newReceipt])).booking_id,result.bookingId);
+    assert.equal((await one('select ticket_booking_required as enabled from booking_settings where id=1')).enabled,true);
+   });
  }finally{await db.close();}
 });

@@ -6,14 +6,14 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('snapshot receipt selection has a clear accessible ticket count and booking context', () => {
+test('snapshot receipt selection has a clear count without advance booking', () => {
   const source = read('booking/booking-receipt.js');
   assert.match(source, /id="snapshotTicketChoices" role="group" aria-label="選擇本次要登記使用的票券"/);
   assert.match(source, /id="snapshotTicketSelectionSummary"[^>]*role="status" aria-live="polite"/);
   assert.match(source, /const selectionSummary = document\.getElementById\('snapshotTicketSelectionSummary'\)/);
-  assert.match(source, /selected\.length \+ ' 張票券/);
-  assert.match(source, /select\.closest\('label'\)\?\.classList\.toggle\('hidden', selected\.length === 0\)/);
-  assert.match(source, /id="snapshotTicketBookingHelp"/);
+  assert.match(source, /chosen \+ ' 張票券/);
+  assert.match(source, /不需要事先預約/);
+  assert.doesNotMatch(source, /id="snapshotTicketBooking"/);
   assert.match(source, /snapshotTicketSelectionSummary'\)\.textContent = '正在確認可登記的票券/);
   assert.match(source, /票券暫時無法載入；可以只送出收據/);
 });
@@ -23,14 +23,14 @@ test('snapshot ticket cards preserve original choice payload and disabled busine
   assert.match(source, /check\.type = 'checkbox'/);
   assert.match(source, /check\.dataset\.snapshotKind = item\.kind/);
   assert.match(source, /check\.dataset\.snapshotId = item\.selectionId/);
-  assert.match(source, /item\.selectable !== true \|\| \(catalog\.ticketBookingRequired && !item\.eligibleBookings\?\.length\)/);
+  assert.match(source, /const blocked = item\.selectable !== true/);
   assert.match(source, /check\.disabled = blocked/);
   assert.match(source, /item\.disabledReason/);
   assert.match(source, /label\.classList\.toggle\('is-selected', check\.checked\)/);
   assert.match(source, /indicator\.textContent = check\.checked \? '已選擇' : '點選使用'/);
   assert.match(source, /resetTicketRequest\(\);\s*renderBookings\(\);/);
   assert.match(source, /const selectedBenefits = state\.accessible \? \[\.\.\.document\.querySelectorAll\('\[data-snapshot-id\]:checked'\)\]/);
-  assert.match(source, /requestedBookingId = state\.accessible/);
+  assert.doesNotMatch(source, /requestedBookingId/);
   assert.match(source, /user\.booking\.receipt\.prepare/);
   assert.doesNotMatch(source, /item\.title\s*\+\s*'<|innerHTML\s*=\s*item\./);
 });
