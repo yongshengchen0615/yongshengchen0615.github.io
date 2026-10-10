@@ -38,8 +38,8 @@ test('admin UI displays only bounded QA aggregate counts and never exposes raw S
   const start = runner.indexOf("const blocker = parsed?.error?.details;");
   const snippet = runner.slice(start, start + 500);
   assert.ok(start >= 0);
-  assert.match(snippet, /blocker\\?\\.blockage === 'qa_artifacts_remain'/);
-  assert.match(snippet, /Number\\.isSafeInteger\\(count\\)/);
+  assert.match(snippet, /blocker\?\.blockage === 'qa_artifacts_remain'/);
+  assert.match(snippet, /Number\.isSafeInteger\(count\)/);
   assert.match(snippet, /count > 0 && count <= 1000000/);
   assert.ok(!snippet.includes('JSON.stringify(blocker)'));
 });
