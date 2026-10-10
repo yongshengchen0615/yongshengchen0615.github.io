@@ -89,7 +89,8 @@
     trigger.className = 'member-referral-trigger'; trigger.textContent = '好友';
     trigger.setAttribute('aria-haspopup', 'dialog');
     trigger.setAttribute('aria-controls', friendsModal.id);
-    pass.append(trigger);
+    const actions = el('memberPassActions') || pass;
+    actions.insertBefore(trigger, el('openMemberReferral') || null);
     const shell = document.querySelector('.app-shell');
     let previousInert = null;
     const closeFriends = () => {
