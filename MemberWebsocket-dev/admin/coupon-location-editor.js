@@ -380,7 +380,7 @@
       if (!window.TicketLiveLocation) {
         // Compatibility fallback; deployed clients normally use watchPosition, not getCurrentPosition.
         navigator.geolocation.getCurrentPosition((position) => {
-          setDraft(position.coords.latitude, position.coords.longitude, 'GPS 候選地點');
+          setDraft(position.coords.latitude, position.coords.longitude, '目前 GPS 位置');
           setStatus('已定位一次，請確認地點名稱。');
         }, () => setStatus('GPS 暫時無法定位。', true), { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
         return;
