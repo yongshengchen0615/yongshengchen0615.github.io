@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-05.2';
+  const VERSION = '2026-10-10.1';
   const els = {};
   const artifactPreviewCache = new Map();
   const artifactPrefetchQueue = [];
@@ -31,6 +31,7 @@
       'testModeTab',
       'automationTestRunnerBadge',
       'purgeTestDataButton',
+      'keepTestHistoryOnPurge',
       'automationTestMessage',
       'automationTestRunCode',
       'automationTestRunStatus',
@@ -343,10 +344,14 @@
 
   async function purgeTestData() {
     if (busy) return;
+    const keepTestHistory = els.keepTestHistoryOnPurge?.checked !== false;
     const confirmed = window.confirm(
       '確定移除測試資料？\n\n' +
-      '會清除所有測試帳號產生的點數、票券、服務時數、預約、收據快照、測試條款同意、測試 Session／Presence、相關稽核與冪等資料，以及 E2E 測試歷史與 QA 前置資源。\n\n' +
-      '測試帳號與測試模式環境設定會保留。既有測試用戶端 Session 會失效，需要重新登入。此操作無法復原。'
+      '會清除測試帳號的點數、票券、預約、收據快照、測試條款同意、Session／Presence、相關操作稽核及 QA 前置資源。\n\n' +
+      (keepTestHistory
+        ? '保留 E2E 執行歷史、案例步驟、分析資料與失敗快照。\n\n'
+        : '同時刪除 E2E 執行歷史、案例步驟、演進狀態與失敗快照。\n\n') +
+      '測試帳號與測試模式環境設定會保留。測試用戶端必須重新登入。已刪除的資料無法復原。'
     );
     if (!confirmed) return;
 
@@ -355,11 +360,13 @@
     setBusy(true);
     setMessage('正在移除測試資料…');
     try {
-      const data = await request('admin.test-control.purge-test-data');
-      currentRunId = '';
+      const data = await request('admin.test-control.purge-test-data', { keepTestHistory });
+      if (!keepTestHistory) {
+        currentRunId = '';
+        resetDetail();
+        window.dispatchEvent(new Event('member-admin-test-history-cleared'));
+      }
       renderHistory(Array.isArray(data.runs) ? data.runs : []);
-      resetDetail();
-      window.dispatchEvent(new Event('member-admin-test-history-cleared'));
       const purge = data && data.purge && typeof data.purge === 'object' ? data.purge : {};
       const removed = [
         Number(purge.deletedAutomationRuns || 0),
@@ -390,7 +397,9 @@
       window.dispatchEvent(new CustomEvent('test-data-purged', { detail: purge }));
       setMessage(
         '測試資料已移除，共清除 ' + removed + ' 筆主要測試資料；' +
-        Number(purge.testAccountCount || 0) + ' 個測試帳號已保留。' +
+        Number(purge.testAccountCount || 0) + ' 個測試帳號已保留；' +
+        (purge.historyRetained === true ? 'E2E 測試紀錄與快照已保留。' : 'E2E 測試紀錄與快照已清除。') +
+        (Number(purge.remainingQaArtifacts || 0) > 0 ? ' 尚有 ' + Number(purge.remainingQaArtifacts) + ' 筆 QA 資源未完成清理。' : '') +
         (refreshFailed ? ' 管理畫面同步失敗，請按重新整理確認。' : ' 管理畫面已重新同步。') +
         ' 測試用戶端請重新登入。',
         refreshFailed

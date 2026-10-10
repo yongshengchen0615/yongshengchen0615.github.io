@@ -151,3 +151,8 @@
 .test-control-history-entry .test-control-history-item{border-bottom:0}
 .test-control-replay-button{margin:0 12px 12px;width:calc(100% - 24px);justify-content:center}
 .test-control-replay-button:disabled{opacity:.55;cursor:not-allowed}
+
+/* Manual purge keeps raw E2E history by default; independently controls QA fixtures. */
+.test-control-keep-history{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;line-height:1.35}
+.test-control-keep-history input{width:16px;height:16px;accent-color:var(--theme-primary,#27674b);flex-shrink:0;cursor:pointer}
+@media(max-width:760px){.test-control-keep-history{width:100%;justify-content:flex-start}}

@@ -135,7 +135,8 @@ test('test data is retained until an admin manually purges it', () => {
   const migration = read('supabase/migrations/20260922055500_preserve_test_data_manual_purge.sql');
 
   assert.match(html, /id="purgeTestDataButton"/);
-  assert.match(html, /測試資料會保留/);
+  assert.match(html, /測試資料與測試紀錄分開管理/);
+  assert.match(html, /id="keepTestHistoryOnPurge"/);
   assert.match(control, /admin\.test-control\.purge-test-data/);
   assert.match(control, /測試帳號與測試模式環境設定會保留/);
   assert.match(api, /action === "admin\.test-control\.purge-test-data"/);
