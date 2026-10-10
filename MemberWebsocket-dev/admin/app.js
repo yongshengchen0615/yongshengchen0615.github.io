@@ -1858,9 +1858,9 @@
     } catch (error) {
       handleActionError(error, els.ticketFormMessage);
     } finally {
-      if (!state.writeConfirmationRequired && els.ticketTemplateId.value === ticketTemplateId) {
-        els.deleteTicketButton.disabled = false;
+      if (!state.writeConfirmationRequired) {
         els.deleteTicketButton.textContent = originalText;
+        els.deleteTicketButton.disabled = !els.ticketTemplateId.value;
       }
     }
   }
