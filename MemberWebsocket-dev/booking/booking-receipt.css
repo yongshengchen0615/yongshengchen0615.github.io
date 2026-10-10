@@ -176,7 +176,7 @@ body.booking-receipt-modal-open{overflow:hidden;}
   border-radius:12px;
   background:var(--theme-surface-muted,#edf1ed);
   color:var(--theme-text,#18241f);
-  font-size:13px;
+  font-size:14px;
   font-weight:750;
   line-height:1.5;
 }
@@ -238,7 +238,7 @@ body.booking-receipt-modal-open{overflow:hidden;}
   min-width:0;
 }
 #snapshotTicketChoices .snapshot-ticket-title{
-  font-size:15px;
+  font-size:17px;
   font-weight:850;
   overflow-wrap:anywhere;
 }
@@ -249,7 +249,7 @@ body.booking-receipt-modal-open{overflow:hidden;}
   border-radius:999px;
   background:var(--theme-surface-muted,#edf1ed);
   color:var(--theme-text-muted,#627168);
-  font-size:11px;
+  font-size:12px;
   font-weight:750;
   white-space:nowrap;
 }
@@ -264,13 +264,13 @@ body.booking-receipt-modal-open{overflow:hidden;}
 #snapshotTicketChoices .snapshot-ticket-source,
 #snapshotTicketChoices .snapshot-ticket-condition,
 #snapshotTicketChoices .snapshot-ticket-facts{
-  font-size:12px;
+  font-size:14px;
   color:var(--theme-text-muted,#627168);
   overflow-wrap:anywhere;
 }
 #snapshotTicketChoices .snapshot-ticket-source{font-weight:750}
 #snapshotTicketChoices .snapshot-ticket-disabled-reason{
-  font-size:12px;
+  font-size:14px;
   font-weight:700;
   color:var(--theme-danger-text,#9c3d31);
   overflow-wrap:anywhere;
@@ -283,7 +283,7 @@ body.booking-receipt-modal-open{overflow:hidden;}
   border-radius:999px;
   background:var(--theme-surface-muted,#edf1ed);
   color:var(--theme-text-muted,#627168);
-  font-size:12px;
+  font-size:14px;
   font-weight:800;
 }
 #snapshotTicketChoices .is-selected .snapshot-ticket-choice-status{
@@ -315,7 +315,7 @@ body.booking-receipt-modal-open{overflow:hidden;}
   font:inherit;
 }
 #snapshotTicketBookingHelp{
-  font-size:12px;
+  font-size:14px;
   font-weight:500;
   line-height:1.5;
   color:var(--theme-text-muted,#627168);
@@ -323,7 +323,7 @@ body.booking-receipt-modal-open{overflow:hidden;}
 @media(max-width:600px){
   #snapshotTicketFields{padding:12px;border-radius:15px}
   #snapshotTicketChoices .snapshot-ticket-choice{padding:12px;gap:6px 10px}
-  #snapshotTicketChoices .snapshot-ticket-title{font-size:14px}
+  #snapshotTicketChoices .snapshot-ticket-title{font-size:16px}
 }
 @media(prefers-reduced-motion:reduce){
   #snapshotTicketChoices .snapshot-ticket-choice{transition:none}
