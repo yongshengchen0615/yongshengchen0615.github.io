@@ -110,8 +110,9 @@ test('POINT_TEMPLATE_DELETE — referenced template is blocked and unreferenced 
   await fill(p,'ticketTitle','QA deletable template');await fill(p,'ticketDescription','QA description');
   await fill(p,'ticketUsageMethod','QA usage');await fill(p,'ticketUsageInstructions','QA instructions');
   await select(p,'ticketStatus','draft');await click(p,'saveTicketButton');
+  // Saving is asynchronous; ensure the server-generated template ID is in the form.
+  await expect(p.locator('#ticketTemplateId')).not.toHaveValue('');
   const id=await p.locator('#ticketTemplateId').inputValue();
-  expect(id).not.toBe('');
   await expect(p.locator('#deleteTicketButton')).toBeEnabled();
   await click(p,'deleteTicketButton');
   await expect(p.locator('#ticketTemplateId')).toHaveValue('');
