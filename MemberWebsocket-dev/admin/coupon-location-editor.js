@@ -42,6 +42,10 @@
     let lastSearchAt = 0;
     let lastGeocoderRequestAt = 0;
     let searchController = null;
+    let gpsTracker = null;
+    let gpsPlaceName = '';
+    let gpsNameFix = null;
+    let gpsGeneration = 0;
     const geocodeCache = new Map();
 
     const byId = (id) => document.getElementById(id);
@@ -266,6 +270,7 @@
     }
 
     function setDraft(latitude, longitude, name = '', options = {}) {
+      if (!options.fromGps) stopGPS();
       if (locations.length >= MAX_LOCATIONS && options.editingIndex == null) {
         setStatus(`最多只能設定 ${MAX_LOCATIONS} 個使用地點。`, true);
         return false;
@@ -295,6 +300,7 @@
     }
 
     function clearDraft(updateStatus = true) {
+      stopGPS();
       draft = null;
       editingIndex = null;
       clearDraftOverlay();
@@ -319,6 +325,7 @@
         return false;
       }
 
+      stopGPS();
       const confirmed = normalizeLocation({ ...draft, name, radiusMeters });
       const wasEditing = Number.isInteger(editingIndex);
       if (wasEditing) locations[editingIndex] = confirmed;
@@ -342,6 +349,7 @@
     function refresh() {
       const enabled = Boolean(checkbox()?.checked);
       controls()?.classList.toggle('hidden', !enabled);
+      if (!enabled) stopGPS();
       if (enabled) {
         createMap();
         window.setTimeout(() => {
@@ -351,18 +359,90 @@
       }
     }
 
+    function stopGPS() {
+      gpsGeneration += 1;
+      gpsTracker?.stop();
+      gpsTracker = null;
+      gpsPlaceName = '';
+      gpsNameFix = null;
+      const button = byId(config.currentButtonId);
+      if (button) button.textContent = '使用即時 GPS 選點';
+    }
+
     function useCurrentLocation() {
+      if (gpsTracker) {
+        stopGPS();
+        return setStatus('已停止即時 GPS，現有候選地點保留；請確認後儲存。');
+      }
       if (!navigator.geolocation) return setStatus('此瀏覽器不支援 GPS 定位。', true);
-      setStatus('正在取得目前 GPS 位置…');
-      navigator.geolocation.getCurrentPosition((position) => {
-        const lat = Number(position.coords.latitude);
-        const lng = Number(position.coords.longitude);
-        if (!setDraft(lat, lng, '目前 GPS 位置')) return;
-        setStatus(`已選擇目前 GPS 位置（精度約 ±${Math.round(Number(position.coords.accuracy) || 0)} 公尺）。請確認半徑後再新增。`);
-      }, (error) => {
-        const message = error?.code === 1 ? '定位權限被拒絕，請允許位置權限後再試。' : '暫時無法取得 GPS 位置，請重試或使用地址搜尋。';
-        setStatus(message, true);
-      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+      const generation = gpsGeneration;
+      const button = byId(config.currentButtonId);
+      if (!window.TicketLiveLocation) {
+        // Compatibility fallback; deployed clients normally use watchPosition, not getCurrentPosition.
+        navigator.geolocation.getCurrentPosition((position) => {
+          setDraft(position.coords.latitude, position.coords.longitude, '目前 GPS 位置');
+          setStatus('已定位一次，請確認地點名稱。');
+        }, () => setStatus('GPS 暫時無法定位。', true), { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
+        return;
+      }
+      setStatus('正在啟動即時 GPS，請允許位置權限…');
+      let firstGPSFix = true;
+      gpsTracker = window.TicketLiveLocation.create({
+        onUpdate(fix, fresh) {
+          if (firstGPSFix && draft) {
+            draft.name = '目前 GPS 位置';
+            if (draftName()) draftName().value = draft.name;
+          }
+          firstGPSFix = false;
+          if (generation !== gpsGeneration || !checkbox()?.checked) return;
+          if (gpsNameFix && window.TicketLiveLocation.distanceMeters(gpsNameFix, fix) > 120) {
+            gpsPlaceName = '';
+            gpsNameFix = null;
+            if (draft) {
+              draft.name = '目前 GPS 位置';
+              if (draftName()) draftName().value = draft.name;
+            }
+          }
+          if (!draft) {
+            if (!setDraft(fix.latitude, fix.longitude, '目前 GPS 位置', { fromGps: true })) return;
+          } else {
+            draft.latitude = fix.latitude;
+            draft.longitude = fix.longitude;
+            if (gpsPlaceName && !draft.name) draft.name = gpsPlaceName;
+            draftName().value = draft.name;
+            renderDraftOverlay();
+            map?.setView([fix.latitude, fix.longitude], DETAIL_ZOOM, { animate: false });
+          }
+          setStatus(`${fresh ? '即時 GPS 已同步' : 'GPS 精度不足或座標已過期'}（精度約 ±${Math.round(fix.accuracy)} 公尺）。${gpsPlaceName ? '附近「' + gpsPlaceName + '」' : '地點名稱待確認'}；停止定位後可調整並儲存。`);
+        },
+        onError(message) { setStatus(message, true); }
+      });
+      try {
+        gpsTracker.start();
+        if (button) button.textContent = '停止即時 GPS 更新';
+        const tracker = gpsTracker;
+        tracker.read().then(async (fix) => {
+          try {
+            const name = await window.TicketLiveLocation.placeName(fix);
+            if (generation !== gpsGeneration || tracker !== gpsTracker) return;
+            if (window.TicketLiveLocation.distanceMeters(fix, tracker.latest()) > 120) return;
+            gpsPlaceName = name;
+            gpsNameFix = fix;
+            if (draft) {
+              draft.name = name.slice(0, 100);
+              if (draftName()) draftName().value = draft.name;
+            }
+            setStatus(`GPS 約定位於「${name}」，精度約 ±${Math.round(fix.accuracy)} 公尺。請確認名稱與半徑，選好後停止即時更新並儲存。`);
+          } catch (_) {
+            if (generation === gpsGeneration) setStatus('GPS 持續更新中；無法取得地點名稱，請手動輸入後儲存。', true);
+          }
+        }).catch((error) => {
+          if (generation === gpsGeneration) setStatus(error.message || 'GPS 定位失敗。', true);
+        });
+      } catch (error) {
+        stopGPS();
+        setStatus(error.message || 'GPS 啟動失敗。', true);
+      }
     }
 
     function clearSearchResults() {
@@ -572,6 +652,10 @@
       render();
       renderDraftEditor();
       refresh();
+      window.addEventListener('pagehide', stopGPS);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') stopGPS();
+      });
     }
 
     return {
@@ -592,6 +676,7 @@
       setDraft,
       commitDraft,
       clearDraft,
+      stopGPS,
       searchAddress,
     };
   }

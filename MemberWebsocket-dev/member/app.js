@@ -52,6 +52,25 @@
       const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
       state.profile = result.profile || {};
       updateTerms(result.terms);
+      // Subscribe regardless of the initial view so verification/activation and
+      // profile changes appear without reopening the member LIFF page.
+      window.MemberSystem.subscribeRealtime(state.config, 'member', async () => {
+        const latest = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
+        const profile = latest && latest.profile && typeof latest.profile === 'object' ? latest.profile : null;
+        if (!profile) return;
+        state.profile = profile;
+        updateTerms(latest.terms);
+        if (latest.consentRequired && profile.profileComplete) {
+          setView('termsRenew');
+          return;
+        }
+        if (!profile.profileComplete || profile.membershipRequired) {
+          if (!els.memberView.classList.contains('hidden')) setView('profileSetup');
+          return;
+        }
+        renderProfile(profile);
+        setView('member');
+      });
       if (result.consentRequired && state.profile.profileComplete) {
         await completeLoginProgress('請確認更新後的條款');
         return setView('termsRenew');
@@ -66,13 +85,7 @@
       await completeLoginProgress('會員資料已準備完成');
       setView('member');
       announceTourReady(state.profile);
-      window.MemberSystem.subscribeRealtime(state.config, 'member', async () => {
-        const result = await window.MemberSystem.request(state.config, 'member', state.idToken, 'user.member.bootstrap');
-        const profile = result && result.profile && typeof result.profile === 'object' ? result.profile : null;
-        if (!profile || !profile.profileComplete || profile.membershipRequired) return;
-        state.profile = profile;
-        renderProfile(profile);
-      });
+
     } catch (error) {
       stopLoginProgress();
       showError(error);

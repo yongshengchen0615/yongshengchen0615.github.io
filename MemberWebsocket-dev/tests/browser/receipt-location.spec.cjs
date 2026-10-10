@@ -25,7 +25,7 @@ function shell(surface,run,mode) {
     window.MembershipProgress={render(){}};
   `;
   fixtureScripts.set(run,fixture);
-  return html.replace(/href="\.\//g,`href="/${surface}/`).replace('</body>',`<script src="/fixture.js?run=${encodeURIComponent(run)}"></script><script src="/ticket-booking-choice.js"></script><script src="/event-ticket-ui.js"></script><script src="/${surface==='booking'?'booking/booking-receipt.js':'event/app.js'}"></script></body>`);
+  return html.replace(/href="\.\//g,`href="/${surface}/`).replace('</body>',`<script src="/fixture.js?run=${encodeURIComponent(run)}"></script><script src="/ticket-booking-choice.js"></script><script src="/event-ticket-ui.js"></script><script src="/ticket-live-location.js"></script><script src="/${surface==='booking'?'booking/booking-receipt.js':'event/app.js'}"></script></body>`);
 }
 test.beforeAll(async()=>{
   server=http.createServer(async(req,res)=>{

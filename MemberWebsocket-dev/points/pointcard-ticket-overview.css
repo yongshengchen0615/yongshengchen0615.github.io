@@ -44,3 +44,12 @@
 .ticket-booking-choice select{width:100%;min-height:44px;border:1px solid var(--border-color,#999);border-radius:10px;padding:10px;background:var(--surface-color,#fff);color:var(--text-color,#222);font:inherit}
 .ticket-booking-choice small{line-height:1.6}
 [data-theme="dark"] .ticket-booking-choice select{background:#202a33;color:#f4f4f4}
+
+/* Live GPS confirmation stays legible in both light/dark member views. */
+.ticket-live-location-panel { display: grid; gap: 9px; margin: 12px 0; padding: 12px; border: 1px solid var(--line, #66746d); border-radius: 12px; }
+.ticket-live-location-panel[hidden] { display: none; }
+.ticket-live-location-panel p { margin: 0; line-height: 1.65; overflow-wrap: anywhere; font-size: 12px; }
+.ticket-live-location-panel button { min-height: 44px; width: 100%; white-space: normal; }
+
+.ticket-live-location-confirm { padding: 10px 13px; border: 1px solid currentColor; border-radius: 10px; color: inherit; background: transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; }
+.ticket-live-location-confirm:disabled { opacity: .55; cursor: wait; }
