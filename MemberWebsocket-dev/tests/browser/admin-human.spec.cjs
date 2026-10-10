@@ -96,6 +96,26 @@ for(const type of ['coupon','lottery'])test('POINT_TEMPLATE_'+type+' — create,
   if(type==='lottery'){await p.locator('#ticketPrizeRows [data-field="ticketPrizeTitle"]').first().fill('QA prize');}
   await click(p,'saveTicketButton');await expect(p.locator('#ticketTemplateId')).not.toHaveValue('');await select(p,'ticketStatus','archived');await click(p,'saveTicketButton');await expect.poll(()=>info.fixture.tickets.find(t=>t.title==='QA template')?.status).toBe('archived');
 });
+test('POINT_TEMPLATE_DELETE — referenced template is blocked and unreferenced template is deletable',async({page:p},info)=>{
+  await click(p,'cardsTab');await click(p,'ticketSettingsTab');
+  await p.locator('[data-ticket-template-id="ticket-1"]').first().click();
+  await expect(p.locator('#deleteTicketButton')).toBeVisible();
+  await click(p,'deleteTicketButton');
+  await expect(p.locator('#ticketFormMessage')).toContainText('仍被集點卡兌換節點引用');
+  expect(info.fixture.tickets.some(t=>t.ticketTemplateId==='ticket-1')).toBe(true);
+  await click(p,'newTicketButton');
+  await expect(p.locator('#deleteTicketButton')).toBeHidden();
+  await fill(p,'ticketTitle','QA deletable template');await fill(p,'ticketDescription','QA description');
+  await fill(p,'ticketUsageMethod','QA usage');await fill(p,'ticketUsageInstructions','QA instructions');
+  await select(p,'ticketStatus','draft');await click(p,'saveTicketButton');
+  const id=await p.locator('#ticketTemplateId').inputValue();
+  expect(id).not.toBe('');
+  await expect(p.locator('#deleteTicketButton')).toBeEnabled();
+  await click(p,'deleteTicketButton');
+  await expect(p.locator('#ticketTemplateId')).toHaveValue('');
+  expect(info.fixture.tickets.some(t=>t.ticketTemplateId===id)).toBe(false);
+  expect(calls(info.fixture,'admin.tickets.delete')).toHaveLength(2);
+});
 for(const type of ['coupon','referral','membership_join','lottery'])test('EVENT_'+type+' — audience, quota, date, create, edit and delete',async({page:p},info)=>{
   await openEvent(p,type);await p.locator('#eventTicketAllowedTiers [data-audience-preset="gold-plus"]').click();await fill(p,'eventTicketStartsOn',today());await fill(p,'eventTicketEndsOn','2099-12-31');await fill(p,'eventTicketQuota','10');
   if(type==='lottery')await p.locator('#eventTicketPrizeRows [data-field="eventTicketPrizeTitle"]').first().fill('QA prize');
