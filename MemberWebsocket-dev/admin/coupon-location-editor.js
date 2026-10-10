@@ -386,12 +386,22 @@
         return;
       }
       setStatus('正在啟動即時 GPS，請允許位置權限…');
+      let firstGPSFix = true;
       gpsTracker = window.TicketLiveLocation.create({
         onUpdate(fix, fresh) {
+          if (firstGPSFix && draft) {
+            draft.name = '目前 GPS 位置';
+            if (draftName()) draftName().value = draft.name;
+          }
+          firstGPSFix = false;
           if (generation !== gpsGeneration || !checkbox()?.checked) return;
           if (gpsNameFix && window.TicketLiveLocation.distanceMeters(gpsNameFix, fix) > 120) {
             gpsPlaceName = '';
             gpsNameFix = null;
+            if (draft) {
+              draft.name = '目前 GPS 位置';
+              if (draftName()) draftName().value = draft.name;
+            }
           }
           if (!draft) {
             if (!setDraft(fix.latitude, fix.longitude, '目前 GPS 位置', { fromGps: true })) return;
