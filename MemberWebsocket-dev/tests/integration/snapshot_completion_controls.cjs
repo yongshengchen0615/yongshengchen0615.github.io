@@ -148,7 +148,8 @@ test('ticket policy, snapshot intent/review and append-only order corrections us
    assert.equal((await one('select count(*)::int n from point_entries where member_id=$1',[other])).n,0);
   });
    await t.test('snapshot review creates retrospective booking and consumes ticket without prior reservation',async()=>{
-    await run("insert into event_ticket_claims(claim_id,event_ticket_id,member_id,ticket_type,ticket_title)values('QA-SNAPSHOT-NO-BOOKING',$1,$2,'coupon','QA snapshot no booking')",[snapshotEvent,member]);
+    const separateEvent=(await one("insert into event_tickets(event_ticket_id,title,ticket_type,status,starts_on,ends_on,created_by,updated_by)values('QA-SNAPSHOT-NO-BOOKING-EVENT','QA extra snapshot event','coupon','active',(clock_timestamp()at time zone'Asia/Taipei')::date-1,(clock_timestamp()at time zone'Asia/Taipei')::date+1,'test:controls-admin','test:controls-admin')returning id")).id;
+    await run("insert into event_ticket_claims(claim_id,event_ticket_id,member_id,ticket_type,ticket_title)values('QA-SNAPSHOT-NO-BOOKING',$1,$2,'coupon','QA snapshot no booking')",[separateEvent,member]);
     const newBenefits=[{kind:'event',id:'QA-SNAPSHOT-NO-BOOKING'}];
     const newReceipt=(await prepare('QA-NO-ADVANCE-BOOKING',newBenefits)).receiptId;
     assert.equal((await finalize(newReceipt)).status,'awaiting_review');
