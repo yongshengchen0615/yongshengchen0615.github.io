@@ -77,3 +77,40 @@ test('geo watchers and name confirmation are wired to both member ticket surface
   assert.match(realtime, /periodic-reconcile/);
   assert.match(member, /Subscribe regardless of the initial view/);
 });
+
+test('member auto-refresh survives an unavailable Realtime SDK without reloading', async () => {
+  let tick;
+  let cleared = null;
+  let calls = 0;
+  const config = {
+    supabaseUrl: 'https://example.supabase.co',
+    supabaseFunctionUrl: 'https://example.supabase.co/functions/v1/api',
+    memberCalendarFunctionUrl: 'https://example.supabase.co/functions/v1/member-calendar-api',
+    supabasePublishableKey: 'fixture',
+    memberLiffId: 'member', pointsLiffId: 'points', eventLiffId: 'event',
+    calendarLiffId: 'calendar', adminLiffId: 'admin'
+  };
+  const window = {
+    setInterval(callback, delay) { assert.equal(delay, 30000); tick = callback; return 42; },
+    clearInterval(id) { cleared = id; },
+    addEventListener() {}, removeEventListener() {}
+  };
+  const document = {
+    visibilityState: 'visible',
+    addEventListener() {}, removeEventListener() {}
+  };
+  const context = vm.createContext({ window, document, navigator: { onLine: true }, Map, Set, URL, console });
+  vm.runInContext(read('member-system.js'), context);
+  const unsubscribe = window.MemberSystem.subscribeRealtime(config, 'member', () => { calls += 1; });
+  assert.equal(typeof tick, 'function');
+  tick();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(calls, 1);
+  document.visibilityState = 'hidden';
+  tick();
+  await Promise.resolve();
+  assert.equal(calls, 1);
+  unsubscribe();
+  assert.equal(cleared, 42);
+});
