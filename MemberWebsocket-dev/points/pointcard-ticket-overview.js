@@ -640,7 +640,7 @@
     if (!bookingChoice) { bookingChoice = document.createElement('div'); bookingChoice.dataset.ticketBookingChoice = ''; modal.querySelector('[data-batch-list]').before(bookingChoice); }
     bookingChoice.hidden = false;
     const eligibleBookings = window.TicketBookingChoice?.common(tickets) || [];
-    window.TicketBookingChoice?.mount(bookingChoice, eligibleBookings, () => { applyLiveLocationState(); });
+    window.TicketBookingChoice?.mount(bookingChoice, eligibleBookings, () => { modal.querySelector('.ticket-batch-confirm').disabled = !window.TicketBookingChoice?.selected(bookingChoice); applyLiveLocationState(); });
     const list = modal.querySelector('[data-batch-list]');
     list.replaceChildren(...tickets.map((ticket) => {
       const line = document.createElement('article');
