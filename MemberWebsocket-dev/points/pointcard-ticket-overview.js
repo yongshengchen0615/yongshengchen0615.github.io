@@ -601,7 +601,7 @@
       status.setAttribute('aria-live', 'polite');
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'ticket-batch-cancel';
+      button.className = 'ticket-live-location-confirm';
       button.dataset.liveLocationButton = '';
       button.textContent = '確認目前 GPS 地點名稱（OpenStreetMap）';
       button.addEventListener('click', () => { void confirmLiveLocationName(); });
