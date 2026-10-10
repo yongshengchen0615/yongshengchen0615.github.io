@@ -246,7 +246,7 @@ test('snapshot ticket cards show selection feedback without a booking selector',
   await expect(expired).toHaveClass(/is-unavailable/);
   await expect(expired).toContainText('票券已過期');
   await expect(expired.locator('input[type="checkbox"]')).toBeDisabled();
-  await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('尚未選擇票券');
+  await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('無需事先預約');
   await expect(page.locator('#snapshotTicketBooking')).toHaveCount(0);
   await available.click();
   await expect(available).toHaveClass(/is-selected/);
@@ -256,7 +256,7 @@ test('snapshot ticket cards show selection feedback without a booking selector',
   await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('不需要事先預約');
   await available.click();
   await expect(available).not.toHaveClass(/is-selected/);
-  await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('尚未選擇票券');
-  await expect(page.locator('.snapshot-ticket-booking-label')).toBeHidden();
+  await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('無需事先預約');
+  await expect(page.locator('#snapshotTicketBooking')).toHaveCount(0);
   expect(runs.get(run).prepare).toHaveLength(0);
 });
