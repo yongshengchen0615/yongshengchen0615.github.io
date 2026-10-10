@@ -265,6 +265,7 @@
           usageInstructions: String(ticket ? ticket.usageInstructions : reward.usageInstructions || ''),
           prizes: Array.isArray(ticket ? ticket.prizes : reward.prizes) ? (ticket ? ticket.prizes : reward.prizes) : [],
           requiresLocation: Boolean(ticket && ticket.requiresLocation),
+          redemptionLocations: Array.isArray(ticket?.redemptionLocations) ? ticket.redemptionLocations : [],
           reservedForBooking,
           eligibleBookings: Array.isArray(ticket?.eligibleBookings) ? ticket.eligibleBookings : [],
           shortage,
