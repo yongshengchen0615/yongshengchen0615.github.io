@@ -14,6 +14,8 @@ test('snapshot receipt selection has a clear accessible ticket count and booking
   assert.match(source, /selected\.length \+ ' 張票券/);
   assert.match(source, /select\.closest\('label'\)\?\.classList\.toggle\('hidden', selected\.length === 0\)/);
   assert.match(source, /id="snapshotTicketBookingHelp"/);
+  assert.match(source, /snapshotTicketSelectionSummary'\)\.textContent = '正在確認可登記的票券/);
+  assert.match(source, /票券暫時無法載入；可以只送出收據/);
 });
 
 test('snapshot ticket cards preserve original choice payload and disabled business rules', () => {
