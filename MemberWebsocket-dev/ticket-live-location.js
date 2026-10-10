@@ -43,6 +43,31 @@
     )));
   }
 
+  // This is only a UI preview; the server repeats the location authorization
+  // with the current database rule and the submitted fresh GPS position.
+  function evaluate(fix, locations) {
+    if (!Array.isArray(locations) || !locations.length ||
+        !locations.every((location) => location && String(location.name || '').trim() &&
+          Number.isFinite(Number(location.latitude)) && Math.abs(Number(location.latitude)) <= 90 &&
+          Number.isFinite(Number(location.longitude)) && Math.abs(Number(location.longitude)) <= 180 &&
+          Number.isInteger(Number(location.radiusMeters)) &&
+          Number(location.radiusMeters) >= 50 && Number(location.radiusMeters) <= 2000)) {
+      return { allowed: false, reason: 'missing', matched: null };
+    }
+    if (!isFresh(fix)) return { allowed: false, reason: 'waiting', matched: null };
+    const matched = locations.find((location) =>
+      distanceMeters(fix, location) + fix.accuracy <= Number(location.radiusMeters)
+    );
+    return { allowed: Boolean(matched), reason: matched ? 'inside' : 'outside', matched: matched || null };
+  }
+
+  function allowedLocationLabel(locations) {
+    return Array.isArray(locations) && locations.length
+      ? locations.map((item) =>
+        `「${String(item.name || '未命名地點')}」（${Number(item.radiusMeters)} 公尺內）`).join('、')
+      : '尚未取得管理端的可使用地點';
+  }
+
   function create({ onUpdate, onError } = {}) {
     let watchId = null;
     let latest = null;
@@ -149,6 +174,6 @@
   }
 
   window.TicketLiveLocation = Object.freeze({
-    create, placeName, distanceMeters, isFresh, MAX_ACCURACY_METERS
+    create, placeName, distanceMeters, isFresh, evaluate, allowedLocationLabel, MAX_ACCURACY_METERS
   });
 })();
