@@ -1101,9 +1101,9 @@
         caseDef('日曆寫入權限邊界', 'Mutation QA', () => mutationQaCase('CALENDAR_READ_ONLY'), 'CALENDAR_SERVER_BOUNDARY')
       ],
       booking: [
-        caseDef('無障礙模式切換、票券與狀態同步', 'Human E2E', bookingAccessibleModeCase, 'BOOKING_ACCESSIBLE_MODE'),
-        caseDef('無障礙收據：錯誤格式與大小拒絕', 'Security', bookingAccessibleReceiptBoundaryCase, 'BOOKING_ACCESSIBLE_RECEIPT_BOUNDARY'),
-        caseDef('無障礙收據：螢幕快照上傳與待審核', 'Human E2E', bookingAccessibleScreenshotReceiptCase, 'BOOKING_ACCESSIBLE_SCREENSHOT_RECEIPT'),
+        caseDef('快照模式切換、票券與狀態同步', 'Human E2E', bookingAccessibleModeCase, 'BOOKING_ACCESSIBLE_MODE'),
+        caseDef('快照收據：錯誤格式與大小拒絕', 'Security', bookingAccessibleReceiptBoundaryCase, 'BOOKING_ACCESSIBLE_RECEIPT_BOUNDARY'),
+        caseDef('快照收據：螢幕快照上傳與待審核', 'Human E2E', bookingAccessibleScreenshotReceiptCase, 'BOOKING_ACCESSIBLE_SCREENSHOT_RECEIPT'),
         caseDef('票券：具體服務 any／all、上限與點數預算', 'Validation', bookingTicketRulesCase, 'BOOKING_TICKET_RULES'),
         caseDef('預約歷史：票券來源卡片對照', 'Booking / History', bookingHistoryTicketSourcesCase, 'BOOKING_HISTORY_TICKET_SOURCES'),
         caseDef('會員與預約 Bootstrap 一致性', 'Booking', bookingDataCase, 'BOOKING_DATA'),
@@ -3460,7 +3460,7 @@
     const modal = document.getElementById('memberReferralModal');
     const checks = [];
     try {
-      for (const [tab,ids] of [['memberReferralTabFriends',['scanFriendQr','friendQrFile','stopFriendQr']],['memberReferralTabReward',['scanMemberReferralQr','memberReferralQrFile','stopMemberReferralQr']]]) {
+      for (const [tab,ids] of [['openMemberFriends',['scanFriendQr','friendQrFile','stopFriendQr']],['openMemberReferral',['scanMemberReferralQr','memberReferralQrFile','stopMemberReferralQr']]]) {
         document.getElementById(tab)?.click();
         checks.push({tab,controls:ids.every(id => Boolean(document.getElementById(id)))});
       }
@@ -3472,7 +3472,7 @@
       return Object.values(actual).every(Boolean)
         ? pass('好友／優惠各有 QR 入口，外站碼拒絕且共用 dialog 已載入；未要求相機或建立邀請。',{opened:true,controls:true,foreignRejected:true,sharedDialog:true},actual)
         : fail('QR 入口、解析安全或共用 dialog 不完整。',{opened:true,controls:true,foreignRejected:true,sharedDialog:true},actual);
-    } finally { document.getElementById('closeMemberReferral')?.click(); }
+    } finally { document.getElementById('closeMemberFriends')?.click(); document.getElementById('closeMemberReferral')?.click(); }
   }
 
   async function pointsTransferRecipientControlsCase() {
@@ -3511,7 +3511,7 @@
     const friendStatus = document.getElementById('friendStatus');
     let friendSelfRejected = false;
     if (modal && friendInput && friendForm && validMemberCode) {
-      document.getElementById('memberReferralTabFriends')?.click();
+      document.getElementById('openMemberFriends')?.click();
       friendInput.value = ownMemberCode;
       friendInput.dispatchEvent(new Event('input', { bubbles: true }));
       friendForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -3526,7 +3526,7 @@
     const rewardStatus = document.getElementById('memberReferralStatus');
     let rewardSelfRejected = false;
     if (modal && rewardInput && rewardForm && validMemberCode) {
-      document.getElementById('memberReferralTabReward')?.click();
+      document.getElementById('openMemberReferral')?.click();
       rewardInput.value = ownMemberCode;
       rewardInput.dispatchEvent(new Event('input', { bubbles: true }));
       rewardForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -3726,7 +3726,7 @@
   async function bookingAccessibleModeCase() {
     const toggle = document.getElementById('bookingAccessibleToggle');
     const panel = document.getElementById('bookingAccessiblePanel');
-    if (!toggle || !panel) return fail('無障礙模式入口未載入。', { entrance:true }, { entrance:false });
+    if (!toggle || !panel) return fail('快照模式入口未載入。', { entrance:true }, { entrance:false });
     const original = toggle.getAttribute('aria-pressed') === 'true';
     const preferenceKey = window.BookingAccessibility?.getPreferenceKey?.() || '';
     let preference;
@@ -3754,16 +3754,16 @@
       try { if (preferenceKey && preference === null) localStorage.removeItem(preferenceKey); else if (preferenceKey && preference !== undefined) localStorage.setItem(preferenceKey, preference); } catch (_) {}
     }
     return Object.values(actual).every(Boolean)
-      ? pass('無障礙模式可切換、顯示可用票券與真實登記狀態，完成後還原偏好。', { allChecks:true, physicalCamera:'device acceptance' }, actual)
-      : fail('無障礙模式、票券或收據狀態未同步。', { allChecks:true }, actual);
+      ? pass('快照模式可切換、顯示可用票券與真實登記狀態，完成後還原偏好。', { allChecks:true, physicalCamera:'device acceptance' }, actual)
+      : fail('快照模式、票券或收據狀態未同步。', { allChecks:true }, actual);
   }
 
 
   async function bookingAccessibleScreenshotReceiptCase() {
     const token = window.TestModeClient?.getSessionToken?.();
-    if (!token) return fail('缺少測試 Session，無法安全建立無障礙 E2E 收據。', { testSession: true }, { testSession: false });
+    if (!token) return fail('缺少測試 Session，無法安全建立快照 E2E 收據。', { testSession: true }, { testSession: false });
     if (typeof window.BookingReceipts?.openAccessibleE2ESnapshot !== 'function') {
-      return fail('目前版本缺少無障礙 E2E 螢幕快照入口。', { e2eSnapshotHook: true }, { e2eSnapshotHook: false });
+      return fail('目前版本缺少快照 E2E 螢幕快照入口。', { e2eSnapshotHook: true }, { e2eSnapshotHook: false });
     }
 
     const config = await loadConfig();
@@ -3782,7 +3782,7 @@
     try {
       const captured = await captureFailureScreenshotBlob();
       actual.screenshotCaptured = Boolean(captured?.blob && captured.blob.size > 0);
-      const injected = window.BookingReceipts.openAccessibleE2ESnapshot(captured.blob);
+      const injected = await window.BookingReceipts.openAccessibleE2ESnapshot(captured.blob);
       actual.mimeType = String(injected?.mimeType || '');
       actual.sizeBytes = Number(injected?.sizeBytes || 0);
       modal = document.getElementById('bookingReceiptModal');
@@ -3805,7 +3805,7 @@
         18000,
         120
       ));
-      if (!actual.submitted) throw new Error('無障礙收據送出後視窗未完成關閉。');
+      if (!actual.submitted) throw new Error('快照收據送出後視窗未完成關閉。');
 
       const after = await window.BookingSystem.request(config, 'booking', '', 'user.booking.receipt.list', {});
       const created = (Array.isArray(after?.submissions) ? after.submissions : []).find((item) => {
@@ -3831,12 +3831,12 @@
       actual.sizeBytes <= 5 * 1024 * 1024;
     return ok
       ? pass(
-          '無障礙模式已用去識別化螢幕快照取代實體收據照片，完成 Storage 上傳與 finalize，並確認新收據進入管理端待審核狀態。',
+          '快照模式已用去識別化螢幕快照取代實體收據照片，完成 Storage 上傳與 finalize，並確認新收據進入管理端待審核狀態。',
           { screenSnapshot: true, uploaded: true, awaitingReview: true, preservedForAdmin: true },
           actual
         )
       : fail(
-          '無障礙模式螢幕快照收據沒有完整進入待審核流程。',
+          '快照模式螢幕快照收據沒有完整進入待審核流程。',
           { screenSnapshot: true, uploaded: true, awaitingReview: true, preservedForAdmin: true },
           actual
         );
@@ -3852,8 +3852,8 @@
       } catch (error) { checks.push({expectedCode,code:String(error.code || '')}); }
     }
     return checks.every(item => item.code === item.expectedCode)
-      ? pass('無障礙收據在建立上傳前拒絕錯誤 MIME、空圖片與超過 5 MB。', { invalidInputRejected:true }, {checks})
-      : fail('無障礙收據的 Server 輸入邊界異常。', { invalidInputRejected:true }, {checks});
+      ? pass('快照收據在建立上傳前拒絕錯誤 MIME、空圖片與超過 5 MB。', { invalidInputRejected:true }, {checks})
+      : fail('快照收據的 Server 輸入邊界異常。', { invalidInputRejected:true }, {checks});
   }
 
   async function bookingTicketRulesCase() {

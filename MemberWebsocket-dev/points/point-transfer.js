@@ -7,6 +7,7 @@
     fingerprint: '',
     receiver: null,
     receiverGeneration: 0,
+    friendGeneration: 0,
     busy: false,
     activeCardId: '',
     activeCardTitle: '',
@@ -105,6 +106,7 @@
             <strong id="pointTransferOwnMemberCode">讀取中…</strong>
           </div>
           <button id="pointTransferCopyOwnCode" class="point-transfer-copy-button" type="button" disabled>複製會員編號</button>
+          <button id="pointTransferShowOwnQr" class="point-transfer-copy-button" type="button" aria-haspopup="dialog" disabled>顯示 QR Code</button>
         </section>
         <form id="pointTransferForm" class="point-transfer-form">
           <input id="pointTransferCard" type="hidden">
@@ -121,6 +123,7 @@
             <select id="pointTransferFriendSelect"><option value="">請先載入好友</option></select>
             <button id="pointTransferUseFriend" class="point-transfer-secondary-button" type="button">使用選取的好友</button>
             <p id="pointTransferFriendStatus" role="status" aria-live="polite"></p>
+            <button id="pointTransferFriendCancel" class="point-transfer-secondary-button" type="button">取消</button>
           </div>
           <section id="pointTransferQrPanel" hidden>
             <video id="pointTransferQrVideo" autoplay muted playsinline aria-label="收件者 QR 掃描畫面"></video>
@@ -144,6 +147,9 @@
     document.body.append(modal);
     modal.querySelector('#pointTransferClose').addEventListener('click', closeModal);
     modal.querySelector('#pointTransferCopyOwnCode').addEventListener('click', copyOwnMemberCode);
+    modal.querySelector('#pointTransferShowOwnQr').addEventListener('click', event => {
+      window.QRDisplayDialog?.show({ memberCode: state.memberCode, title: '我的會員 QR Code', opener: event.currentTarget });
+    });
     modal.addEventListener('click', (event) => {
       if (event.target === modal && !state.busy) closeModal();
     });
@@ -157,23 +163,23 @@
     modal.querySelector('#pointTransferLookup').addEventListener('click', lookupReceiver);
     modal.querySelector('#pointTransferChooseFriend').addEventListener('click', () => {
       if (state.busy || state.pending) return;
-      const picker = modal.querySelector('#pointTransferFriendPicker');
-      picker.hidden = !picker.hidden;
-      if (!picker.hidden) void loadFriendChoices();
+      const picker = document.getElementById('pointTransferFriendPicker');
+      if (window.MemberPanelDialog?.open(picker, {title: '選擇轉贈好友', opener: document.getElementById('pointTransferChooseFriend'), stop: () => { state.friendGeneration++; }})) void loadFriendChoices();
     });
+    modal.querySelector('#pointTransferFriendCancel').addEventListener('click', () => window.MemberPanelDialog?.close(document.getElementById('pointTransferFriendPicker')));
     modal.querySelector('#pointTransferUseFriend').addEventListener('click', () => {
       if (state.busy || state.pending) return;
-      const chosen = modal.querySelector('#pointTransferFriendSelect').value;
+      const chosen = document.getElementById('pointTransferFriendSelect').value;
       if (!chosen) return setMessage('請先選擇好友。', true);
       const input = modal.querySelector('#pointTransferMemberCode');
       input.value = chosen;
       input.dispatchEvent(new Event('input', { bubbles: true }));
-      modal.querySelector('#pointTransferFriendPicker').hidden = true;
+      window.MemberPanelDialog?.close(document.getElementById('pointTransferFriendPicker'));
       void lookupReceiver();
     });
     modal.querySelector('#pointTransferScanQr').addEventListener('click', openTransferScanner);
     modal.querySelector('#pointTransferQrClose').addEventListener('click', stopTransferScanner);
-    modal.querySelector('#pointTransferQrImageButton').addEventListener('click', () => modal.querySelector('#pointTransferQrFile').click());
+    modal.querySelector('#pointTransferQrImageButton').addEventListener('click', () => document.getElementById('pointTransferQrFile').click());
     modal.querySelector('#pointTransferQrFile').addEventListener('change', event => {
       const file = event.target.files?.[0];
       event.target.value = '';
@@ -190,12 +196,13 @@
     const s = session();
     if (!s || !picker || !select || !status || state.pending) return;
     const currentMember = state.memberCode;
+    const generation = ++state.friendGeneration;
     select.disabled = true;
     select.replaceChildren(new Option('請選擇好友', ''));
     status.textContent = '正在載入好友…';
     try {
       const response = await window.MemberSystem.request(s.config, 'points', s.idToken, 'member.friend.list');
-      if (picker.hidden || state.memberCode !== currentMember || !session()) return;
+      if (generation !== state.friendGeneration || picker.hidden || state.memberCode !== currentMember || !session()) return;
       const friends = (Array.isArray(response?.friends) ? response.friends : []).filter(friend =>
         friend.status === 'accepted' && /^[A-Za-z0-9_-]{4,40}$/.test(String(friend.memberCode || '')) &&
         String(friend.memberCode).toUpperCase() !== currentMember.toUpperCase());
@@ -203,8 +210,8 @@
         String(friend.displayName || '好友') + ' · ' + friend.memberCode, friend.memberCode));
       status.textContent = friends.length ? '選擇好友後仍需確認收件會員及點數。' : '目前沒有已接受的好友，可改用會員編號。';
     } catch (error) {
-      status.textContent = error?.message || '好友載入失敗，請輸入會員編號。';
-    } finally { select.disabled = false; }
+      if (generation === state.friendGeneration) status.textContent = error?.message || '好友載入失敗，請取消後重試或輸入會員編號。';
+    } finally { if (generation === state.friendGeneration) select.disabled = false; }
   }
 
   function parseTransferQR(raw) {
@@ -263,6 +270,8 @@
     const button = document.getElementById('pointTransferCopyOwnCode');
     if (output) output.textContent = state.memberCode || '尚未取得會員編號';
     if (button) button.disabled = !state.memberCode;
+    const qrButton = document.getElementById('pointTransferShowOwnQr');
+    if (qrButton) qrButton.disabled = !state.memberCode;
   }
 
   async function copyOwnMemberCode() {
@@ -366,6 +375,8 @@
   function closeModal() {
     if (state.busy) return;
     stopTransferScanner();
+    window.MemberPanelDialog?.close(document.getElementById('pointTransferFriendPicker'));
+    window.QRDisplayDialog?.close();
     document.getElementById('pointTransferModal')?.classList.add('hidden');
     document.body.classList.remove('point-transfer-modal-open');
     clearReceiver();
@@ -583,6 +594,10 @@
     if (event?.detail?.surface !== 'points') return;
     const nextCode = String(event?.detail?.profile?.memberCode || '').trim();
     if (nextCode !== state.memberCode) {
+      stopTransferScanner();
+      window.MemberPanelDialog?.close(document.getElementById('pointTransferFriendPicker'));
+      window.QRDisplayDialog?.close();
+      state.receiverGeneration++; state.receiver = null;
       state.memberCode = nextCode;
       restorePending();
     }

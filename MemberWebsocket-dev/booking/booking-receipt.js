@@ -5,6 +5,9 @@
     receiptsByBooking: new Map(),
     metadataByBooking: new Map(),
     accessible: false,
+    snapshotReady: false,
+    snapshotAuthorizing: false,
+    location: null,
     requestId: '',
     prepared: null,
     uploaded: false,
@@ -119,6 +122,11 @@
     state.prepared = null;
     state.uploaded = false;
     state.cameraReady = false;
+    state.snapshotReady = false;
+    state.snapshotAuthorizing = false;
+    state.location = null;
+    const fileInput = document.getElementById('bookingReceiptFile');
+    if (fileInput) fileInput.disabled = false;
     const wrap = document.getElementById('bookingReceiptPreviewWrap');
     const preview = document.getElementById('bookingReceiptPreview');
     const meta = document.getElementById('bookingReceiptFileMeta');
@@ -187,7 +195,57 @@
     if (options?.skipCamera !== true) void startCamera();
   }
 
-  function openAccessibleE2ESnapshot(blob) {
+  async function snapshotLocation() {
+    const current = session();
+    if (!current) throw new Error('登入狀態已失效，請重新整理。');
+    const policy = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.list');
+    if (policy.snapshotLocationRequired !== true) return null;
+    if (!navigator.geolocation?.getCurrentPosition) throw new Error('此裝置不支援定位；快照前須取得定位，請使用支援的裝置。');
+    return await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(position => {
+      const point = { latitude: position.coords.latitude, longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy, timestamp: position.timestamp };
+      if (!Object.values(point).every(Number.isFinite) || Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180 || point.accuracy < 0
+        || point.timestamp < Date.now() - 120000 || point.timestamp > Date.now() + 30000) {
+        reject(new Error('定位已失效或格式不正確，請重新定位。')); return;
+      }
+      resolve(point);
+    }, error => reject(new Error(error?.code === 1 ? '定位權限未開啟，請允許定位後按「重新定位」。'
+      : error?.code === 3 ? '定位逾時，請按「重新定位」重試。' : '暫時無法取得定位，請按「重新定位」重試。')),
+    { maximumAge: 0, timeout: 12000, enableHighAccuracy: false }));
+  }
+
+  async function authorizeSnapshot(start = true) {
+    if (state.snapshotAuthorizing) return false;
+    state.snapshotAuthorizing = true;
+    const generation = state.photoGeneration;
+    const capture = document.getElementById('bookingReceiptCapture');
+    const input = document.getElementById('bookingReceiptFile');
+    if (capture) capture.disabled = true;
+    if (input) input.disabled = true;
+    setMessage('正在確認快照定位設定…');
+    try {
+      const point = await snapshotLocation();
+      if (generation !== state.photoGeneration || document.getElementById('bookingReceiptModal')?.classList.contains('hidden')) return false;
+      state.location = point; state.snapshotReady = true;
+      if (input) input.disabled = false;
+      if (start) void startCamera();
+      return true;
+    } catch (error) {
+      if (generation === state.photoGeneration) {
+        state.snapshotReady = false;
+        if (capture) { capture.disabled = false; capture.textContent = '重新定位／確認設定'; }
+        setMessage(error?.message || '目前無法確認定位，請重試。', true);
+      }
+      return false;
+    } finally { if (generation === state.photoGeneration) state.snapshotAuthorizing = false; }
+  }
+
+  function openAccessible() {
+    openModal('', '', true, { skipCamera: true });
+    return authorizeSnapshot();
+  }
+
+  async function openAccessibleE2ESnapshot(blob) {
     const testSessionToken = window.TestModeClient?.getSessionToken?.();
     if (!testSessionToken) throw Object.assign(new Error('只有有效測試 Session 可以使用 E2E 收據快照。'), { code: 'TEST_SESSION_REQUIRED' });
     if (!(blob instanceof Blob)) throw Object.assign(new Error('E2E 收據快照格式不正確。'), { code: 'E2E_RECEIPT_SNAPSHOT_REQUIRED' });
@@ -195,6 +253,7 @@
     const extension = mimeType === 'image/webp' ? 'webp' : mimeType === 'image/png' ? 'png' : mimeType === 'image/jpeg' ? 'jpg' : '';
     if (!extension) throw Object.assign(new Error('E2E 收據快照必須是 JPG、PNG 或 WebP。'), { code: 'E2E_RECEIPT_SNAPSHOT_MIME' });
     openModal('', '', true, { skipCamera: true });
+    if (!await authorizeSnapshot(false)) throw new Error('E2E 快照未取得目前政策要求的定位。');
     const file = new File([blob], `e2e-accessible-receipt-${Date.now()}.${extension}`, {
       type: mimeType,
       lastModified: Date.now(),
@@ -249,6 +308,7 @@
   }
 
   function acceptFile(file) {
+    if (state.accessible && !state.snapshotReady) return;
     const generation = ++state.photoGeneration;
     state.requestId = ''; state.prepared = null; state.uploaded = false;
     cleanupPreview();
@@ -311,6 +371,7 @@
 
   function captureFrame() {
     if (state.busy) return;
+    if (state.accessible && !state.snapshotReady) { void authorizeSnapshot(); return; }
     if (!state.cameraReady) {
       void startCamera();
       return;
@@ -359,6 +420,7 @@
 
   function retakePhoto() {
     if (state.busy) return;
+    if (state.accessible && !state.snapshotReady) { void authorizeSnapshot(); return; }
     state.photoGeneration += 1;
     state.requestId = ''; state.prepared = null; state.uploaded = false;
     cleanupPreview();
@@ -411,6 +473,10 @@
     const retake = document.getElementById('bookingReceiptRetake');
     if (retake) retake.disabled = true;
     try {
+      if (state.accessible) {
+        setMessage('正在重新確認定位政策…');
+        state.location = await snapshotLocation();
+      }
       setMessage('正在建立安全上傳連結…');
       const prepared = state.prepared || await window.BookingSystem.request(
         currentSession.config,
@@ -418,7 +484,7 @@
         currentSession.idToken,
         'user.booking.receipt.prepare',
         {
-          ...(state.accessible ? { accessible: true } : { bookingId: state.selectedBookingId }),
+          ...(state.accessible ? { accessible: true, location: state.location } : { bookingId: state.selectedBookingId }),
           requestId,
           mimeType: String(file.type || '').toLowerCase(),
           sizeBytes: file.size,
@@ -440,6 +506,7 @@
         'user.booking.receipt.finalize',
         {
           receiptId: prepared.receiptId,
+          ...(state.accessible ? { location: state.location } : {}),
           expectedUpdatedAt: state.selectedExpectedUpdatedAt,
         }
       );
@@ -556,7 +623,7 @@
   }
 
   window.BookingReceipts = Object.freeze({
-    openAccessible: () => openModal('', '', true),
+    openAccessible,
     openAccessibleE2ESnapshot,
     openBooking: openModal,
     refresh: refreshListAndDecorate,

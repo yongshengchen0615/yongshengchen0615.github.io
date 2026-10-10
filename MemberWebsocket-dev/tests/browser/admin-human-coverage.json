@@ -3,7 +3,7 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "53d8a2154979964cb4f244dbc29d54dacb423b990880c4755362be3ebf9ee964",
+    "admin/index.html": "fc782046090d3a50d024b017b5c47c6f7d2760935298aa5f7722257d16154b9a",
     "admin/app.js": "e616fd14f80ee25d4c8a2403b81fe3cbd8041711f7b0eff9aefa94e8e7300b1c",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
@@ -15,13 +15,13 @@
     "admin/pointcard-redemption-limit.js": "a391a001602667e48e63ee5cb7353ac44596f4a39de36ac03b0084b88f0e2d2f",
     "admin/event-ticket-redemption-limit.js": "6391ce8e930503aae1291ce767da938204219f1b63f285b7425c19b1095de7d0",
     "admin/integration-hub.js": "696f38801b5e8755e706c3e0153aa023a1d47f01a3f68456dd8e5a7fec868b33",
-    "admin/booking-panel.js": "e1365760e2cf43a866e64f3e0de41ea1b70df24b7214196f63e8a72f9e33aa52",
-    "admin/booking-panel-core.js": "d16aba7ee94a2855d9c0bd60e1d59481f04f59f3e8f85ee01aff30897de4acb2",
+    "admin/booking-panel.js": "c302f3a4d271c1e96d7285e690f3d0aea1b677ef43057d2abd57ae4d8054a19a",
+    "admin/booking-panel-core.js": "3242f1699207b614276c047217712dcc2f69fc8f3ee19d8a90ae4d7d9074f332",
     "admin/booking-resources.js": "421534c24977f3e9756a150990dd7accb109fc7074a4986840ad22282ecb8542",
     "admin/booking-always-open.js": "9cb236902a7f3f36cf3fe4c3f13fbbac622f000c72d36ec34f7d4dde08e6e54a",
     "admin/booking-cancellation-sync.js": "54b6d5eafd064687439a3b84d3fdbb730413ddb06af4f18977294a9e628ac0ee",
     "admin/booking-receipt-admin.js": "b5873c2753c0f2f9c267d0d13583405c2205cc70c0f2103f5899f741a74cf920",
-    "admin/booking-accessible-admin.js": "903adf76adbbce3f39f680854973593d19606ddd386d7dddb264caa06eb0e524",
+    "admin/booking-accessible-admin.js": "d629f2d0c20598a09cd887b20f5ebf2c9aea3270b74d727cece81ccfdd735608",
     "admin/ticket-visibility.js": "8d4c78f03a198b94fe5cf7eb305c7e2b9bfb67a07d367c73050349fab45802c2"
   },
   "features": [

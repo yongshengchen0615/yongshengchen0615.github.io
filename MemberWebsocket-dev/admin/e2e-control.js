@@ -1853,9 +1853,9 @@
       caseDef('ADMIN_FIXED_TICKET_CONTROLS', '固定票券：週期與效期草稿切換', 'Human E2E', adminFixedTicketControlsCase),
       caseDef('ADMIN_TICKET_LOCATION_CONTROLS', '票券 GPS 地點編輯器契約', 'Configuration', adminTicketLocationControlsCase),
       caseDef('ADMIN_TICKET_SERVICE_RULES', '票券服務項目與 any／all 編輯器', 'Human E2E', adminTicketServiceRulesCase),
-      caseDef('ADMIN_BOOKING_ACCESSIBLE_QUEUE', '無障礙：待確認／已完成／全部篩選', 'Human E2E', adminBookingAccessibleQueueCase),
-      caseDef('ADMIN_BOOKING_ACCESSIBLE_REVIEW', '無障礙：真人審核服務／票券／點數並完成結算', 'Booking / Accessible Review', adminBookingAccessibleReviewCase),
-      caseDef('ADMIN_BOOKING_ACCESSIBLE_IDEMPOTENCY', '無障礙：重送審核不得重複集點或核銷', 'Booking / Accessible Idempotency', adminBookingAccessibleIdempotencyCase),
+      caseDef('ADMIN_BOOKING_ACCESSIBLE_QUEUE', '快照：待確認／已完成／全部篩選', 'Human E2E', adminBookingAccessibleQueueCase),
+      caseDef('ADMIN_BOOKING_ACCESSIBLE_REVIEW', '快照：真人審核服務／票券／點數並完成結算', 'Booking / Accessible Review', adminBookingAccessibleReviewCase),
+      caseDef('ADMIN_BOOKING_ACCESSIBLE_IDEMPOTENCY', '快照：重送審核不得重複集點或核銷', 'Booking / Accessible Idempotency', adminBookingAccessibleIdempotencyCase),
       caseDef('ADMIN_BOOKING_HISTORY_TICKET_SOURCES', '管理端預約：票券來源卡片', 'Booking / History', adminBookingHistoryTicketSourcesCase),
       caseDef('ADMIN_BOOKING_REJECT', '預約：管理端不通過固定節點', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('REJECT', '不通過')),
       caseDef('ADMIN_BOOKING_CONFIRM', '預約：管理端確認預約固定節點', 'Booking / Paired Evidence', () => adminBookingPairedOperationEvidenceCase('CONFIRM', '確認預約')),
@@ -6978,7 +6978,7 @@
   async function adminBookingAccessibleReviewCase() {
     await openAdminBookingQueue('pending');
     const mode = await waitFor(() => document.getElementById('bookingAdminAccessibleMode'), 5000);
-    await adminHumanClick(mode, '無障礙審核模式');
+    await adminHumanClick(mode, '快照審核模式');
 
     const initial = await adminBookingReceiptRequest('admin.booking.receipt.list');
     const runStartedMs = new Date(state.runStartedAt || 0).getTime();
@@ -6990,7 +6990,7 @@
         && (!currentRunFloor || (Number.isFinite(createdAt) && createdAt >= currentRunFloor));
     });
     if (!pending) {
-      return fail('本輪測試會員沒有留下可供管理端審核的無障礙收據。', {
+      return fail('本輪測試會員沒有留下可供管理端審核的快照收據。', {
         currentRunPendingAccessibleReceipt:true
       }, {
         pendingCount:(initial?.accessibleRecords || []).filter((record) => record?.reviewStatus === 'pending').length
@@ -6999,7 +6999,7 @@
 
     const participant = participantForAccessibleRecord(pending);
     if (!participant) {
-      return fail('無障礙收據無法對應本輪測試會員。', {
+      return fail('快照收據無法對應本輪測試會員。', {
         ownedByCurrentTestParticipant:true
       }, { memberCode:String(pending.memberCode || '') });
     }
@@ -7007,7 +7007,7 @@
     const fixtureResult = await bookingUserQaFixtureRequest(participant, 'user.qa.fixture.prepare');
     const fixture = fixtureResult.data || {};
     if (!fixture.ticketId || !fixture.fixtureTag) {
-      return fail('無法建立無障礙審核專用集點卡票券 Fixture。', {
+      return fail('無法建立快照審核專用集點卡票券 Fixture。', {
         pointTicketFixture:true
       }, { fixtureReady:false });
     }
@@ -7031,32 +7031,32 @@
 
     const selector = '#accessibleAdminQueueList [data-receipt-id="' + CSS.escape(String(pending.receiptId || '')) + '"]';
     const card = await waitFor(() => document.querySelector(selector), 5000);
-    if (!card) throw new Error('管理端無障礙待確認清單找不到本輪收據。');
+    if (!card) throw new Error('管理端快照待確認清單找不到本輪收據。');
     await adminHumanClick(card.querySelector('.accessible-admin-review-button'), '開始審核');
 
     const modal = await waitFor(() => {
       const node = document.getElementById('accessibleAdminModal');
       return node && !node.classList.contains('hidden') && node.dataset.receiptId === String(pending.receiptId || '') ? node : null;
     }, 7000);
-    if (!modal) throw new Error('無障礙審核視窗未開啟。');
+    if (!modal) throw new Error('快照審核視窗未開啟。');
     if (!await waitFor(() => {
       const submit = document.getElementById('accessibleAdminSubmit');
       return submit && !submit.disabled && document.querySelectorAll('#accessibleAdminItems [data-service-check]').length ? submit : null;
     }, 10000)) {
-      throw new Error('無障礙審核服務選項尚未載入完成。');
+      throw new Error('快照審核服務選項尚未載入完成。');
     }
 
     const serviceRows = Array.from(document.querySelectorAll('#accessibleAdminItems .accessible-admin-item'));
     const rewardRow = serviceRows.find((row) => /每\s+\d+\s+分鐘集\s+1\s+點/.test(String(row.textContent || '')));
     if (!rewardRow) {
-      return fail('目前服務資料沒有可驗證自動集點的服務類型，無法宣告無障礙點數結算 E2E 完整。', {
+      return fail('目前服務資料沒有可驗證自動集點的服務類型，無法宣告快照點數結算 E2E 完整。', {
         rewardServiceAvailable:true
       }, { serviceRows:serviceRows.length });
     }
     const rewardMatch = String(rewardRow.textContent || '').match(/每\s+(\d+)\s+分鐘集\s+1\s+點/);
     const rewardMinutes = Math.max(1, Number(rewardMatch?.[1] || 0));
     if (!Number.isInteger(rewardMinutes) || rewardMinutes > 720) {
-      throw new Error('無障礙審核的自動集點分鐘規則超出可測試範圍。');
+      throw new Error('快照審核的自動集點分鐘規則超出可測試範圍。');
     }
     const serviceCheck = rewardRow.querySelector('[data-service-check]');
     await adminHumanClick(serviceCheck, '實際完成服務');
@@ -7067,7 +7067,7 @@
       timeZone:'Asia/Taipei', year:'numeric', month:'2-digit', day:'2-digit'
     }).format(new Date(Date.now() - 24 * 60 * 60 * 1000));
     if (!setField('accessibleAdminDate', yesterday) || !setField('accessibleAdminTime', '09:00')) {
-      throw new Error('無障礙審核日期或時間欄位未載入。');
+      throw new Error('快照審核日期或時間欄位未載入。');
     }
     await adminHumanPause(80, 180);
 
@@ -7078,7 +7078,7 @@
       return node && !node.disabled ? node : null;
     }, 7000);
     if (!ticket) {
-      return fail('無障礙審核專用集點卡票券沒有出現在可審核清單，或被錯誤禁用。', {
+      return fail('快照審核專用集點卡票券沒有出現在可審核清單，或被錯誤禁用。', {
         pointTicketSelectable:true
       }, { ticketId:String(fixture.ticketId || '') });
     }
@@ -7086,7 +7086,7 @@
     if (!ticket.checked) throw new Error('集點卡票券真人勾選後未保持選取。');
 
     const note = 'QA ACCESSIBLE REVIEW ' + qaCrudStamp();
-    await adminHumanTextInput(document.getElementById('accessibleAdminNote'), note, '無障礙審核備註');
+    await adminHumanTextInput(document.getElementById('accessibleAdminNote'), note, '快照審核備註');
 
     const registerPayload = {
       receiptId:String(pending.receiptId || ''),
@@ -7153,13 +7153,13 @@
     };
 
     return ok
-      ? pass('已像真人完成無障礙審核：收據、實際服務、集點卡票券、點數與完成狀態均由正式流程結算。', {
+      ? pass('已像真人完成快照審核：收據、實際服務、集點卡票券、點數與完成狀態均由正式流程結算。', {
           reviewStatus:'completed',
           rewardPointsAtLeast:1,
           ticketRedeemed:true,
           completedUi:true
         }, actual)
-      : fail('無障礙真人審核完成後，服務、票券、點數或 UI 終態至少一項不一致。', {
+      : fail('快照真人審核完成後，服務、票券、點數或 UI 終態至少一項不一致。', {
           reviewStatus:'completed',
           rewardPointsAtLeast:1,
           ticketRedeemed:true,
@@ -7187,7 +7187,7 @@
         }
       }
       state.accessibleReviewEvidence = null;
-      return fail('缺少前一個無障礙審核案例的完成證據，已嘗試清理其 QA Fixture，無法驗證重送冪等。', {
+      return fail('缺少前一個快照審核案例的完成證據，已嘗試清理其 QA Fixture，無法驗證重送冪等。', {
         completedAccessibleReviewEvidence:true,
         fixtureCleanup:true
       }, { evidenceReady:false, fixtureCleanup, cleanupError });
@@ -7227,12 +7227,12 @@
     const ok = actual.alreadyApplied && actual.sameBookingId && actual.settlementUnchanged && actual.fixtureCleanup;
     state.accessibleReviewEvidence = null;
     return ok
-      ? pass('同一張無障礙收據重送正式 register API 只回傳既有結算，不會重複服務時間、集點或票券核銷。', {
+      ? pass('同一張快照收據重送正式 register API 只回傳既有結算，不會重複服務時間、集點或票券核銷。', {
           alreadyApplied:true,
           settlementUnchanged:true,
           fixtureCleanup:true
         }, actual)
-      : fail('無障礙審核重送後發現重複結算風險，或測試 Fixture 未清理完成。', {
+      : fail('快照審核重送後發現重複結算風險，或測試 Fixture 未清理完成。', {
           alreadyApplied:true,
           settlementUnchanged:true,
           fixtureCleanup:true
@@ -7260,8 +7260,8 @@
     }
     const actual = { recordsArray:Array.isArray(data.accessibleRecords), checks };
     return actual.recordsArray && checks.every(item => item.selected && item.queueVisible)
-      ? pass('無障礙紀錄可讀取，三個狀態篩選可操作並還原。', {recordsArray:true,filters:3}, actual)
-      : fail('無障礙列表或狀態篩選異常。', {recordsArray:true,filters:3}, actual);
+      ? pass('快照紀錄可讀取，三個狀態篩選可操作並還原。', {recordsArray:true,filters:3}, actual)
+      : fail('快照列表或狀態篩選異常。', {recordsArray:true,filters:3}, actual);
   }
 
   async function adminBookingHistoryTicketSourcesCase() {

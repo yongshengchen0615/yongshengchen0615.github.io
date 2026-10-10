@@ -50,10 +50,11 @@ async function page(booking=false,url='https://example.test/member/#friend=BBBB0
 test('friends tab owns add-friend and invite-friend flows; reward UI is a separate tab',async()=>{
   const {dom,w,calls}=await page();
   try{
-    assert.equal(w.document.getElementById('openMemberReferral').textContent,'好友');
-    assert.equal(w.document.getElementById('memberReferralTabFriends').getAttribute('aria-selected'),'true');
+    assert.equal(w.document.getElementById('openMemberReferral').textContent,'邀請優惠');
+    assert.equal(w.document.getElementById('memberFriendsModal').classList.contains('hidden'),false);
+    assert.equal(w.document.getElementById('memberFriendsModal').querySelector('#memberReferralForm'),null);
     assert.equal(w.document.getElementById('memberReferralFriendsTabPanel').hidden,false);
-    assert.equal(w.document.getElementById('memberReferralRewardTabPanel').hidden,true);
+    assert.equal(w.document.getElementById('memberReferralModal').classList.contains('hidden'),true);
     assert.equal(w.document.getElementById('friendLookupCode').value,'BBBB000000');
     assert.equal(w.document.getElementById('memberReferralInviteCode').value,'');
     assert.equal(w.document.getElementById('friendAddForm').closest('#memberReferralFriendsTabPanel')!==null,true);
@@ -112,9 +113,9 @@ test('friend lookup failure is visible in the friends tab and never unlocks rewa
 test('reward link opens only the reward workflow and binding does not create a friend request',async()=>{
   const {dom,w,calls}=await page(false,'https://example.test/member/#reward=CCCC');
   try{
-    assert.equal(w.document.getElementById('memberReferralTabReward').getAttribute('aria-selected'),'true');
+    assert.equal(w.document.getElementById('memberReferralModal').classList.contains('hidden'),false);
     assert.equal(w.document.getElementById('memberReferralRewardTabPanel').hidden,false);
-    assert.equal(w.document.getElementById('memberReferralFriendsTabPanel').hidden,true);
+    assert.equal(w.document.getElementById('memberFriendsModal').classList.contains('hidden'),true);
     assert.equal(w.document.getElementById('memberReferralInviteCode').value,'CCCC');
     assert.equal(w.document.getElementById('friendLookupCode').value,'');
     assert.equal(w.document.getElementById('bindMemberReferral').disabled,false);
@@ -212,7 +213,7 @@ test('late account A friend response cannot repaint account B',async()=>{
 test('legacy invite link keeps referral semantics instead of becoming an add-friend action',async()=>{
   const {dom,w,calls}=await page(false,'https://example.test/member/#invite=BBBB000000');
   try{
-    assert.equal(w.document.getElementById('memberReferralTabReward').getAttribute('aria-selected'),'true');
+    assert.equal(w.document.getElementById('memberReferralModal').classList.contains('hidden'),false);
     assert.equal(w.document.getElementById('friendLookupCode').value,'');
     assert.equal(w.document.getElementById('memberReferralInviteCode').value,'#invite=BBBB000000');
     w.document.getElementById('memberReferralForm').dispatchEvent(new w.Event('submit',{cancelable:true}));
@@ -248,7 +249,7 @@ test('friend and reward links cannot cross workflows',async()=>{
     assert.match(w.document.getElementById('friendStatus').textContent,/^查找好友失敗：/);
     assert.equal(w.document.getElementById('confirmFriendRequest').hidden,true);
 
-    w.document.getElementById('memberReferralTabReward').click();
+    w.document.getElementById('openMemberReferral').click();
     const reward=w.document.getElementById('memberReferralInviteCode');
     reward.value='https://example.test/member/#friend=CCCC';
     reward.dispatchEvent(new w.Event('input',{bubbles:true}));

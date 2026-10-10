@@ -60,7 +60,7 @@ test('manual transfer double submit and uncertain replay after reopening conserv
  expect(await page.evaluate(()=>qaTransfer.calls.filter(c=>c.action==='points.transfer.create').map(c=>c.payload.requestId))).toEqual([first.requestId,first.requestId]);expect(await page.evaluate(()=>[qaTransfer.sender,qaTransfer.receiver])).toEqual([3,2]);
 });
 test('friend load failure and self recipient preserve balances and allow manual recovery',async({page})=>{
- await page.evaluate(()=>qaTransfer.friendError=true);await page.locator('#pointTransferChooseFriend').click();await expect(page.locator('#pointTransferFriendStatus')).toContainText('好友載入失敗');await page.locator('#pointTransferMemberCode').fill('AAAA');await page.locator('#pointTransferLookup').click();await expect(page.locator('#pointTransferMessage')).toContainText('不可轉贈給自己');await expect(page.locator('#pointTransferReceiver')).toBeHidden();expect(await page.evaluate(()=>[qaTransfer.sender,qaTransfer.receiver])).toEqual([5,0]);await receiver(page);await transfer(page);
+ await page.evaluate(()=>qaTransfer.friendError=true);await page.locator('#pointTransferChooseFriend').click();await expect(page.locator('#pointTransferFriendStatus')).toContainText('好友載入失敗');await page.locator('#pointTransferFriendCancel').click();await page.locator('#pointTransferMemberCode').fill('AAAA');await page.locator('#pointTransferLookup').click();await expect(page.locator('#pointTransferMessage')).toContainText('不可轉贈給自己');await expect(page.locator('#pointTransferReceiver')).toBeHidden();expect(await page.evaluate(()=>[qaTransfer.sender,qaTransfer.receiver])).toEqual([5,0]);await receiver(page);await transfer(page);
 });
 test('QR dialog closes on Escape and stops late camera without writing a transfer',async({page})=>{
  await page.evaluate(()=>{window.stopped=0;navigator.mediaDevices.getUserMedia=()=>new Promise(resolve=>window.releaseCamera=()=>resolve({getTracks:()=>[{stop:()=>stopped++}]}));});
@@ -70,4 +70,14 @@ test('production recipient runner does not debit and rejects a failed friend fet
  await page.locator('#pointTransferClose').click();await page.evaluate(()=>history.replaceState(null,'','/MemberWebsocket-dev/points/'));await page.evaluate(fs.readFileSync(path.join(root,'user-test-control.js'),'utf8').replace('  window.MemberUserTestControl =','  window.qaNodes={pointsTransferRecipientControlsCase};\n  window.MemberUserTestControl ='));
  const result=await page.evaluate(()=>qaNodes.pointsTransferRecipientControlsCase());expect(result.status,JSON.stringify(result)).toBe('passed');await expect(page.locator('#pointTransferModal')).toBeHidden();expect(await page.evaluate(()=>qaTransfer.calls.filter(c=>c.action==='points.transfer.create').length)).toBe(0);
  await page.evaluate(()=>qaTransfer.friendError=true);expect((await page.evaluate(()=>qaNodes.pointsTransferRecipientControlsCase())).status).toBe('failed');
+});
+
+test('own QR and friend picker are cancellable dialogs and reopening preserves the transfer form',async({page})=>{
+ await page.locator('#pointTransferAmount').fill('2');await page.locator('#pointTransferMemberCode').fill('BBBB');
+ await page.locator('#pointTransferShowOwnQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();
+ expect(await page.locator('#qrDisplayPanel canvas').evaluate(canvas=>{const c=canvas.getContext('2d');return FriendQRDecode(c.getImageData(0,0,canvas.width,canvas.height).data,canvas.width,canvas.height).data;})).toBe('AAAA');
+ await page.locator('.qr-scan-dialog-close').click();await expect(page.locator('#pointTransferShowOwnQr')).toBeFocused();
+ for(let i=0;i<2;i++){await page.locator('#pointTransferChooseFriend').click();await expect(page.locator('.qr-scan-dialog-overlay #pointTransferFriendPicker')).toBeVisible();await page.locator('#pointTransferFriendCancel').click();}
+ await expect(page.locator('#pointTransferAmount')).toHaveValue('2');await expect(page.locator('#pointTransferMemberCode')).toHaveValue('BBBB');
+ expect(await page.evaluate(()=>qaTransfer.calls.filter(c=>c.action==='points.transfer.create').length)).toBe(0);
 });

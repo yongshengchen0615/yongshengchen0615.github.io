@@ -29,10 +29,10 @@
     section.setAttribute('aria-labelledby','bookingAdminAccessibleMode');
     section.innerHTML = `
       <div class="accessible-admin-queue-heading">
-        <div><span class="accessible-admin-eyebrow">Accessible review</span><h3 id="accessibleAdminQueueTitle">無障礙審核</h3><p>待確認、已完成與歷史紀錄集中管理；完成後仍可回查收據、服務、票券與點數。</p></div>
+        <div><span class="accessible-admin-eyebrow">Accessible review</span><h3 id="accessibleAdminQueueTitle">快照審核</h3><p>待確認、已完成與歷史紀錄集中管理；完成後仍可回查收據、服務、票券與點數。</p></div>
         <span id="accessibleAdminQueueCount" class="accessible-admin-count-pill">0 筆待確認</span>
       </div>
-      <nav class="accessible-admin-history-tabs" role="tablist" aria-label="無障礙預約審核狀態">
+      <nav class="accessible-admin-history-tabs" role="tablist" aria-label="快照預約審核狀態">
         <button class="accessible-admin-history-tab active" type="button" role="tab" aria-selected="true" data-accessible-filter="pending">待確認 <b id="accessibleAdminPendingFilterCount">0</b></button>
         <button class="accessible-admin-history-tab" type="button" role="tab" aria-selected="false" data-accessible-filter="completed">已完成 <b id="accessibleAdminCompletedFilterCount">0</b></button>
         <button class="accessible-admin-history-tab" type="button" role="tab" aria-selected="false" data-accessible-filter="all">全部 <b id="accessibleAdminAllFilterCount">0</b></button>
@@ -154,9 +154,9 @@
     if (!filtered.length) {
       const empty = document.createElement('div'); empty.className = 'accessible-admin-empty';
       const strong = document.createElement('strong');
-      strong.textContent = state.filter === 'completed' ? '目前沒有已完成的無障礙審核紀錄'
-        : state.filter === 'all' ? '目前沒有無障礙預約紀錄'
-        : '目前沒有等待確認的無障礙收據';
+      strong.textContent = state.filter === 'completed' ? '目前沒有已完成的快照審核紀錄'
+        : state.filter === 'all' ? '目前沒有快照預約紀錄'
+        : '目前沒有等待確認的快照收據';
       const small = document.createElement('small');
       small.textContent = state.filter === 'pending'
         ? '會員上傳新收據後會自動出現在這裡。'
@@ -221,13 +221,13 @@
     modal.setAttribute('aria-labelledby','accessibleAdminRecordTitle');
     modal.innerHTML = `<div class="booking-admin-modal-card accessible-admin-card accessible-admin-record-modal-card">
       <div class="booking-admin-modal-heading accessible-admin-modal-heading">
-        <div><span class="accessible-admin-eyebrow">Review history</span><h2 id="accessibleAdminRecordTitle">無障礙審核紀錄</h2><p>此頁為唯讀紀錄，不會重新核銷票券或異動點數。</p></div>
+        <div><span class="accessible-admin-eyebrow">Review history</span><h2 id="accessibleAdminRecordTitle">快照審核紀錄</h2><p>此頁為唯讀紀錄，不會重新核銷票券或異動點數。</p></div>
         <button id="accessibleAdminRecordClose" class="booking-admin-modal-close" type="button" aria-label="關閉">×</button>
       </div>
       <div class="accessible-admin-record-detail">
         <aside class="accessible-admin-receipt-pane">
           <div class="accessible-admin-member-card"><span class="accessible-admin-eyebrow">Member</span><strong id="accessibleAdminRecordMember"></strong><small id="accessibleAdminRecordMeta"></small></div>
-          <div class="accessible-admin-receipt-frame"><div id="accessibleAdminRecordImageLoading" class="accessible-admin-image-loading">正在載入收據…</div><img id="accessibleAdminRecordImage" class="hidden" alt="無障礙審核收據快照"></div>
+          <div class="accessible-admin-receipt-frame"><div id="accessibleAdminRecordImageLoading" class="accessible-admin-image-loading">正在載入收據…</div><img id="accessibleAdminRecordImage" class="hidden" alt="快照審核收據快照"></div>
         </aside>
         <div class="accessible-admin-record-content">
           <div id="accessibleAdminRecordStats" class="accessible-admin-record-stats"></div>
@@ -308,7 +308,7 @@
     modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true'); modal.setAttribute('aria-labelledby','accessibleAdminTitle');
     modal.innerHTML = `<div class="booking-admin-modal-card accessible-admin-card">
       <div class="booking-admin-modal-heading accessible-admin-modal-heading">
-        <div><span class="accessible-admin-eyebrow">Receipt review</span><h2 id="accessibleAdminTitle">無障礙預約審核</h2><p>核對收據、服務、票券與點數後一次完成結算。</p></div>
+        <div><span class="accessible-admin-eyebrow">Receipt review</span><h2 id="accessibleAdminTitle">快照預約審核</h2><p>核對收據、服務、票券與點數後一次完成結算。</p></div>
         <button id="accessibleAdminClose" class="booking-admin-modal-close" type="button" aria-label="關閉">×</button>
       </div>
       <div class="accessible-admin-review-layout">

@@ -81,7 +81,7 @@ test('accessible review UI separates receipt, workflow and sticky actions', () =
   const admin = read('admin/booking-accessible-admin.js');
   const css = read('admin/booking-accessible-admin.css');
   const index = read('admin/index.html');
-  assert.match(admin, /無障礙預約審核/);
+  assert.match(admin, /快照預約審核/);
   assert.match(admin, /accessible-admin-review-layout/);
   assert.match(admin, /accessible-admin-receipt-pane/);
   assert.match(admin, /accessible-admin-step-heading/);

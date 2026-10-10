@@ -70,7 +70,7 @@
       <section class="booking-admin-stats" aria-label="預約概況">
         <div><span>預約項目</span><strong id="bookingAdminServiceCount">0</strong><small>目前可管理項目</small></div>
         <div><span>一般待確認</span><strong id="bookingAdminPendingCount">0</strong><small>會員正常預約流程</small></div>
-        <div><span>無障礙待審核</span><strong id="bookingAdminAccessiblePendingCount">0</strong><small>收據補登審核</small></div>
+        <div><span>快照待審核</span><strong id="bookingAdminAccessiblePendingCount">0</strong><small>收據補登審核</small></div>
         <div><span>已確認</span><strong id="bookingAdminConfirmedCount">0</strong><small>已確認的一般預約</small></div>
       </section>
 
@@ -153,6 +153,11 @@
                 </label>
               </section>
 
+              <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminSnapshotHeading">
+                <div class="booking-admin-settings-block-heading"><h4 id="bookingAdminSnapshotHeading">快照模式</h4></div>
+                <label class="booking-admin-toggle"><input id="bookingAdminSnapshotLocationRequired" type="checkbox"><span><strong>快照前必須取得定位</strong><small>僅快照模式適用；不限定服務距離，也不儲存精確座標。一般預約不受影響。</small></span></label>
+              </section>
+
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminReminderHeading">
                 <div class="booking-admin-settings-block-heading">
                   <div><span class="booking-admin-settings-eyebrow">營運通知</span><h4 id="bookingAdminReminderHeading">預約前一天提醒</h4></div>
@@ -184,14 +189,14 @@
 
         <section id="bookingAdminQueuePanel" class="booking-admin-card booking-admin-operations-panel hidden" role="tabpanel" aria-labelledby="bookingAdminQueueSubtab">
           <div class="booking-admin-section-heading booking-admin-operations-heading">
-            <div><p class="kicker">Booking operations</p><h3>預約處理</h3><p>一般預約與無障礙收據採不同審核流程，請先選擇要處理的工作類型。</p></div>
+            <div><p class="kicker">Booking operations</p><h3>預約處理</h3><p>一般預約與快照收據採不同審核流程，請先選擇要處理的工作類型。</p></div>
           </div>
           <nav class="booking-admin-queue-modes" role="tablist" aria-label="預約處理模式">
             <button id="bookingAdminStandardMode" class="booking-admin-queue-mode active" type="button" role="tab" aria-selected="true" aria-controls="bookingAdminStandardQueueView">
               <span><strong>一般預約</strong><small>確認、修改、完成服務</small></span><b id="bookingAdminStandardModeCount">0</b>
             </button>
             <button id="bookingAdminAccessibleMode" class="booking-admin-queue-mode" type="button" role="tab" aria-selected="false" aria-controls="accessibleAdminQueue">
-              <span><strong>無障礙審核</strong><small>核對收據、服務、票券與點數</small></span><b id="bookingAdminAccessibleModeCount">0</b>
+              <span><strong>快照審核</strong><small>核對收據、服務、票券與點數</small></span><b id="bookingAdminAccessibleModeCount">0</b>
             </button>
           </nav>
           <section id="bookingAdminStandardQueueView" class="booking-admin-queue-view" role="tabpanel" aria-labelledby="bookingAdminStandardMode">
@@ -240,7 +245,7 @@
 
   function cacheElements() {
     [
-      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminReminderEnabled','bookingAdminReminderTime','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
+      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminReminderEnabled','bookingAdminSnapshotLocationRequired','bookingAdminReminderTime','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminAccessiblePendingCount','bookingAdminConfirmedCount',
       'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminStandardMode','bookingAdminAccessibleMode','bookingAdminStandardModeCount','bookingAdminAccessibleModeCount','bookingAdminStandardQueueView','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
@@ -355,7 +360,7 @@
     const labels = [];
     if (unread) labels.push(`${unread} 筆未讀更新`);
     if (pending) labels.push(`${pending} 筆一般預約待確認`);
-    if (accessiblePending) labels.push(`${accessiblePending} 筆無障礙預約待審核`);
+    if (accessiblePending) labels.push(`${accessiblePending} 筆快照預約待審核`);
     els.bookingTab.setAttribute('aria-label', labels.length ? `預約，${labels.join('，')}` : '預約');
     els.bookingTab.title = labels.join('；');
   }
@@ -620,6 +625,7 @@
     els.bookingAdminStoreServiceMinutes.value = String(Number(settings.storeServiceMinutes || 10));
     els.bookingAdminNotice.value = String(settings.bookingNotice || '');
     els.bookingAdminReminderEnabled.checked = settings.reminderEnabled === true;
+    els.bookingAdminSnapshotLocationRequired.checked = settings.snapshotLocationRequired === true;
     els.bookingAdminReminderTime.value = String(settings.reminderTime || '18:00');
     renderHoursPreview();
   }
@@ -732,6 +738,7 @@
         storeServiceMinutes,
         bookingNotice,
         reminderEnabled: els.bookingAdminReminderEnabled.checked,
+        snapshotLocationRequired: els.bookingAdminSnapshotLocationRequired.checked,
         reminderTime,
         expectedUpdatedAt: state.booking.settings?.updatedAt || '',
       }, true);

@@ -143,6 +143,7 @@ function settingsClient(row: any, storeService?: any): Json {
     storeServiceMinutes: Number(storeService?.duration_minutes || 10),
     bookingNotice: String(row?.booking_notice || ""),
     reminderEnabled: row?.reminder_enabled === true,
+    snapshotLocationRequired: row?.snapshot_location_required === true,
     reminderTime: String(row?.reminder_time || "18:00:00").slice(0, 5),
     updatedAt: row?.updated_at || null,
   };
@@ -231,8 +232,10 @@ async function settingsSave(supabase: SupabaseClient, identity: Identity, body: 
   if (maxAdvanceDays > 0 && maxAdvanceDays < minAdvanceDays) throw new ApiError(400, "INVALID_ADVANCE_WINDOW", "最遠可預約天數不可小於需要提前的天數。" );
   if (!Number.isInteger(storeServiceMinutes) || storeServiceMinutes < 1 || storeServiceMinutes > 720) throw new ApiError(400, "INVALID_STORE_SERVICE_MINUTES", "店內服務分鐘必須介於 1–720 分鐘。" );
   if (bookingNotice.length > 2000) throw new ApiError(400, "INVALID_BOOKING_NOTICE", "預約說明不可超過 2,000 字。" );
+  if (body.snapshotLocationRequired !== undefined && typeof body.snapshotLocationRequired !== "boolean") throw new ApiError(400, "INVALID_SNAPSHOT_LOCATION_POLICY", "請選擇是否要求快照定位。");
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
-  const result = await supabase.rpc("save_booking_shared_settings_v4", {
+  const result = await supabase.rpc("save_booking_shared_settings_v5", {
+    p_snapshot_location_required: body.snapshotLocationRequired ?? null,
     p_work_start_time: `${workStartTime}:00`,
     p_work_end_time: `${workEndTime}:00`,
     p_slot_interval_minutes: slotIntervalMinutes,

@@ -103,6 +103,8 @@ function dbError(error:unknown):ApiError{
   if(raw?.code==="23P01") return new ApiError(409,"BOOKING_SLOT_TAKEN","此時間已有預約，請優先連結該會員已有預約，或核對服務日期與時間。");
   const message=String(raw?.message||"")+" "+String(raw?.details||"");
   const rules:Array<[string,number,string,string]>=[
+    ["SNAPSHOT_LOCATION_REQUIRED",409,"SNAPSHOT_LOCATION_REQUIRED","快照前須取得定位，請允許定位後重試。"],
+    ["SNAPSHOT_LOCATION_INVALID",409,"SNAPSHOT_LOCATION_INVALID","定位已失效或格式不正確，請重新定位後重試。"],
     ["ADMIN_REQUIRED",403,"ADMIN_REQUIRED","管理端帳號尚未授權。"],
     ["MEMBERSHIP_REQUIRED",403,"MEMBERSHIP_REQUIRED","會員目前無法使用此功能。"],
     ["INVALID_BOOKING_ITEMS",400,"INVALID_BOOKING_ITEMS","請選擇有效服務項目與分鐘數。"],
@@ -111,7 +113,7 @@ function dbError(error:unknown):ApiError{
     ["INVALID_BOOKING_SLOT",400,"INVALID_BOOKING_SLOT","請填寫有效的服務日期與開始時間。"],
     ["INVALID_BOOKING_BENEFITS",400,"INVALID_BOOKING_BENEFITS","預約票券資料格式不正確。"],
     ["BOOKING_BENEFIT_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一張票券目前不可使用，請重新整理後再審核。"],
-    ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券需要定位核銷，無法在無障礙補登流程使用。"],
+    ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券需要定位核銷，無法在快照補登流程使用。"],
     ["BOOKING_BENEFIT_SERVICE_REQUIRED",409,"BOOKING_BENEFIT_SERVICE_REQUIRED","其中一張票券不符合本次實際服務項目，請重新核對票券。"],
     ["POINT_TICKET_INSUFFICIENT_POINTS",409,"POINT_TICKET_INSUFFICIENT_POINTS","會員目前可用點數不足，請取消部分集點卡票券。"],
     ["EVENT_TICKET_DAILY_LIMIT_REACHED",409,"EVENT_TICKET_DAILY_LIMIT_REACHED","會員今日活動票券使用張數已達上限。"],
@@ -226,7 +228,9 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
     .eq("member_id",member.id).eq("submission_mode","accessible").in("status",["awaiting_review","bound","failed"])
     .order("updated_at",{ascending:false}).limit(10);
   if(submissions.error) throw new ApiError(500,"DATABASE_ERROR","收據登記狀態暫時無法讀取。");
-  return {bookings,submissions:(submissions.data||[]).map((r:any)=>({receiptId:r.receipt_id,bookingId:r.booking_id,
+  const settings = await supabase.from("booking_settings").select("snapshot_location_required").eq("id",1).single();
+  if(settings.error) throw new ApiError(503,"SNAPSHOT_POLICY_UNAVAILABLE","目前無法確認快照定位政策，請稍後重試。");
+  return {snapshotLocationRequired:settings.data.snapshot_location_required===true,bookings,submissions:(submissions.data||[]).map((r:any)=>({receiptId:r.receipt_id,bookingId:r.booking_id,
     status:r.status,createdAt:r.created_at,updatedAt:r.updated_at,
     dismissed:r.failure_reason==="admin-dismissed",
     settlement:r.booking_completion_settlements?.booking_completion_settlements||null}))};
@@ -242,8 +246,8 @@ async function prepare(supabase:SupabaseClient,identity:Identity,member:any,body
   if(!Number.isSafeInteger(size)||size<1||size>MAX_FILE_BYTES) throw new ApiError(413,"RECEIPT_FILE_TOO_LARGE","收據圖片不可超過 5 MB。");
 
   const objectPath=`${member.id}/${accessible?"accessible":bookingId}/${crypto.randomUUID()}.${extensionFor(mime)}`;
-  const result=await supabase.rpc(accessible?"prepare_accessible_receipt_request":"prepare_booking_receipt_request",{
-    ...(accessible?{}:{p_booking_id:bookingId}),p_member_id:member.id,p_request_id:requestId,
+  const result=await supabase.rpc(accessible?"prepare_snapshot_receipt_request":"prepare_booking_receipt_request",{
+    ...(accessible?{p_location:body.location??null}:{p_booking_id:bookingId}),p_member_id:member.id,p_request_id:requestId,
     p_object_path:objectPath,p_mime_type:mime,p_size_bytes:size
   });
   if(result.error) throw dbError(result.error);
@@ -277,9 +281,9 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
   if(String(receipt.member_id)!==String(member.id)) throw new ApiError(403,"RECEIPT_NOT_OWNED","不可操作其他會員的收據。");
   const accessible=receipt.submission_mode==="accessible";
   if(receipt.status==="bound"||receipt.status==="awaiting_review"){
-    const repeat=await supabase.rpc(accessible?"finalize_accessible_receipt_request":"finalize_booking_receipt_request",{
+    const repeat=await supabase.rpc(accessible?"finalize_snapshot_receipt_request":"finalize_booking_receipt_request",{
       p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,
-      ...(accessible?{}:{p_expected_booking_updated_at:expectedUpdatedAt}),p_actual_mime_type:receipt.declared_mime_type,
+      ...(accessible?{p_location:body.location??null}:{p_expected_booking_updated_at:expectedUpdatedAt}),p_actual_mime_type:receipt.declared_mime_type,
       p_actual_size_bytes:receipt.declared_size_bytes,p_sha256_hex:"0".repeat(64)
     });
     if(repeat.error) throw dbError(repeat.error);
@@ -312,9 +316,9 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
     throw new ApiError(400,"RECEIPT_SIZE_MISMATCH","收據圖片大小與上傳資料不一致。");
   }
   const hash=await fileSha256Hex(bytes);
-  const finalized=await supabase.rpc(accessible?"finalize_accessible_receipt_request":"finalize_booking_receipt_request",{
+  const finalized=await supabase.rpc(accessible?"finalize_snapshot_receipt_request":"finalize_booking_receipt_request",{
     p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,
-    ...(accessible?{}:{p_expected_booking_updated_at:expectedUpdatedAt}),p_actual_mime_type:declared,
+    ...(accessible?{p_location:body.location??null}:{p_expected_booking_updated_at:expectedUpdatedAt}),p_actual_mime_type:declared,
     p_actual_size_bytes:downloaded.data.size,p_sha256_hex:hash
   });
   if(finalized.error){
@@ -347,7 +351,7 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
     .in("status",["awaiting_review","bound","failed"])
     .order("updated_at",{ascending:false})
     .limit(200);
-  if(accessible.error) throw new ApiError(500,"DATABASE_ERROR","無障礙審核紀錄暫時無法讀取。");
+  if(accessible.error) throw new ApiError(500,"DATABASE_ERROR","快照審核紀錄暫時無法讀取。");
 
   const accessibleRecords=(accessible.data||[]).map((row:any)=>{
     const booking=Array.isArray(row.bookings)?row.bookings[0]||null:row.bookings||null;
@@ -433,7 +437,7 @@ async function adminUrl(supabase:SupabaseClient,body:Json):Promise<Json>{
       .in("status",["awaiting_review","bound"])
       .maybeSingle();
     if(receipt.error) throw new ApiError(500,"DATABASE_ERROR","收據快照暫時無法讀取。");
-    if(!receipt.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到可查看的無障礙收據快照。");
+    if(!receipt.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到可查看的快照收據快照。");
     const signed=await supabase.storage.from(BUCKET).createSignedUrl(receipt.data.object_path,120);
     if(signed.error||!signed.data?.signedUrl) throw new ApiError(503,"RECEIPT_VIEW_UNAVAILABLE","目前無法建立安全檢視連結。");
     return {
