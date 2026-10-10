@@ -317,6 +317,8 @@
   function closeEditorModal(key) {
     const entry = state.editorModals[key]; if (!entry) return;
     entry.modal.classList.add('hidden');
+    if (key === 'ticket') window.TicketLocationEditors?.template?.stopGPS?.();
+    if (key === 'eventTicket') window.TicketLocationEditors?.event?.stopGPS?.();
     if (entry.opener instanceof HTMLElement && document.contains(entry.opener)) entry.opener.focus();
     entry.opener = null;
   }
