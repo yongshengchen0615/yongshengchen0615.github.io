@@ -23,7 +23,7 @@ test('recycle errors separate cross-member links from residual QA assets', () =>
 });
 
 test('recycle residual count parses a bounded aggregate without returning raw SQL errors', () => {
-  const parserLine = api.split('\\n').find(line =>
+  const parserLine = api.split('\n').find(line =>
     line.includes('const remaining = /E2E_RECYCLE_QA_ARTIFACTS_REMAIN:'));
   assert.ok(parserLine, 'expected the actual production regex expression');
   const parser = vm.runInNewContext(parserLine.split(' = ')[1].split('.exec(reason)')[0]);
