@@ -82,6 +82,15 @@ function transport(s, action, p={}, slug='api',record=true) {
   if(action==='admin.pointcards.delete')return del('cards','cardId',p.cardId);
   if(action==='admin.pointcards.reorder'){s.cards=p.cardOrders.map(x=>({...s.cards.find(c=>c.cardId===x.cardId),sortOrder:x.sortOrder,updatedAt:stamp()}));return {cards:s.cards};}
   if(action==='admin.tickets.save')return {ticket:save('tickets','ticketTemplateId',p.ticket)};
+  if(action==='admin.tickets.delete'){
+    const row=s.tickets.find(t=>t.ticketTemplateId===p.ticketTemplateId);
+    if(!row)throw Object.assign(new Error('找不到指定的集點卡票券。'),{code:'TICKET_TEMPLATE_DELETE_NOT_FOUND'});
+    if(row.updatedAt!==p.expectedUpdatedAt)throw Object.assign(new Error('票券已被其他管理者更新，請重新整理。'),{code:'CONFLICT'});
+    if(s.cards.some(card=>(card.rewards||[]).some(reward=>reward.ticketTemplateId===p.ticketTemplateId)))
+      throw Object.assign(new Error('這張票券仍被集點卡兌換節點引用，請先從相關集點卡移除該節點後再刪除。'),{code:'TICKET_TEMPLATE_IN_USE'});
+    del('tickets','ticketTemplateId',p.ticketTemplateId);
+    return {deleted:true,ticketTemplateId:p.ticketTemplateId,preservedTicketCount:0};
+  }
   if(action==='admin.event-tickets.list')return bootstrap();
   if(action==='admin.event-tickets.save')return {eventTicket:save('eventTickets','eventTicketId',p.eventTicket)};
   if(action==='admin.event-tickets.delete')return del('eventTickets','eventTicketId',p.eventTicketId);
