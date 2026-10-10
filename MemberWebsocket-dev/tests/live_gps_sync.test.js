@@ -50,6 +50,20 @@ test('watchPosition updates live location without refreshing or storing history'
   assert.equal(watcher.latest(), null);
 });
 
+test('denied GPS permission clears the old watch so a later grant can retry', async () => {
+  const { watcher, cleared, fail, emit } = setup();
+  const denied = watcher.read();
+  fail({ code: 1 });
+  await assert.rejects(denied, /定位遭拒/);
+  assert.equal(watcher.active(), false);
+  assert.deepEqual(cleared, [0]);
+  const granted = watcher.read();
+  emit({ coords: { latitude: 25.034, longitude: 121.565, accuracy: 7 }, timestamp: Date.now() });
+  assert.equal((await granted).accuracy, 7);
+  watcher.stop();
+  assert.deepEqual(cleared, [0, 0]);
+});
+
 test('inaccurate fixes are visible but not accepted for ticket redemption', async () => {
   const { watcher, events, emit } = setup();
   const pending = watcher.read();
