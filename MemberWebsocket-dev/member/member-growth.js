@@ -133,6 +133,7 @@
   function ensureReferralUi() {
     const pass = document.getElementById('memberPass');
     if (!pass) return null;
+    const actions = document.getElementById('memberPassActions') || pass;
 
     let trigger = document.getElementById('openMemberReferral');
     if (!trigger) {
@@ -143,7 +144,7 @@
       trigger.setAttribute('aria-haspopup', 'dialog');
       trigger.setAttribute('aria-controls', 'memberReferralModal');
       trigger.textContent = '邀請優惠';
-      pass.append(trigger);
+      actions.append(trigger);
     }
 
     if (!document.getElementById('showMemberIdentityQr')) {
@@ -152,7 +153,7 @@
       identityQr.className = 'member-referral-trigger'; identityQr.textContent = '顯示會員 QR Code';
       identityQr.setAttribute('aria-haspopup', 'dialog');
       identityQr.addEventListener('click', () => window.QRDisplayDialog?.show({memberCode: state.profile?.memberCode, opener: identityQr}));
-      pass.append(identityQr);
+      actions.append(identityQr);
     }
 
     let modal = document.getElementById('memberReferralModal');
