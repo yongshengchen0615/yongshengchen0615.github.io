@@ -88,3 +88,22 @@ test('late GPS after cancellation cannot reopen camera or snapshot UI',async()=>
   assert.equal(f.cameras(),0);assert.equal(f.w.document.getElementById('bookingReceiptModal').classList.contains('hidden'),true);
  }finally{f.w.close();}
 });
+
+test('discarding a snapshot permits a replacement image with either positioning policy',async()=>{
+ for(const required of [false,true]){
+  const f=page(required);try{
+   Object.defineProperty(f.w.navigator,'geolocation',{value:{getCurrentPosition:ok=>ok({coords:{latitude:25,longitude:121,accuracy:10},timestamp:Date.now()})}});
+   await f.w.BookingReceipts.openAccessible();await tick();
+   const input=f.w.document.getElementById('bookingReceiptFile');
+   const choose=async()=>{
+    Object.defineProperty(input,'files',{configurable:true,value:[new f.w.File(['isolated image'],'receipt.png',{type:'image/png'})]});
+    input.dispatchEvent(new f.w.Event('change',{bubbles:true}));await tick();
+   };
+   await choose();assert.equal(f.w.document.getElementById('bookingReceiptSubmit').disabled,false);
+   f.w.document.getElementById('bookingReceiptDiscard').click();
+   assert.equal(f.w.document.getElementById('bookingReceiptSubmit').disabled,true);
+   await choose();assert.equal(f.w.document.getElementById('bookingReceiptSubmit').disabled,false,'Replacement remains selectable after discarding the first image');
+   assert.equal(f.calls.some(call=>call[3]==='user.booking.receipt.prepare'),false);
+  }finally{f.w.close();}
+ }
+});

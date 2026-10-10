@@ -114,7 +114,7 @@
     state.previewUrl = '';
   }
 
-  function resetModalState() {
+  function resetModalState({ preserveSnapshotAuthorization = false } = {}) {
     state.photoGeneration += 1;
     cleanupPreview();
     state.selectedFile = null;
@@ -122,9 +122,11 @@
     state.prepared = null;
     state.uploaded = false;
     state.cameraReady = false;
-    state.snapshotReady = false;
     state.snapshotAuthorizing = false;
-    state.location = null;
+    if (!preserveSnapshotAuthorization) {
+      state.snapshotReady = false;
+      state.location = null;
+    }
     const fileInput = document.getElementById('bookingReceiptFile');
     if (fileInput) fileInput.disabled = false;
     const wrap = document.getElementById('bookingReceiptPreviewWrap');
@@ -412,7 +414,7 @@
   function discardPhoto() {
     if (state.busy) return;
     stopCamera();
-    resetModalState();
+    resetModalState({ preserveSnapshotAuthorization: true });
     const capture = document.getElementById('bookingReceiptCapture');
     if (capture) { capture.disabled = false; capture.textContent = '重新開啟相機'; }
     setMessage('已移除尚未送出的收據圖片；預約與已選票券不受影響。');
