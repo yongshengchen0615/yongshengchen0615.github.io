@@ -3,7 +3,7 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "473ba5b820fc3943661003e2b7844590435964ad14fd9992066211e4a7721620",
+    "admin/index.html": "249d108645d6837de6146766aa91eb38f96668b2391d6de05b3170e569421323",
     "admin/app.js": "ae1dfa557dadb3b95916ddc1e6b3573967586b7e87d0ac4e2bffdfb88f8c51d2",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
@@ -15,8 +15,8 @@
     "admin/pointcard-redemption-limit.js": "a391a001602667e48e63ee5cb7353ac44596f4a39de36ac03b0084b88f0e2d2f",
     "admin/event-ticket-redemption-limit.js": "6391ce8e930503aae1291ce767da938204219f1b63f285b7425c19b1095de7d0",
     "admin/integration-hub.js": "696f38801b5e8755e706c3e0153aa023a1d47f01a3f68456dd8e5a7fec868b33",
-    "admin/booking-panel.js": "6537fe1d9f7b3b2429400f3f902281529e697dc9b0feb61a89f346b0b18130b3",
-    "admin/booking-panel-core.js": "2757c022fb30ad95b99f2eb694587ec8533cfdccca9acec60d7d6869a28e2a8a",
+    "admin/booking-panel.js": "7a6103a3541c015a6149060e5252b61ee9e3a19b43ceef806446bae0de1cf998",
+    "admin/booking-panel-core.js": "c74d757db5aff0e666d08082eb432a714754132ed1bd1d0159b7bf47fbaf9c56",
     "admin/booking-resources.js": "421534c24977f3e9756a150990dd7accb109fc7074a4986840ad22282ecb8542",
     "admin/booking-always-open.js": "9cb236902a7f3f36cf3fe4c3f13fbbac622f000c72d36ec34f7d4dde08e6e54a",
     "admin/booking-cancellation-sync.js": "a8367bb6565d054af976ec1ffdf950874a4e8f14a3917d2e036bc1744016db19",
@@ -342,7 +342,8 @@
       "module": "booking",
       "name": "跨夜時段、提前日數、公用時間、提醒與說明",
       "cases": [
-        "BOOKING_SHARED_SETTINGS"
+        "BOOKING_SHARED_SETTINGS",
+        "TICKET_BOOKING_POLICY_ENTRY"
       ]
     },
     {

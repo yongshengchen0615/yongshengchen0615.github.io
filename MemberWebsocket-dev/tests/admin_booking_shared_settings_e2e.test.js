@@ -90,3 +90,25 @@ test('admin entrypoint cache-busts the shared-settings E2E controller', () => {
   const html = read('admin/index.html');
   assert.match(html, /\.\/e2e-control\.js\?v=qa-e2e-\d{8}-\d+/);
 });
+
+
+test('global ticket booking requirement is discoverable in both ticket management views', () => {
+  const html = read('admin/index.html');
+  const core = read('admin/booking-panel-core.js');
+  const loader = read('admin/booking-panel.js');
+  const api = read('supabase/functions/booking-admin-api/index.ts');
+  assert.equal((html.match(/data-open-ticket-booking-policy/g) || []).length, 2);
+  assert.match(html, /票券庫[\s\S]*?data-open-ticket-booking-policy/);
+  assert.match(html, /活動票券[\s\S]*?data-open-ticket-booking-policy/);
+  assert.match(core, /id="bookingAdminTicketPolicyHeading">票券使用規則/);
+  assert.match(core, /id="bookingAdminTicketBookingRequired" type="checkbox"/);
+  assert.ok(core.indexOf('id="bookingAdminTicketPolicyHeading"') < core.indexOf('id="bookingAdminSnapshotHeading"'));
+  assert.match(core, /document\.addEventListener\('click', handleTicketBookingPolicyNavigation\)/);
+  assert.match(core, /function handleTicketBookingPolicyNavigation[\s\S]*?activateBookingPanel\(\);[\s\S]*?setSubtab\('settings'\)/);
+  assert.match(core, /ticketBookingRequired: els\.bookingAdminTicketBookingRequired\.checked/);
+  assert.match(core, /els\.bookingAdminTicketBookingRequired\.checked = settings\.ticketBookingRequired !== false/);
+  assert.match(api, /typeof body\.ticketBookingRequired !== "boolean"/);
+  assert.match(api, /p_ticket_booking_required: body\.ticketBookingRequired \?\? null/);
+  assert.match(loader, /booking-panel-core\.js', '.*policy-entry-20261010-1-controls-20261010-2'/);
+  assert.match(html, /booking-panel\.js\?v=[^"]*policy-entry-20261010-1-controls-20261010-2/);
+});

@@ -153,10 +153,13 @@
                 </label>
               </section>
 
+              <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminTicketPolicyHeading">
+                <div class="booking-admin-settings-block-heading"><div><span class="booking-admin-settings-eyebrow">全域票券政策</span><h4 id="bookingAdminTicketPolicyHeading">票券使用規則</h4></div><span class="booking-admin-settings-badge">集點卡與活動票券共用</span></div>
+                <label class="booking-admin-toggle"><input id="bookingAdminTicketBookingRequired" type="checkbox" checked><span><strong>使用票券必須有有效預約</strong><small>適用集點卡與活動票券，也適用快照登記。關閉後仍驗證票券資格與定位；有限制服務項目的票券，直接使用時仍須選擇符合項目的預約。</small></span></label>
+              </section>
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminSnapshotHeading">
                 <div class="booking-admin-settings-block-heading"><h4 id="bookingAdminSnapshotHeading">快照模式</h4></div>
                 <label class="booking-admin-toggle"><input id="bookingAdminSnapshotLocationRequired" type="checkbox"><span><strong>快照前必須取得定位</strong><small>僅快照模式適用；不限定服務距離，也不儲存精確座標。一般預約不受影響。</small></span></label>
-                <label class="booking-admin-toggle"><input id="bookingAdminTicketBookingRequired" type="checkbox" checked><span><strong>使用票券必須有有效預約</strong><small>適用集點卡與活動票券、快照登記。關閉後仍驗證票券資格與定位；有限制服務項目的票券，直接使用時仍須選擇符合項目的預約。</small></span></label>
               </section>
 
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminReminderHeading">
@@ -183,7 +186,7 @@
             <div id="bookingAdminSettingsMessage" class="form-message hidden" role="status" aria-live="polite"></div>
             <div class="booking-admin-settings-actions">
               <p><strong>儲存後立即套用</strong><span>這些設定會套用到所有預約項目，不需逐項調整。</span></p>
-              <button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存預約設定</button>
+              <button id="bookingAdminSaveSettingsButton" class="button button-dark" type="submit">儲存預約與票券設定</button>
             </div>
           </form>
         </section>
@@ -263,6 +266,7 @@
     els.bookingAdminServicesSubtab.addEventListener('click', () => setSubtab('services'));
     els.bookingAdminSettingsSubtab.addEventListener('click', () => setSubtab('settings'));
     els.bookingAdminQueueSubtab.addEventListener('click', () => setSubtab('queue'));
+    document.addEventListener('click', handleTicketBookingPolicyNavigation);
     els.bookingAdminStandardMode.addEventListener('click', () => setQueueMode('standard'));
     els.bookingAdminAccessibleMode.addEventListener('click', () => setQueueMode('accessible'));
     els.bookingAdminNewServiceButton.addEventListener('click', () => openServiceModal(null));
@@ -278,6 +282,17 @@
     window.addEventListener('member-admin:booking-snapshot-request', handleOperationalSnapshotRequest);
     window.addEventListener('member-admin:booking-focus', handleOperationalBookingFocus);
     window.addEventListener('admin:accessible-receipts-updated', handleAccessibleReceiptsUpdated);
+  }
+
+  function handleTicketBookingPolicyNavigation(event) {
+    const shortcut = event.target instanceof Element
+      ? event.target.closest('[data-open-ticket-booking-policy]')
+      : null;
+    if (!shortcut) return;
+    activateBookingPanel();
+    setSubtab('settings');
+    els.bookingAdminTicketBookingRequired.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    els.bookingAdminTicketBookingRequired.focus({ preventScroll: true });
   }
 
   function setQueueMode(mode) {
@@ -746,7 +761,7 @@
         expectedUpdatedAt: state.booking.settings?.updatedAt || '',
       }, true);
       state.booking.settings = result.settings || state.booking.settings;
-      renderSettings(); showMessage(els.bookingAdminSettingsMessage, '預約共用設定已儲存。', 'success');
+      renderSettings(); showMessage(els.bookingAdminSettingsMessage, '預約與票券共用設定已儲存。', 'success');
     } catch (error) { showMessage(els.bookingAdminSettingsMessage, error?.message || '儲存失敗。', 'error'); }
     finally { state.busy = false; }
   }
