@@ -168,7 +168,10 @@ for(const [width,theme] of [[320,'light'],[390,'dark'],[1280,'light']])test('mem
         const r=button.getBoundingClientRect();
         return r.width>=70 && r.height>=44 && r.left>=area.left-1 && r.right<=area.right+1;
       }),
-      overflows:pass.scrollWidth>pass.clientWidth+1,
+      // Card ornament pseudo-elements intentionally extend outside its clipped box.
+      // Test visible document overflow instead of scrollWidth of the decorative card.
+      overflows:document.documentElement.scrollWidth>window.innerWidth+1,
+      clipsOrnaments:getComputedStyle(pass).overflowX==='hidden',
       qrFirst:qr.top<=friend.top+1 && qr.top<=referral.top+1,
       qrFullRow:qr.bottom<=friend.top+2,
       sideBySide:Math.abs(friend.top-referral.top)<2,
@@ -177,6 +180,7 @@ for(const [width,theme] of [[320,'light'],[390,'dark'],[1280,'light']])test('mem
   expect(layout.layout).toBe('grid');
   expect(layout.fits).toBe(true);
   expect(layout.overflows).toBe(false);
+  expect(layout.clipsOrnaments).toBe(true);
   expect(layout.qrFirst).toBe(true);
   expect(layout.sideBySide).toBe(true);
   if(width<=420)expect(layout.qrFullRow).toBe(true);
