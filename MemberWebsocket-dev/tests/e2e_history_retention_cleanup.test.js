@@ -56,3 +56,16 @@ test('runtime QA cleanup uses one provenance definition for qa, qa-ui, qa-state'
   assert.match(migration, /v_remaining <> 0/);
   assert.match(migration, /revoke all on function public\.admin_recycle_e2e_runtime\(uuid, text\)/i);
 });
+
+test('pre-run recycle releases QA-owned primary technician dependency before cleanup', () => {
+  const runtime = file('supabase/migrations/20261010031500_restore_primary_technician_before_e2e_recycle.sql');
+  assert.match(runtime, /v_system_primary_technician_id uuid/);
+  assert.match(runtime, /booking_settings bs[\s\S]*is_qa_test_provenance\(t\.created_by\)/);
+  assert.match(runtime, /created_by\)\s+values \('系統主要技師', true, 0, 'system'\)/);
+  const restore = runtime.indexOf("updated_by = 'qa:e2e:recycle'");
+  const cleanup = runtime.indexOf("for v_pass in 1..4 loop");
+  assert.ok(restore > 0 && cleanup > restore, 'primary technician must be restored before QA cleanup');
+  assert.match(runtime, /E2E_RECYCLE_QA_ARTIFACTS_REMAIN/);
+  assert.match(runtime, /TEST_DATA_CROSS_BOUNDARY_POINT_TRANSFER/);
+  assert.match(runtime, /TEST_DATA_CROSS_BOUNDARY_REFERRAL/);
+});
