@@ -103,6 +103,8 @@ test('POINT_TEMPLATE_DELETE — referenced template is blocked and unreferenced 
   await click(p,'deleteTicketButton');
   await expect(p.locator('#ticketFormMessage')).toContainText('仍被集點卡兌換節點引用');
   expect(info.fixture.tickets.some(t=>t.ticketTemplateId==='ticket-1')).toBe(true);
+  await p.locator('#ticketEditorModal .editor-modal-close').click();
+  await expect(p.locator('#ticketEditorModal')).toBeHidden();
   await click(p,'newTicketButton');
   await expect(p.locator('#deleteTicketButton')).toBeHidden();
   await fill(p,'ticketTitle','QA deletable template');await fill(p,'ticketDescription','QA description');
