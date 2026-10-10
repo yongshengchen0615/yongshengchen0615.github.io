@@ -142,6 +142,18 @@ test('friend and reward share links are purpose-specific and cannot silently cro
     assert.match(copied,/#friend=AAAA$/);
     await w.MemberReferral.copyLink();
     assert.match(copied,/#reward=AAAA$/);
+    delete w.navigator.clipboard;
+    w.document.execCommand=command=>{
+      const field=w.document.querySelector('textarea.friend-copy-buffer');
+      assert.equal(command,'copy');
+      assert.ok(field?.closest('#memberFriendsModal'));
+      assert.equal(field.closest('.hidden'),null,'Copy fallback must remain in the visible friends dialog');
+      copied=field.value;
+      return true;
+    };
+    await w.MemberFriends.copyInvitationLink();
+    assert.match(copied,/#friend=AAAA$/);
+    assert.match(w.document.getElementById('friendStatus').textContent,/已複製/);
     assert.equal(calls.some(c=>c.action==='member.friend.request'||c.action==='member.referral.bind'),false);
   }finally{dom.window.close();}
 });

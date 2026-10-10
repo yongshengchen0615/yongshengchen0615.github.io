@@ -302,7 +302,7 @@
       const field = document.createElement('textarea');
       field.value = url;
       field.className = 'friend-copy-buffer';
-      el('memberReferralModal')?.append(field);
+      el('memberFriendsModal')?.append(field);
       field.select();
       let copied = false;
       try { copied = document.execCommand?.('copy') === true; } catch (_) { /* report below */ }

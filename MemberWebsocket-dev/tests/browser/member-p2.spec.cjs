@@ -39,7 +39,7 @@ for(const surface of ['booking','event'])for(const [width,theme] of [[320,'light
 test('friend link opens the friends tab; add-friend and reward remain separate',async({page},info)=>{
  await page.goto(base+'/member/#friend=BBBB000000');await expect(page.locator('#memberFriendsModal')).toBeVisible();if(await page.locator('#memberTourDismiss').isVisible())await page.locator('#memberTourDismiss').click();
  await expect(page.locator('#memberFriendsModal')).toBeVisible();await expect(page.locator('#memberReferralFriendsTabPanel')).toBeVisible();await expect(page.locator('#memberReferralRewardTabPanel')).toBeHidden();
- await expect(page.locator('#friendQr')).toBeHidden();await page.locator('#showFriendQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();expect(await page.locator('#qrDisplayPanel canvas').evaluate(c=>c.width)).toBe(256);await page.locator('.qr-scan-dialog-close').click();await expect(page.locator('#friendLookupCode')).toHaveValue('BBBB000000');await expect(page.locator('#memberReferralInviteCode')).toHaveValue('');await expect(page.locator('#bindMemberReferral')).toBeDisabled();
+ await expect(page.locator('#friendQr')).toBeHidden();await page.locator('#showFriendQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();expect(await page.locator('#qrDisplayPanel canvas').evaluate(c=>c.width)).toBe(256);await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await expect(page.locator('#friendLookupCode')).toHaveValue('BBBB000000');await expect(page.locator('#memberReferralInviteCode')).toHaveValue('');await expect(page.locator('#bindMemberReferral')).toBeDisabled();
  expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
  await page.locator('#lookupFriend').click();await expect(page.locator('#friendStatus')).toContainText('查找好友成功：陳○ · CCCC');await expect(page.locator('#confirmFriendRequest')).toBeVisible();await expect(page.locator('#bindMemberReferral')).toBeDisabled();
  await page.locator('#confirmFriendRequest').click();await expect.poll(()=>page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(1);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind').length)).toBe(0);
@@ -104,7 +104,7 @@ test('camera denial and late permission grant after closing leave manual friend 
  await page.evaluate(()=>navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('denied','NotAllowedError');});
  await page.locator('#scanFriendQr').click();await expect(page.locator('#friendStatus')).toContainText('相機權限未開啟');await page.locator('#stopFriendQr').click();
  await page.evaluate(()=>{window.lateCameraStopped=0;navigator.mediaDevices.getUserMedia=()=>new Promise(resolve=>window.releaseQrCamera=()=>resolve({getTracks:()=>[{stop:()=>lateCameraStopped++}]}));});
- await page.locator('#scanFriendQr').click();await page.locator('.qr-scan-dialog-close').click();await page.locator('#closeMemberFriends').click();await page.evaluate(()=>releaseQrCamera());await expect.poll(()=>page.evaluate(()=>lateCameraStopped)).toBe(1);
+ await page.locator('#scanFriendQr').click();await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await page.locator('#closeMemberFriends').click();await page.evaluate(()=>releaseQrCamera());await expect.poll(()=>page.evaluate(()=>lateCameraStopped)).toBe(1);
  await page.locator('#openMemberFriends').click();await page.locator('#friendLookupCode').fill('BBBB000000');await page.locator('#lookupFriend').click();await expect(page.locator('#confirmFriendRequest')).toBeVisible();
  expect(await page.evaluate(()=>p2Calls.filter(c=>/request|referral/.test(c.action)))).toHaveLength(0);
 });
@@ -136,11 +136,11 @@ test('member, friend and reward QR buttons display distinct payloads in closable
  await openFriends(page);await page.locator('#closeMemberFriends').click();
  const decode=()=>page.locator('#qrDisplayPanel canvas').evaluate(canvas=>{const c=canvas.getContext('2d');return FriendQRDecode(c.getImageData(0,0,canvas.width,canvas.height).data,canvas.width,canvas.height).data;});
  await page.locator('#showMemberIdentityQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();expect(await decode()).toBe('AAAA');
- await page.locator('.qr-scan-dialog-close').click();await expect(page.locator('#showMemberIdentityQr')).toBeFocused();
+ await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await expect(page.locator('#showMemberIdentityQr')).toBeFocused();
  await page.locator('#openMemberFriends').click();await expect(page.locator('#memberFriendsModal #memberReferralForm')).toHaveCount(0);
  await page.locator('#showFriendQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();expect(await decode()).toBe(base+'/member/#friend=AAAA');
  await page.keyboard.press('Escape');await expect(page.locator('#showFriendQr')).toBeFocused();await page.locator('#closeMemberFriends').click();
  await page.locator('#openMemberReferral').click();await page.locator('#showMemberReferralQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();expect(await decode()).toBe(base+'/member/#reward=AAAA');
- await page.locator('.qr-scan-dialog-close').click();await page.locator('#showMemberReferralQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();await page.keyboard.press('Escape');
+ await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await page.locator('#showMemberReferralQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();await page.keyboard.press('Escape');
  expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
 });
