@@ -75,7 +75,7 @@ test('inaccurate fixes are visible but not accepted for ticket redemption', asyn
   watcher.stop();
 });
 
-test('geo watchers and name confirmation are wired to both member ticket surfaces', () => {
+test('admin location ranges are wired to both member ticket surfaces', () => {
   const event = read('event/app.js');
   const points = read('points/pointcard-ticket-overview.js');
   const admin = read('admin/coupon-location-editor.js');
@@ -84,8 +84,12 @@ test('geo watchers and name confirmation are wired to both member ticket surface
   for (const file of ['event/index.html', 'points/index.html', 'admin/index.html']) {
     assert.match(read(file), /ticket-live-location\.js/);
   }
-  assert.match(event, /confirmLiveLocationName/);
-  assert.match(points, /confirmLiveLocationName/);
+  assert.match(event, /TicketLiveLocation\.evaluate/);
+  assert.match(points, /TicketLiveLocation\.evaluate/);
+  assert.doesNotMatch(event, /TicketLiveLocation\.placeName/);
+  assert.doesNotMatch(points, /TicketLiveLocation\.placeName/);
+  assert.match(event, /可使用地點/);
+  assert.match(points, /可使用地點/);
   assert.match(admin, /function stopGPS/);
   assert.match(admin, /TicketLiveLocation\.placeName/);
   assert.match(realtime, /periodic-reconcile/);
@@ -127,4 +131,34 @@ test('member auto-refresh survives an unavailable Realtime SDK without reloading
   assert.equal(calls, 1);
   unsubscribe();
   assert.equal(cleared, 42);
+});
+
+
+test('live GPS compares against admin names and radius, not reverse-geocoded device place names', () => {
+  const context = { window: {}, Date, Math, Number, String, Object, Map, Set, Promise };
+  vm.runInNewContext(read('ticket-live-location.js'), context);
+  const geo = context.window.TicketLiveLocation;
+  const locations = [{ name: '管理端指定門市', latitude: 25.033, longitude: 121.5654, radiusMeters: 100 }];
+  const position = { latitude: 25.033, longitude: 121.5654, accuracy: 15, observedAt: new Date().toISOString() };
+  assert.equal(geo.evaluate(position, locations).allowed, true);
+  assert.equal(geo.evaluate(position, locations).matched.name, '管理端指定門市');
+  assert.equal(geo.evaluate({ ...position, latitude: 25.035 }, locations).reason, 'outside');
+  assert.equal(geo.evaluate({ ...position, accuracy: 120 }, locations).reason, 'waiting');
+  assert.equal(geo.evaluate(position, []).reason, 'missing');
+  assert.equal(geo.evaluate(position, [{ ...locations[0], radiusMeters: 0 }]).reason, 'missing');
+  assert.match(geo.allowedLocationLabel(locations), /管理端指定門市/);
+});
+
+test('issued tickets receive updated geofences and member APIs expose their current rules', () => {
+  const api = read('supabase/functions/api/index.ts');
+  const pointMap = api.slice(api.indexOf('function pointTicketClient'), api.indexOf('async function pointBootstrap'));
+  const eventMap = api.slice(api.indexOf('function eventTicketClient'), api.indexOf('function claimClient'));
+  assert.match(pointMap, /redemptionLocations/);
+  assert.match(eventMap, /redemptionLocations/);
+  const migration = read('supabase/migrations/20261010233000_realtime_ticket_redemption_location_authority.sql');
+  assert.match(migration, /requires_location=t\.requires_location/);
+  assert.match(migration, /redemption_locations=case when t\.requires_location/);
+  assert.match(migration, /after update of[\s\S]*?requires_location, redemption_locations/);
+  assert.match(migration, /pt\.status='available'/);
+  assert.match(migration, /fixed_ticket_templates_sync_location/);
 });
