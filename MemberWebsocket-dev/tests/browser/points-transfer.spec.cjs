@@ -77,6 +77,7 @@ test('own QR and friend picker are cancellable dialogs and reopening preserves t
  await page.locator('#pointTransferShowOwnQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();
  expect(await page.locator('#qrDisplayPanel canvas').evaluate(canvas=>{const c=canvas.getContext('2d');return FriendQRDecode(c.getImageData(0,0,canvas.width,canvas.height).data,canvas.width,canvas.height).data;})).toBe('AAAA');
  await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await expect(page.locator('#pointTransferShowOwnQr')).toBeFocused();
+ await expect(page.locator('#qrDisplayPanel')).toBeHidden();
  for(let i=0;i<2;i++){await page.locator('#pointTransferChooseFriend').click();await expect(page.locator('.qr-scan-dialog-overlay #pointTransferFriendPicker')).toBeVisible();await page.locator('#pointTransferFriendCancel').click();}
  await expect(page.locator('#pointTransferAmount')).toHaveValue('2');await expect(page.locator('#pointTransferMemberCode')).toHaveValue('BBBB');
  expect(await page.evaluate(()=>qaTransfer.calls.filter(c=>c.action==='points.transfer.create').length)).toBe(0);

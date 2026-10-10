@@ -8,6 +8,7 @@ const tick=()=>new Promise(r=>setTimeout(r,10));
 function page(){
  const dom=new JSDOM('<button id="open">掃描</button><section id="panel" hidden><video></video></section>',{url:'https://example.test/MemberWebsocket-dev/points/',runScripts:'outside-only',pretendToBeVisual:true});
  const w=dom.window;
+ const style=w.document.createElement('style');style.textContent=read('qr-scan-dialog.css');w.document.head.append(style);
  w.HTMLElement.prototype.getClientRects=()=>[{}];
  w.eval(read('qr-scan-dialog.js'));
  return {dom,w,panel:w.document.getElementById('panel'),opener:w.document.getElementById('open')};
@@ -41,6 +42,7 @@ test('QR display is lazy, purpose-specific, cancels stale rendering and reports 
    await tick();assert.equal(f.w.document.querySelector('#qrDisplayPanel canvas').hidden,true);
    complete();await tick();assert.equal(f.w.document.querySelector('#qrDisplayPanel canvas').hidden,false);
    f.w.document.querySelector('.qr-scan-dialog-close').click();assert.equal(f.w.QRScanDialog.isOpen(),false);
+   assert.equal(f.w.getComputedStyle(f.w.document.getElementById('qrDisplayPanel')).display,'none','Closing must hide the restored display panel');
   }
   assert.deepEqual(values,['AAAA','https://example.test/MemberWebsocket-dev/member/#friend=AAAA','https://example.test/MemberWebsocket-dev/member/#reward=AAAA']);
   f.w.QRDisplayDialog.show({memberCode:'AAAA'});await tick();f.w.QRDisplayDialog.close();complete();await tick();
