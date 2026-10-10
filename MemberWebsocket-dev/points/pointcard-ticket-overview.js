@@ -710,8 +710,10 @@
           cancel.hidden = false;
           return;
         }
+        // Renew the snapshot after confirmation; do not send a stale coordinate.
+        location = await currentRedemptionLocation();
         confirm.textContent = '使用中…';
-        message.textContent = 'GPS 已取得，正在確認使用地點並核銷票券…';
+        message.textContent = 'GPS 已更新，正在確認使用地點並核銷票券…';
       }
       const usageKey = bookingId + ':' + tickets.map(ticket => ticket.ticketId).sort().join(',');
       if (state.usageAttempt?.key !== usageKey) state.usageAttempt = { key: usageKey, requestId: newRequestId() };
