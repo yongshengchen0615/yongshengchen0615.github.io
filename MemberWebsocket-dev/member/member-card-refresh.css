@@ -81,7 +81,10 @@ html[data-theme] #memberView .member-pass {
   align-items: center;
   justify-content: center;
   min-width: 0;
+  width: 100%;
   min-height: 46px;
+  justify-self: stretch;
+  align-self: stretch;
   margin: 0;
   padding: 10px 12px;
   border: 1px solid rgba(255,255,255,.34);
