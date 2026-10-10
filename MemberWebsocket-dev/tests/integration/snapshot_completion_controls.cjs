@@ -67,11 +67,10 @@ test('ticket policy, snapshot intent/review and append-only order corrections us
    await assert.rejects(prepare('QA-SNAPSHOT-REQUEST',[]),/REQUEST_ID_CONFLICT/);
    await assert.rejects(finalize(receipt,other),/RECEIPT_NOT_OWNED/);
    assert.equal(await save(true),true);
-   assert.equal((await finalize()).status,'awaiting_review');
    await run("update event_tickets set ends_on=(clock_timestamp()at time zone'Asia/Taipei')::date-1 where id=$1",[snapshotEvent]);
    await assert.rejects(finalize(),/BOOKING_BENEFIT_NOT_AVAILABLE/);
    await run("update event_tickets set ends_on=(clock_timestamp()at time zone'Asia/Taipei')::date+1 where id=$1",[snapshotEvent]);
-   assert.equal((await finalize()).alreadyApplied,true);
+   assert.equal((await finalize()).status,'awaiting_review');assert.equal((await finalize()).alreadyApplied,true);
   });
   await t.test('member can withdraw only its own pending request; replay is harmless',async()=>{
    const version=(await one('select updated_at from booking_receipts where receipt_id=$1',[receipt])).updated_at;
