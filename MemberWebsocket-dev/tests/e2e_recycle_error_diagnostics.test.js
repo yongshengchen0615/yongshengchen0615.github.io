@@ -32,3 +32,14 @@ test('recycle residual count parses a bounded aggregate without returning raw SQ
   assert.equal(parser.exec('E2E_RECYCLE_QA_ARTIFACTS_REMAIN: unknown'), null);
   assert.ok(!parserLine.includes('new ApiError'), 'only the safe count should be parsed');
 });
+
+test('admin UI displays only bounded QA aggregate counts and never exposes raw SQL error text', () => {
+  const runner = fs.readFileSync(path.join(__dirname, '../admin/e2e-control.js'), 'utf8');
+  const start = runner.indexOf("const blocker = parsed?.error?.details;");
+  const snippet = runner.slice(start, start + 500);
+  assert.ok(start >= 0);
+  assert.match(snippet, /blocker\\?\\.blockage === 'qa_artifacts_remain'/);
+  assert.match(snippet, /Number\\.isSafeInteger\\(count\\)/);
+  assert.match(snippet, /count > 0 && count <= 1000000/);
+  assert.ok(!snippet.includes('JSON.stringify(blocker)'));
+});
