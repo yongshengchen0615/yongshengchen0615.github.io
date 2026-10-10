@@ -55,6 +55,7 @@ const WRITE_ACTIONS = new Set([
   "admin.pointcards.delete",
   "admin.pointcards.remove",
   "admin.tickets.save",
+  "admin.tickets.delete",
   "admin.event-tickets.save",
   "admin.event-tickets.delete",
   "admin.calendar-items.save",
@@ -144,6 +145,9 @@ function mapDatabaseError(error: unknown): ApiError {
     ["INSUFFICIENT_POINTS",409,"INSUFFICIENT_POINTS","目前點數不足，無法使用這張票券。"],
     ["TICKET_NOT_FOUND",404,"TICKET_NOT_FOUND","找不到這張票券。"],
     ["TICKET_NOT_AVAILABLE",409,"TICKET_NOT_AVAILABLE","這張票券目前無法使用。"],
+    ["TICKET_TEMPLATE_IN_USE",409,"TICKET_TEMPLATE_IN_USE","這張票券仍被集點卡兌換節點引用，請先從相關集點卡移除該節點後再刪除。"],
+    ["TICKET_TEMPLATE_DELETE_NOT_FOUND",404,"TICKET_TEMPLATE_DELETE_NOT_FOUND","找不到指定的集點卡票券。"],
+    ["INVALID_TICKET_TEMPLATE_VERSION",400,"INVALID_TICKET_TEMPLATE_VERSION","票券資料版本無效，請重新整理。"],
     ["TICKET_TEMPLATE_NOT_FOUND",400,"TICKET_TEMPLATE_NOT_FOUND","選取的票券不存在。"],
     ["EVENT_TICKET_DAILY_LIMIT_REACHED",409,"EVENT_TICKET_DAILY_LIMIT_REACHED","今日活動票券使用張數已達上限，請於明日再使用。"],
     ["EVENT_TICKET_NOT_AVAILABLE",409,"EVENT_TICKET_NOT_AVAILABLE","這張活動票券目前無法使用。"],
@@ -1313,7 +1317,7 @@ async function emitRealtime(supabase: SupabaseClient, action: string): Promise<v
   const scopes: ClientType[] =
     action.startsWith("admin.grant-message-presets.")
       ? ["admin"]
-      : action.startsWith("admin.pointcards.") || action === "admin.tickets.save" || action === "admin.stamps.add" || action === "user.pointcard.ticket.redeem"
+      : action.startsWith("admin.pointcards.") || action.startsWith("admin.tickets.") || action === "admin.stamps.add" || action === "user.pointcard.ticket.redeem"
       ? ["points","admin"]
       : action.startsWith("admin.event-tickets.") || action.startsWith("user.event.ticket.")
         ? ["event","admin"]
@@ -2599,6 +2603,17 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
   }
 
   if (action === "admin.tickets.save") return await saveTicketTemplate(supabase,identity.lineUserId,body);
+  if (action === "admin.tickets.delete") {
+    const ticketTemplateId = requireText(body.ticketTemplateId,"票券識別",100);
+    const expectedUpdatedAt = requireText(body.expectedUpdatedAt,"票券資料版本",100);
+    const removed = await supabase.rpc("delete_point_ticket_template", {
+      p_actor_line_user_id: identity.lineUserId,
+      p_ticket_template_id: ticketTemplateId,
+      p_expected_updated_at: expectedUpdatedAt,
+    });
+    if (removed.error) throw mapDatabaseError(removed.error);
+    return removed.data as Json;
+  }
 
   if (action === "admin.event-tickets.save") return await saveEventTicket(supabase,identity.lineUserId,body);
 
