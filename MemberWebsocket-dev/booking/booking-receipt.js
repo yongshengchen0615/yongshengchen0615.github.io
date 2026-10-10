@@ -189,6 +189,9 @@
     state.ticketGeneration += 1;
     state.ticketsLoading = false;
     document.getElementById('snapshotTicketChoices').replaceChildren();
+    document.getElementById('snapshotTicketSelectionSummary').textContent = '正在確認可登記的票券…';
+    document.querySelector('.snapshot-ticket-booking-label')?.classList.add('hidden');
+    document.getElementById('snapshotTicketBookingHelp').textContent = '';
     document.getElementById('snapshotTicketBooking').replaceChildren();
     document.getElementById('snapshotTicketBooking').dataset.required = 'false';
     document.getElementById('snapshotTicketFields').classList.toggle('hidden', !accessible);
@@ -360,7 +363,11 @@
       renderBookings(); fields.disabled = false;
       document.getElementById('snapshotTicketBooking').onchange = resetTicketRequest;
     } catch (error) {
-      if (generation === state.ticketGeneration) choices.textContent = error?.message || '無法讀取票券，可只送收據或關閉後重試。';
+      if (generation === state.ticketGeneration) {
+        choices.textContent = error?.message || '無法讀取票券，可只送收據或關閉後重試。';
+        const summary = document.getElementById('snapshotTicketSelectionSummary');
+        if (summary) summary.textContent = '票券暫時無法載入；可以只送出收據。';
+      }
     } finally { if (generation === state.ticketGeneration) state.ticketsLoading = false; }
   }
 
