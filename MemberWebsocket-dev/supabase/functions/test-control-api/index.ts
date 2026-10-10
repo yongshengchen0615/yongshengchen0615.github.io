@@ -1932,7 +1932,7 @@ Deno.serve(async (request: Request) => {
         if (reason.includes("E2E_RECYCLE_QA_ARTIFACTS_REMAIN")) {
           // The SQL transaction rolls back on an incomplete purge. The number in
           // its error message is a safe aggregate, not member or ticket data.
-          const remaining = /E2E_RECYCLE_QA_ARTIFACTS_REMAIN:\\s*(\\d+)/.exec(reason);
+          const remaining = /E2E_RECYCLE_QA_ARTIFACTS_REMAIN:\s*(\d+)/.exec(reason);
           throw new ApiError(409, "E2E_RECYCLE_BLOCKED",
             "上一輪 QA 資源未完全回收，已停止新一輪 E2E；請檢查測試資源的依賴關係。",
             { blockage: "qa_artifacts_remain",
