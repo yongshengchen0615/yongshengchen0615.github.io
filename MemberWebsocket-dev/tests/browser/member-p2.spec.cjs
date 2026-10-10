@@ -164,6 +164,13 @@ for(const [width,theme] of [[320,'light'],[390,'dark'],[1280,'light']])test('mem
     const referral=controls[2].getBoundingClientRect();
     return {
       layout:getComputedStyle(actionGroup).display,
+      bounds:{
+        pass:{ left:area.left, right:area.right, width:area.width },
+        controls:controls.map(button=>{
+          const r=button.getBoundingClientRect();
+          return { id:button.id, left:r.left, right:r.right, width:r.width, height:r.height };
+        })
+      },
       fits:controls.every(button=>{
         const r=button.getBoundingClientRect();
         return r.width>=70 && r.height>=44 && r.left>=area.left-1 && r.right<=area.right+1;
@@ -178,7 +185,7 @@ for(const [width,theme] of [[320,'light'],[390,'dark'],[1280,'light']])test('mem
     };
   });
   expect(layout.layout).toBe('grid');
-  expect(layout.fits).toBe(true);
+  expect(layout.fits, JSON.stringify(layout.bounds)).toBe(true);
   expect(layout.overflows).toBe(false);
   expect(layout.clipsOrnaments).toBe(true);
   expect(layout.qrFirst).toBe(true);
