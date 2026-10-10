@@ -7,18 +7,27 @@
   let loginProgressTimer = null;
   let loginProgressValue = 8;
   let autoOpenHandled = false;
+  let locationTracker = null;
+  let locationName = '';
+  let locationNameFix = null;
+  let locationGeneration = 0;
 
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
     [
       'app', 'loadingView', 'loadingProgress', 'loadingProgressBar', 'loadingProgressText', 'loadingStatus', 'errorView', 'errorTitle', 'errorMessage', 'joinMemberButton', 'retryButton', 'eventView', 'displayName', 'membershipProgress', 'eventSummary', 'eventList', 'emptyView', 'usedTicketHistory', 'usedTicketHistorySummary', 'usedTicketList',
-      'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage', 'ticketModalLocationStatus'
+      'ticketModal', 'closeTicketModal', 'ticketModalType', 'ticketModalTitle', 'ticketModalDate', 'ticketModalDescription', 'ticketModalUsageMethod', 'ticketModalUsageInstructions', 'ticketModalPrizes', 'ticketModalStatus', 'ticketModalProcessing', 'ticketModalProcessingText', 'ticketModalResult', 'ticketModalAction', 'refreshTicketButton', 'ticketModalMessage', 'ticketModalLocationStatus', 'ticketModalLocationButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
     els.retryButton.addEventListener('click', () => window.location.reload());
     els.joinMemberButton.addEventListener('click', () => window.MemberSystem.openMemberJoin(state.config));
     els.closeTicketModal.addEventListener('click', closeTicketModal);
     els.ticketModal.addEventListener('click', (event) => { if (event.target === els.ticketModal && !state.processing) closeTicketModal(); });
     els.ticketModalAction.addEventListener('click', handleTicketAction);
+    els.ticketModalLocationButton.addEventListener('click', () => { void confirmLiveLocationName(); });
+    window.addEventListener('pagehide', stopLiveLocation);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') stopLiveLocation();
+    });
     els.refreshTicketButton.addEventListener('click', () => window.location.reload());
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !state.processing) closeTicketModal(); });
     window.addEventListener('event-ticket:selection-claimed', () => {
@@ -116,6 +125,7 @@
 
   async function openTicketModal(eventTicketId, options = {}) {
     const targetId = String(eventTicketId || '').trim(); const offer = findOffer(targetId, options); if (!offer) return;
+    stopLiveLocation();
     state.pendingEventTicketId = targetId; state.processing = false; state.actionLocked = targetId === String(state.uncertainEventTicketId || '').trim(); state.ticketModalOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); renderTicketModal(offer); if (state.actionLocked) showMessage('無法確認這次操作是否完成。請先重新整理確認；在確認前請勿再次送出。'); else hideMessage(); setProcessing(false); els.ticketModal.classList.remove('hidden'); (offer.history ? els.closeTicketModal : state.actionLocked ? els.refreshTicketButton : els.ticketModalAction).focus();
   }
@@ -136,7 +146,10 @@
     const ticket = ticketForOffer(offer); const claim = offer.claim; const history = Boolean(offer.history); const reserved = !history && Boolean(offer.reservedForBooking);
     els.ticketModalType.textContent = isFixedOffer(offer) ? '固定票券' : ticket.ticketType === 'lottery' ? '活動抽獎券' : ticket.ticketType === 'referral' ? '好友邀請券' : ticket.ticketType === 'membership_join' ? '加入會員券' : '活動優惠券'; els.ticketModalTitle.textContent = String(ticket.title || '活動票券'); els.ticketModalDate.textContent = history ? `已使用：${eventTicketTimestamp(claim && claim.usedAt)}` : `${eventDates(ticket)}${isFixedOffer(offer) ? '' : ` · 限量張數：${eventTicketQuotaText(ticket)}`}`; els.ticketModalDescription.textContent = String(claim ? claim.ticketDescription : ticket.description || '查看活動內容與使用說明。'); els.ticketModalUsageMethod.textContent = `使用方式：${String(claim ? claim.usageMethod : ticket.usageMethod || '請依活動現場指示使用')}`; els.ticketModalUsageInstructions.textContent = String(claim ? claim.usageInstructions : ticket.usageInstructions || '領取後請在活動期間出示本券。');
     const prizes = claim ? claim.prizes : ticket.prizes; renderPrizes(ticket.ticketType, prizes);
-    els.ticketModalLocationStatus.classList.toggle('hidden', !claim || !ticket.requiresLocation || history);
+    const needsGps = Boolean(claim && ticket.requiresLocation && !history && !reserved);
+    els.ticketModalLocationStatus.classList.toggle('hidden', !needsGps);
+    els.ticketModalLocationButton.classList.toggle('hidden', !needsGps);
+    els.ticketModalLocationButton.disabled = state.processing;
     if (claim && ticket.requiresLocation && !history) els.ticketModalLocationStatus.textContent = `核銷時須允許定位，並位於任一指定地點：${(ticket.redemptionLocationNames || []).join('、') || '活動指定地點'}。領取時不需定位。`;
     let bookingChoice = els.ticketModal.querySelector('[data-ticket-booking-choice]');
     if (!bookingChoice) { bookingChoice = document.createElement('div'); bookingChoice.dataset.ticketBookingChoice = ''; els.ticketModalStatus.before(bookingChoice); }
@@ -154,7 +167,7 @@
     const heading = document.createElement('strong'); heading.textContent = '有機會獲得'; const list = document.createElement('ul'); prizes.filter((prize) => String(prize && prize.prizeTitle || '').trim()).forEach((prize) => { const item = document.createElement('li'); item.textContent = String(prize.prizeTitle || '').trim(); list.append(item); }); els.ticketModalPrizes.replaceChildren(heading, list); els.ticketModalPrizes.classList.toggle('hidden', !list.children.length);
   }
 
-  function closeTicketModal() { if (state.processing) return; state.pendingEventTicketId = ''; els.ticketModal.classList.add('hidden'); setProcessing(false); hideMessage(); els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); const opener = state.ticketModalOpener; state.ticketModalOpener = null; if (opener instanceof HTMLElement && document.contains(opener)) opener.focus(); }
+  function closeTicketModal() { if (state.processing) return; stopLiveLocation(); state.pendingEventTicketId = ''; els.ticketModal.classList.add('hidden'); setProcessing(false); hideMessage(); els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); const opener = state.ticketModalOpener; state.ticketModalOpener = null; if (opener instanceof HTMLElement && document.contains(opener)) opener.focus(); }
 
   async function handleTicketAction() {
     const offer = findOffer(state.pendingEventTicketId); if (!offer || state.processing || state.actionLocked) return;
@@ -181,8 +194,14 @@
     let redeemed = false;
     try {
       const location = offer.ticket.requiresLocation ? await currentRedemptionLocation() : null;
-      if (offer.ticket.requiresLocation) els.ticketModalLocationStatus.textContent = `定位完成，精度約 ${Math.round(location.accuracy)} 公尺。請確認核銷。`;
-      if (!window.confirm(`確定現在使用「${String(offer.ticket.title || '活動票券')}」？確認後將立即核銷且無法復原。`)) return;
+      if (offer.ticket.requiresLocation) {
+        if (!locationName) await confirmLiveLocationName(location);
+        els.ticketModalLocationStatus.textContent = `GPS 持續更新：${locationName ? '附近「' + locationName + '」' : '地點名稱查詢未完成'}，精度約 ±${Math.round(location.accuracy)} 公尺；核銷範圍仍由伺服器驗證。`;
+      }
+      const locationMessage = offer.ticket.requiresLocation
+        ? `\nGPS 推定地點：${locationName || '無法取得名稱，請自行確認所在地點'}（±${Math.round(location.accuracy)} 公尺）\n`
+        : '';
+      if (!window.confirm(`確定現在使用「${String(offer.ticket.title || '活動票券')}」？${locationMessage}確認後將立即核銷且無法復原。`)) return;
       els.ticketModalProcessingText.textContent = '正在核銷票券，請稍候…';
       const usageKey = bookingId + ':' + offer.claim.claimId;
       if (state.usageAttempt?.key !== usageKey) state.usageAttempt = { key: usageKey, requestId: 'EVENT_' + crypto.randomUUID().replaceAll('-', '') };
@@ -202,17 +221,63 @@
     } catch (error) { handleTicketError(error, '使用票券失敗，請稍後再試。'); } finally { window.TicketBookingChoice?.lock(bookingChoice, false); setProcessing(false); state.processing = false; if (!redeemed && !state.actionLocked) renderTicketModal(offer); }
   }
 
-  function currentRedemptionLocation() {
-    if (!navigator.geolocation) return Promise.reject(new Error('此裝置無法定位，票券尚未核銷。'));
-    els.ticketModalLocationStatus.classList.remove('hidden');
-    els.ticketModalLocationStatus.textContent = '正在取得目前位置，請允許定位…';
-    return new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy, observedAt: new Date(position.timestamp).toISOString() }),
-        () => reject(new Error('定位遭拒或逾時，票券尚未核銷。請允許定位後重試。')),
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-      );
+  function stopLiveLocation() {
+    locationGeneration += 1;
+    locationTracker?.stop();
+    locationTracker = null;
+    locationName = '';
+    locationNameFix = null;
+  }
+
+  function updateLiveLocation(fix, fresh) {
+    if (els.ticketModal.classList.contains('hidden')) return;
+    if (locationNameFix && window.TicketLiveLocation.distanceMeters(locationNameFix, fix) > 120) {
+      locationName = '';
+      locationNameFix = null;
+    }
+    const prefix = fresh ? '即時 GPS 已更新' : '等待更精確的 GPS';
+    const place = locationName ? `附近：${locationName}` : '地點名稱尚未確認，請按「確認目前地點」';
+    els.ticketModalLocationStatus.textContent = `${prefix}（精度約 ±${Math.round(fix.accuracy)} 公尺）。${place}。GPS 範圍仍以核銷時的伺服器驗證為準。`;
+  }
+
+  function liveLocation() {
+    if (!window.TicketLiveLocation) throw new Error('GPS 模組尚未載入，請重新開啟活動票券。');
+    if (!locationTracker) locationTracker = window.TicketLiveLocation.create({
+      onUpdate: updateLiveLocation,
+      onError: (message) => { els.ticketModalLocationStatus.textContent = message; }
     });
+    return locationTracker;
+  }
+
+  async function currentRedemptionLocation() {
+    els.ticketModalLocationStatus.classList.remove('hidden');
+    els.ticketModalLocationStatus.textContent = '正在持續取得 GPS，需精度 100 公尺內的最新位置…';
+    return liveLocation().read();
+  }
+
+  async function confirmLiveLocationName(fix = null) {
+    const generation = locationGeneration;
+    const button = els.ticketModalLocationButton;
+    button.disabled = true;
+    try {
+      const position = fix || await currentRedemptionLocation();
+      els.ticketModalLocationStatus.textContent = 'GPS 定位已更新，正在查詢附近地點名稱（地圖資料來源：OpenStreetMap）…';
+      const name = await window.TicketLiveLocation.placeName(position);
+      if (generation !== locationGeneration) return;
+      if (window.TicketLiveLocation.distanceMeters(position, liveLocation().latest()) > 120) {
+        els.ticketModalLocationStatus.textContent = '位置已有變動，請再次確認最新地點。';
+        return;
+      }
+      locationName = name;
+      locationNameFix = position;
+      els.ticketModalLocationStatus.textContent = `GPS 約定位在「${name}」，精度約 ±${Math.round(position.accuracy)} 公尺。請確認實際所在地點；核銷資格由伺服器驗證。`;
+    } catch (error) {
+      if (generation === locationGeneration) {
+        els.ticketModalLocationStatus.textContent = `地點名稱無法取得：${error?.message || '請稍後重試'}。GPS 可繼續定位，核銷仍由伺服器判斷。`;
+      }
+    } finally {
+      if (generation === locationGeneration) button.disabled = false;
+    }
   }
 
   async function showRedeemedResult(claim) {
