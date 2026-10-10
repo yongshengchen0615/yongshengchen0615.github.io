@@ -8,9 +8,6 @@
   let loginProgressValue = 8;
   let autoOpenHandled = false;
   let locationTracker = null;
-  let locationName = '';
-  let locationNameFix = null;
-  let locationGeneration = 0;
 
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
@@ -23,7 +20,7 @@
     els.closeTicketModal.addEventListener('click', closeTicketModal);
     els.ticketModal.addEventListener('click', (event) => { if (event.target === els.ticketModal && !state.processing) closeTicketModal(); });
     els.ticketModalAction.addEventListener('click', handleTicketAction);
-    els.ticketModalLocationButton.addEventListener('click', () => { void confirmLiveLocationName(); });
+    els.ticketModalLocationButton.addEventListener('click', () => { void refreshLiveLocation(); });
     window.addEventListener('pagehide', stopLiveLocation);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') stopLiveLocation();
@@ -62,6 +59,15 @@
       applyOfferSnapshot(result);
       assertCompleteEventBootstrap();
       renderOffers();
+      // A management-side change must also refresh an already-open redemption dialog.
+      if (!state.processing && !els.ticketModal.classList.contains('hidden') && state.pendingEventTicketId) {
+        const active = findOffer(state.pendingEventTicketId);
+        if (active) {
+          renderTicketModal(active);
+          if (active.ticket.requiresLocation) void refreshLiveLocation();
+          else stopLiveLocation();
+        } else closeTicketModal();
+      }
       if (showBusy) setInlineStatus('活動票券已更新。');
     } catch (error) { if (!showBusy) throw error; if (/^(AUTH_|MEMBERSHIP_REQUIRED|MEMBER_)/.test(String(error && error.code || ''))) showError(error); else setInlineStatus('更新失敗，畫面保留上次資料。請重新整理頁面後重試；領取與使用時會重新驗證資格。', true); }
   }
@@ -127,7 +133,7 @@
     const targetId = String(eventTicketId || '').trim(); const offer = findOffer(targetId, options); if (!offer) return;
     stopLiveLocation();
     state.pendingEventTicketId = targetId; state.processing = false; state.actionLocked = targetId === String(state.uncertainEventTicketId || '').trim(); state.ticketModalOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); renderTicketModal(offer); if (state.actionLocked) showMessage('無法確認這次操作是否完成。請先重新整理確認；在確認前請勿再次送出。'); else hideMessage(); setProcessing(false); els.ticketModal.classList.remove('hidden'); (offer.history ? els.closeTicketModal : state.actionLocked ? els.refreshTicketButton : els.ticketModalAction).focus();
+    els.ticketModalResult.classList.add('hidden'); els.ticketModalResult.replaceChildren(); renderTicketModal(offer); if (state.actionLocked) showMessage('無法確認這次操作是否完成。請先重新整理確認；在確認前請勿再次送出。'); else hideMessage(); setProcessing(false); els.ticketModal.classList.remove('hidden'); if (offer.claim && offer.ticket.requiresLocation && !offer.history && !offer.reservedForBooking) void refreshLiveLocation(); (offer.history ? els.closeTicketModal : state.actionLocked ? els.refreshTicketButton : els.ticketModalAction).focus();
   }
 
   function offerHasDetails(offer) {
@@ -150,13 +156,13 @@
     els.ticketModalLocationStatus.classList.toggle('hidden', !needsGps);
     els.ticketModalLocationButton.classList.toggle('hidden', !needsGps);
     els.ticketModalLocationButton.disabled = state.processing;
-    if (claim && ticket.requiresLocation && !history) els.ticketModalLocationStatus.textContent = `核銷時須允許定位，並位於任一指定地點：${(ticket.redemptionLocationNames || []).join('、') || '活動指定地點'}。領取時不需定位。`;
+    if (claim && ticket.requiresLocation && !history) els.ticketModalLocationStatus.textContent = `可使用地點：${window.TicketLiveLocation.allowedLocationLabel(ticket.redemptionLocations)}。正在檢查 GPS；領取票券不需定位。`;
     let bookingChoice = els.ticketModal.querySelector('[data-ticket-booking-choice]');
     if (!bookingChoice) { bookingChoice = document.createElement('div'); bookingChoice.dataset.ticketBookingChoice = ''; els.ticketModalStatus.before(bookingChoice); }
     bookingChoice.hidden = history || !claim || reserved;
-    window.TicketBookingChoice?.mount(bookingChoice, Array.isArray(offer.eligibleBookings) ? offer.eligibleBookings : [], () => { els.ticketModalAction.disabled = !offer.canUse || !window.TicketBookingChoice.selected(bookingChoice); });
+    window.TicketBookingChoice?.mount(bookingChoice, Array.isArray(offer.eligibleBookings) ? offer.eligibleBookings : [], () => { els.ticketModalAction.disabled = !offer.canUse || !window.TicketBookingChoice.selected(bookingChoice); if (needsGps) syncLiveLocationState(offer); });
     const eligible = !history && eventTicketTierEligible(offer); const fixedPending = isFixedOffer(offer) && !claim; const canAct = !state.actionLocked && !history && !reserved && eligible && !fixedPending && ((claim && offer.canUse) || (!claim && offer.canClaim));
-    els.ticketModalStatus.textContent = offer.locked ? String(offer.lockReason || '需符合指定會員階級。') : modalStatusText(offer); els.ticketModalAction.textContent = state.actionLocked ? '請重新整理確認' : history ? '這張票券已使用' : reserved ? '已預約使用' : !eligible ? '目前等級無法使用' : fixedPending ? '由系統自動發放' : claim ? offer.canUse ? '確認使用這張票券' : '尚無符合條件的預約' : offer.canClaim ? '領取活動票券' : '目前無法領取'; els.ticketModalAction.disabled = !canAct || Boolean(claim && !window.TicketBookingChoice?.selected(bookingChoice)); els.ticketModalAction.classList.toggle('hidden', history || Boolean(claim && !offer.canUse && eligible) && !state.actionLocked); els.refreshTicketButton.classList.toggle('hidden', !state.actionLocked);
+    els.ticketModalStatus.textContent = offer.locked ? String(offer.lockReason || '需符合指定會員階級。') : modalStatusText(offer); els.ticketModalAction.textContent = state.actionLocked ? '請重新整理確認' : history ? '這張票券已使用' : reserved ? '已預約使用' : !eligible ? '目前等級無法使用' : fixedPending ? '由系統自動發放' : claim ? offer.canUse ? '確認使用這張票券' : '尚無符合條件的預約' : offer.canClaim ? '領取活動票券' : '目前無法領取'; els.ticketModalAction.disabled = !canAct || Boolean(claim && !window.TicketBookingChoice?.selected(bookingChoice)); els.ticketModalAction.classList.toggle('hidden', history || Boolean(claim && !offer.canUse && eligible) && !state.actionLocked); els.refreshTicketButton.classList.toggle('hidden', !state.actionLocked); if (needsGps) syncLiveLocationState(offer);
     if (history && claim && ticket.ticketType === 'lottery' && claim.result) {
       renderRedeemedResult({ ...claim, ticketType: 'lottery' });
     }
@@ -194,17 +200,20 @@
     let redeemed = false;
     try {
       let location = offer.ticket.requiresLocation ? await currentRedemptionLocation() : null;
-      if (offer.ticket.requiresLocation) {
-        if (!locationName) await confirmLiveLocationName(location);
-        els.ticketModalLocationStatus.textContent = `GPS 持續更新：${locationName ? '附近「' + locationName + '」' : '地點名稱查詢未完成'}，精度約 ±${Math.round(location.accuracy)} 公尺；核銷範圍仍由伺服器驗證。`;
-      }
-      const locationMessage = offer.ticket.requiresLocation
-        ? `\nGPS 推定地點：${locationName || '無法取得名稱，請自行確認所在地點'}（±${Math.round(location.accuracy)} 公尺）\n`
+      const check = offer.ticket.requiresLocation ? checkLocation(offer, location) : null;
+      if (check && !check.allowed) throw new Error(locationFailureMessage(offer, check));
+      const locationMessage = check
+        ? `\n可使用地點：${window.TicketLiveLocation.allowedLocationLabel(offer.ticket.redemptionLocations)}\n目前 GPS 位於「${check.matched.name}」可使用範圍內（精度 ±${Math.round(location.accuracy)} 公尺）。\n`
         : '';
       if (!window.confirm(`確定現在使用「${String(offer.ticket.title || '活動票券')}」？${locationMessage}確認後將立即核銷且無法復原。`)) return;
       els.ticketModalProcessingText.textContent = '正在核銷票券，請稍候…';
-      // Recheck after the place-name dialog so the server receives the newest fix.
-      if (offer.ticket.requiresLocation) location = await currentRedemptionLocation();
+      // Recheck after confirmation; server rechecks the authoritative current rule.
+      if (offer.ticket.requiresLocation) {
+        location = await currentRedemptionLocation();
+        const latestOffer = findOffer(state.pendingEventTicketId) || offer;
+        const latestCheck = checkLocation(latestOffer, location);
+        if (!latestCheck.allowed) throw new Error(locationFailureMessage(latestOffer, latestCheck));
+      }
       const usageKey = bookingId + ':' + offer.claim.claimId;
       if (state.usageAttempt?.key !== usageKey) state.usageAttempt = { key: usageKey, requestId: 'EVENT_' + crypto.randomUUID().replaceAll('-', '') };
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.redeem', { claimId: offer.claim.claimId, bookingId, requestId: state.usageAttempt.requestId, location });
@@ -230,55 +239,67 @@
   }
 
   function stopLiveLocation() {
-    locationGeneration += 1;
     locationTracker?.stop();
     locationTracker = null;
-    locationName = '';
-    locationNameFix = null;
   }
 
-  function updateLiveLocation(fix, fresh) {
+  function checkLocation(offer, fix) {
+    return window.TicketLiveLocation.evaluate(fix, offer?.ticket?.redemptionLocations);
+  }
+
+  function locationFailureMessage(offer, result) {
+    const allowed = window.TicketLiveLocation.allowedLocationLabel(offer?.ticket?.redemptionLocations);
+    if (result.reason === 'missing') return '尚未取得管理端設定的可使用地點，請稍後再試。';
+    if (result.reason === 'waiting') return `請允許 GPS 並取得精度 100 公尺內的即時位置；可使用地點：${allowed}。`;
+    return `目前不在可使用範圍，請至 ${allowed} 後再使用。`;
+  }
+
+  function syncLiveLocationState(offer = findOffer(state.pendingEventTicketId)) {
+    if (!offer || !offer.ticket.requiresLocation || !offer.claim || offer.history || offer.reservedForBooking) return;
+    if (!window.TicketLiveLocation) return;
+    const fix = locationTracker?.latest();
+    const check = checkLocation(offer, fix);
+    const allowed = window.TicketLiveLocation.allowedLocationLabel(offer.ticket.redemptionLocations);
+    const status = check.allowed
+      ? `目前 GPS 符合「${check.matched.name}」的可使用範圍（精度 ±${Math.round(fix.accuracy)} 公尺）。`
+      : locationFailureMessage(offer, check);
+    els.ticketModalLocationStatus.textContent = `可使用地點：${allowed}。 ${status}`;
+    const bookingChoice = els.ticketModal.querySelector('[data-ticket-booking-choice]');
+    els.ticketModalAction.disabled = state.processing || state.actionLocked || !offer.canUse ||
+      !window.TicketBookingChoice?.selected(bookingChoice) || !check.allowed;
+  }
+
+  function updateLiveLocation() {
     if (els.ticketModal.classList.contains('hidden')) return;
-    if (locationNameFix && window.TicketLiveLocation.distanceMeters(locationNameFix, fix) > 120) {
-      locationName = '';
-      locationNameFix = null;
-    }
-    const prefix = fresh ? '即時 GPS 已更新' : '等待更精確的 GPS';
-    const place = locationName ? `附近：${locationName}` : '地點名稱尚未確認，請按「確認目前地點」';
-    els.ticketModalLocationStatus.textContent = `${prefix}（精度約 ±${Math.round(fix.accuracy)} 公尺）。${place}。GPS 範圍仍以核銷時的伺服器驗證為準。`;
+    syncLiveLocationState();
   }
 
   function liveLocation() {
     if (!window.TicketLiveLocation) throw new Error('GPS 模組尚未載入，請重新開啟活動票券。');
     if (!locationTracker) locationTracker = window.TicketLiveLocation.create({
       onUpdate: updateLiveLocation,
-      onError: (message) => { els.ticketModalLocationStatus.textContent = message; }
+      onError: (message) => {
+        const offer = findOffer(state.pendingEventTicketId);
+        els.ticketModalLocationStatus.textContent = `${message}。可使用地點：${window.TicketLiveLocation.allowedLocationLabel(offer?.ticket?.redemptionLocations)}。`;
+        els.ticketModalAction.disabled = true;
+      }
     });
     return locationTracker;
   }
 
-  async function confirmLiveLocationName(fix = null) {
-    const generation = locationGeneration;
-    const button = els.ticketModalLocationButton;
-    button.disabled = true;
+  async function refreshLiveLocation() {
+    if (els.ticketModal.classList.contains('hidden')) return;
+    const offer = findOffer(state.pendingEventTicketId);
+    if (!offer?.ticket?.requiresLocation || !offer.claim || offer.history || offer.reservedForBooking) return;
+    syncLiveLocationState(offer);
     try {
-      const position = fix || await currentRedemptionLocation();
-      els.ticketModalLocationStatus.textContent = 'GPS 定位已更新，正在查詢附近地點名稱（地圖資料來源：OpenStreetMap）…';
-      const name = await window.TicketLiveLocation.placeName(position);
-      if (generation !== locationGeneration) return;
-      if (window.TicketLiveLocation.distanceMeters(position, liveLocation().latest()) > 120) {
-        els.ticketModalLocationStatus.textContent = '位置已有變動，請再次確認最新地點。';
-        return;
-      }
-      locationName = name;
-      locationNameFix = position;
-      els.ticketModalLocationStatus.textContent = `GPS 約定位在「${name}」，精度約 ±${Math.round(position.accuracy)} 公尺。請確認實際所在地點；核銷資格由伺服器驗證。`;
+      await liveLocation().read();
+      syncLiveLocationState(findOffer(state.pendingEventTicketId));
     } catch (error) {
-      if (generation === locationGeneration) {
-        els.ticketModalLocationStatus.textContent = `地點名稱無法取得：${error?.message || '請稍後重試'}。GPS 可繼續定位，核銷仍由伺服器判斷。`;
+      if (!els.ticketModal.classList.contains('hidden')) {
+        els.ticketModalLocationStatus.textContent = `${error?.message || '無法取得 GPS'}。可使用地點：${window.TicketLiveLocation.allowedLocationLabel(offer.ticket.redemptionLocations)}。`;
+        els.ticketModalAction.disabled = true;
       }
-    } finally {
-      if (generation === locationGeneration) button.disabled = false;
     }
   }
 
