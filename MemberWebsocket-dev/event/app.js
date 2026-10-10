@@ -193,7 +193,7 @@
     state.processing = true; els.ticketModalAction.disabled = true; els.ticketModalAction.textContent = '確認中…'; els.ticketModalProcessingText.textContent = '正在確認核銷條件…'; setProcessing(true); hideMessage();
     let redeemed = false;
     try {
-      const location = offer.ticket.requiresLocation ? await currentRedemptionLocation() : null;
+      let location = offer.ticket.requiresLocation ? await currentRedemptionLocation() : null;
       if (offer.ticket.requiresLocation) {
         if (!locationName) await confirmLiveLocationName(location);
         els.ticketModalLocationStatus.textContent = `GPS 持續更新：${locationName ? '附近「' + locationName + '」' : '地點名稱查詢未完成'}，精度約 ±${Math.round(location.accuracy)} 公尺；核銷範圍仍由伺服器驗證。`;
@@ -203,6 +203,8 @@
         : '';
       if (!window.confirm(`確定現在使用「${String(offer.ticket.title || '活動票券')}」？${locationMessage}確認後將立即核銷且無法復原。`)) return;
       els.ticketModalProcessingText.textContent = '正在核銷票券，請稍候…';
+      // Recheck after the place-name dialog so the server receives the newest fix.
+      if (offer.ticket.requiresLocation) location = await currentRedemptionLocation();
       const usageKey = bookingId + ':' + offer.claim.claimId;
       if (state.usageAttempt?.key !== usageKey) state.usageAttempt = { key: usageKey, requestId: 'EVENT_' + crypto.randomUUID().replaceAll('-', '') };
       const result = await window.MemberSystem.request(state.config, 'event', state.idToken, 'user.event.ticket.redeem', { claimId: offer.claim.claimId, bookingId, requestId: state.usageAttempt.requestId, location });
@@ -219,6 +221,12 @@
         window.dispatchEvent(new CustomEvent('event-ticket:redeemed', { detail: { ticket: result.ticket } }));
       }
     } catch (error) { handleTicketError(error, '使用票券失敗，請稍後再試。'); } finally { window.TicketBookingChoice?.lock(bookingChoice, false); setProcessing(false); state.processing = false; if (!redeemed && !state.actionLocked) renderTicketModal(offer); }
+  }
+
+  function currentRedemptionLocation() {
+    els.ticketModalLocationStatus.classList.remove('hidden');
+    els.ticketModalLocationStatus.textContent = '正在持續取得 GPS，需精度 100 公尺內的最新位置…';
+    return liveLocation().read();
   }
 
   function stopLiveLocation() {
@@ -247,12 +255,6 @@
       onError: (message) => { els.ticketModalLocationStatus.textContent = message; }
     });
     return locationTracker;
-  }
-
-  async function currentRedemptionLocation() {
-    els.ticketModalLocationStatus.classList.remove('hidden');
-    els.ticketModalLocationStatus.textContent = '正在持續取得 GPS，需精度 100 公尺內的最新位置…';
-    return liveLocation().read();
   }
 
   async function confirmLiveLocationName(fix = null) {
