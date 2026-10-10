@@ -77,7 +77,7 @@
           <p id="bookingReceiptFileMeta"></p>
         </div>
         <p id="bookingReceiptMessage" class="booking-receipt-message hidden" role="status" aria-live="polite"></p>
-        <fieldset id="snapshotTicketFields" class="hidden"><legend>登記本次要使用的票券</legend><p>送件只記錄使用意願；管理員核對服務項目並核准後才核銷。審核時會重新確認票券是否仍可使用。</p><div id="snapshotTicketChoices"></div><label>關聯預約<select id="snapshotTicketBooking" aria-label="票券關聯預約"></select></label></fieldset>
+        <fieldset id="snapshotTicketFields" class="hidden"><legend>登記本次要使用的票券</legend><p class="snapshot-ticket-intro">選擇本次希望使用的票券；提交只會登記使用意願，管理員審核通過後才核銷。</p><p id="snapshotTicketSelectionSummary" class="snapshot-ticket-selection-summary" role="status" aria-live="polite">尚未選擇票券；可只送出收據。</p><div id="snapshotTicketChoices" role="group" aria-label="選擇本次要登記使用的票券"></div><label class="snapshot-ticket-booking-label hidden">關聯預約<select id="snapshotTicketBooking" aria-label="票券關聯預約"></select><small id="snapshotTicketBookingHelp"></small></label></fieldset>
         <div class="booking-receipt-actions">
           <button id="bookingReceiptCancel" class="button button-light" type="button">取消</button>
           <button id="bookingReceiptSubmit" class="button button-dark" type="button" disabled>上傳收據並送出審核</button>
@@ -189,6 +189,9 @@
     state.ticketGeneration += 1;
     state.ticketsLoading = false;
     document.getElementById('snapshotTicketChoices').replaceChildren();
+    document.getElementById('snapshotTicketSelectionSummary').textContent = '正在確認可登記的票券…';
+    document.querySelector('.snapshot-ticket-booking-label')?.classList.add('hidden');
+    document.getElementById('snapshotTicketBookingHelp').textContent = '';
     document.getElementById('snapshotTicketBooking').replaceChildren();
     document.getElementById('snapshotTicketBooking').dataset.required = 'false';
     document.getElementById('snapshotTicketFields').classList.toggle('hidden', !accessible);
@@ -272,31 +275,99 @@
       if (generation !== state.ticketGeneration || !state.accessible) return;
       choices.replaceChildren();
       const items = (catalog.items || []).filter(item => item.selectionId && !item.claimRequired);
+      const selectionSummary = document.getElementById('snapshotTicketSelectionSummary');
+      const bookingHelp = document.getElementById('snapshotTicketBookingHelp');
       items.forEach(item => {
+        const blocked = item.selectable !== true || (catalog.ticketBookingRequired && !item.eligibleBookings?.length);
         const label = document.createElement('label');
-        const check = document.createElement('input'); check.type = 'checkbox';
-        check.dataset.snapshotKind = item.kind; check.dataset.snapshotId = item.selectionId;
-        check.disabled = item.selectable !== true || (catalog.ticketBookingRequired && !item.eligibleBookings?.length);
-        const text = document.createElement('span');
-        text.textContent = `${item.title} · ${item.conditionLabel || item.subtitle || ''}${check.disabled ? ` · ${item.disabledReason || '需有符合資格的已確認預約'}` : ''}`;
-        label.append(check, text); choices.append(label);
-        check.addEventListener('change', () => { resetTicketRequest(); renderBookings(); });
+        label.className = 'snapshot-ticket-choice';
+        label.classList.toggle('is-unavailable', blocked);
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.className = 'snapshot-ticket-checkbox';
+        check.dataset.snapshotKind = item.kind;
+        check.dataset.snapshotId = item.selectionId;
+        check.disabled = blocked;
+        check.setAttribute('aria-label', '登記使用' + String(item.title || '此票券'));
+        const copy = document.createElement('span');
+        copy.className = 'snapshot-ticket-copy';
+        const heading = document.createElement('span');
+        heading.className = 'snapshot-ticket-title-row';
+        const title = document.createElement('strong');
+        title.className = 'snapshot-ticket-title';
+        title.textContent = String(item.title || '可用票券');
+        const kind = document.createElement('span');
+        kind.className = 'snapshot-ticket-kind';
+        kind.dataset.kind = item.kind;
+        kind.textContent = item.kind === 'points' ? '集點卡票券' : '活動票券';
+        heading.append(title, kind);
+        copy.append(heading);
+        if (item.cardTitle && item.kind === 'points') {
+          const sourceName = document.createElement('span');
+          sourceName.className = 'snapshot-ticket-source';
+          sourceName.textContent = String(item.cardTitle);
+          copy.append(sourceName);
+        }
+        const condition = document.createElement('span');
+        condition.className = 'snapshot-ticket-condition';
+        condition.textContent = String(item.conditionLabel || item.subtitle || '依票券使用條件核對');
+        copy.append(condition);
+        const facts = [];
+        if (item.endsOn) facts.push('有效至 ' + String(item.endsOn).replaceAll('-', '/'));
+        if (item.kind === 'points' && Number(item.pointCost) > 0) facts.push('使用需 ' + Number(item.pointCost) + ' 點');
+        if (facts.length) {
+          const detail = document.createElement('span');
+          detail.className = 'snapshot-ticket-facts';
+          detail.textContent = facts.join(' · ');
+          copy.append(detail);
+        }
+        if (blocked) {
+          const reason = document.createElement('span');
+          reason.className = 'snapshot-ticket-disabled-reason';
+          reason.textContent = String(item.disabledReason || (catalog.ticketBookingRequired && !item.eligibleBookings?.length ? '需要符合資格的已確認預約' : '目前不可登記使用'));
+          copy.append(reason);
+        }
+        const indicator = document.createElement('span');
+        indicator.className = 'snapshot-ticket-choice-status';
+        indicator.textContent = blocked ? '不可使用' : '點選使用';
+        label.append(check, copy, indicator);
+        choices.append(label);
+        check.addEventListener('change', () => {
+          label.classList.toggle('is-selected', check.checked);
+          indicator.textContent = check.checked ? '已選擇' : '點選使用';
+          resetTicketRequest();
+          renderBookings();
+        });
       });
       if (!items.length) choices.textContent = '目前沒有可登記的已持有票券，可以只送出收據。';
       function renderBookings() {
-        const selected = [...choices.querySelectorAll('[data-snapshot-id]:checked')].map(check => items.find(item => item.kind === check.dataset.snapshotKind && item.selectionId === check.dataset.snapshotId));
+        const selected = [...choices.querySelectorAll('[data-snapshot-id]:checked')]
+          .map(check => items.find(item => item.kind === check.dataset.snapshotKind && item.selectionId === check.dataset.snapshotId))
+          .filter(Boolean);
+        if (selectionSummary) selectionSummary.textContent = selected.length
+          ? '本次已選擇 ' + selected.length + ' 張票券；送出後由管理員審核，不會立即核銷。'
+          : '尚未選擇票券；可只送出收據。';
         const common = selected.length ? (selected[0].eligibleBookings || []).filter(booking => selected.every(item => item.eligibleBookings?.some(b => b.bookingId === booking.bookingId))) : [];
-        const select = document.getElementById('snapshotTicketBooking'); const previous = select.value;
+        const select = document.getElementById('snapshotTicketBooking');
+        const previous = select.value;
         select.replaceChildren(new Option(catalog.ticketBookingRequired ? '選券後請選擇有效預約' : '由管理員核對服務紀錄', ''));
-        common.filter(booking => booking.bookingId !== 'no-booking').forEach(booking => select.append(new Option(`${booking.bookingDate} ${booking.startTime} · ${booking.title}`, booking.bookingId)));
+        common.filter(booking => booking.bookingId !== 'no-booking').forEach(booking => select.append(new Option(booking.bookingDate + ' ' + booking.startTime + ' · ' + booking.title, booking.bookingId)));
         select.value = common.some(b => b.bookingId === previous) ? previous : common.length === 1 && common[0].bookingId !== 'no-booking' ? common[0].bookingId : '';
         select.required = catalog.ticketBookingRequired && selected.length > 0;
         select.dataset.required = String(catalog.ticketBookingRequired);
+        select.closest('label')?.classList.toggle('hidden', selected.length === 0);
+        if (bookingHelp) bookingHelp.textContent = catalog.ticketBookingRequired
+          ? (common.length ? '需選擇這些票券共同符合的預約。' : '目前所選票券沒有共同符合的預約，請調整票券選取。')
+          : '可選擇關聯預約，也可以由管理員核對服務紀錄。';
       }
       renderBookings(); fields.disabled = false;
       document.getElementById('snapshotTicketBooking').onchange = resetTicketRequest;
     } catch (error) {
-      if (generation === state.ticketGeneration) choices.textContent = error?.message || '無法讀取票券，可只送收據或關閉後重試。';
+      if (generation === state.ticketGeneration) {
+        choices.textContent = error?.message || '無法讀取票券，可只送收據或關閉後重試。';
+        const summary = document.getElementById('snapshotTicketSelectionSummary');
+        if (summary) summary.textContent = '票券暫時無法載入；可以只送出收據。';
+      }
     } finally { if (generation === state.ticketGeneration) state.ticketsLoading = false; }
   }
 

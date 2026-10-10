@@ -233,3 +233,29 @@ test('snapshot selected held ticket reaches prepare with an eligible booking and
  await capture(page);await page.locator('#bookingReceiptSubmit').click();await expect(page.locator('#bookingReceiptModal')).toBeHidden();
  expect(runs.get(run).prepare[0]).toMatchObject({benefits:[{kind:'event',id:'QA-TICKET'}],requestedBookingId:'00000000-0000-4000-8000-000000000001'});
 });
+
+test('snapshot ticket cards show selection feedback, expiry reason and contextual booking choice',async({page})=>{
+  const run='snapshot-ticket-ui-cards';
+  await open(page,run,'tickets-required');
+  const available=page.locator('.snapshot-ticket-choice').filter({hasText:'QA held ticket'});
+  const expired=page.locator('.snapshot-ticket-choice').filter({hasText:'Expired'});
+  await expect(available).toBeVisible();
+  await expect(available).toContainText('活動票券');
+  await expect(available).toContainText('點選使用');
+  await expect(expired).toHaveClass(/is-unavailable/);
+  await expect(expired).toContainText('票券已過期');
+  await expect(expired.locator('input[type="checkbox"]')).toBeDisabled();
+  await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('尚未選擇票券');
+  await expect(page.locator('.snapshot-ticket-booking-label')).toBeHidden();
+  await available.click();
+  await expect(available).toHaveClass(/is-selected/);
+  await expect(available).toContainText('已選擇');
+  await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('已選擇 1 張票券');
+  await expect(page.locator('.snapshot-ticket-booking-label')).toBeVisible();
+  await expect(page.locator('#snapshotTicketBooking')).toHaveValue('00000000-0000-4000-8000-000000000001');
+  await available.click();
+  await expect(available).not.toHaveClass(/is-selected/);
+  await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('尚未選擇票券');
+  await expect(page.locator('.snapshot-ticket-booking-label')).toBeHidden();
+  expect(runs.get(run).prepare).toHaveLength(0);
+});
