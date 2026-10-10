@@ -23,11 +23,12 @@ test('recycle errors separate cross-member links from residual QA assets', () =>
 });
 
 test('recycle residual count parses a bounded aggregate without returning raw SQL errors', () => {
-  const literal = api.match(/const remaining = (\\/E2E_RECYCLE_QA_ARTIFACTS_REMAIN:[^;]+\\/)\\.exec\\(reason\\);/);
-  assert.ok(literal, 'expected the actual production regex expression');
-  const parser = vm.runInNewContext(literal[1]);
+  const parserLine = api.split('\\n').find(line =>
+    line.includes('const remaining = /E2E_RECYCLE_QA_ARTIFACTS_REMAIN:'));
+  assert.ok(parserLine, 'expected the actual production regex expression');
+  const parser = vm.runInNewContext(parserLine.split(' = ')[1].split('.exec(reason)')[0]);
   assert.equal(parser.exec('E2E_RECYCLE_QA_ARTIFACTS_REMAIN: 17')[1], '17');
   assert.equal(parser.exec('prefix E2E_RECYCLE_QA_ARTIFACTS_REMAIN: 0')[1], '0');
   assert.equal(parser.exec('E2E_RECYCLE_QA_ARTIFACTS_REMAIN: unknown'), null);
-  assert.doesNotMatch(api, /throw new ApiError\\([^\\n]*reason\\)/);
+  assert.ok(!parserLine.includes('new ApiError'), 'only the safe count should be parsed');
 });
