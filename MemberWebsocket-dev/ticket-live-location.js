@@ -27,7 +27,7 @@
   }
 
   function errorMessage(error) {
-    if (error?.code === 1) return '定位權限被拒絕，請在瀏覽器設定中允許定位。';
+    if (error?.code === 1) return '定位遭拒，請在瀏覽器設定中允許 GPS 位置權限。';
     if (error?.code === 3) return 'GPS 定位逾時，請移到較空曠處再試。';
     return '目前無法取得 GPS 位置，請確認網路與裝置定位設定。';
   }
