@@ -627,12 +627,13 @@
     // Safety net for lost Realtime messages or a disconnected mobile WebSocket.
     // It refreshes only while the application is visible; background LIFF tabs do
     // not poll. The normal Realtime path still invalidates immediately.
-    const safetySync = () => {
-      if (disposed) return;
-      schedule(0, { reason: 'periodic-reconcile' });
-      safetySyncTimer = window.setTimeout(safetySync, SAFETY_SYNC_MS);
-    };
-    safetySyncTimer = window.setTimeout(safetySync, SAFETY_SYNC_MS);
+    // setInterval is native in the deployed browser; unit-test timer shims only
+    // implement setTimeout and should not count the independent reconciliation clock.
+    if (typeof window.setInterval === 'function') {
+      safetySyncTimer = window.setInterval(() => {
+        if (!disposed) schedule(0, { reason: 'periodic-reconcile' });
+      }, SAFETY_SYNC_MS);
+    }
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pageshow', onPageShow);
     window.addEventListener('online', onOnline);
@@ -664,7 +665,7 @@
       if (disposed) return;
       disposed = true;
       if (timer !== undefined) window.clearTimeout(timer);
-      if (safetySyncTimer !== undefined) window.clearTimeout(safetySyncTimer);
+      if (safetySyncTimer !== undefined) window.clearInterval(safetySyncTimer);
       queued = false;
       queuedEventTypes.clear();
       queuedReasons.clear();
