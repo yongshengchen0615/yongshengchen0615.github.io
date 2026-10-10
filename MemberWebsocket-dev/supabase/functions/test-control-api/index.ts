@@ -1923,8 +1923,20 @@ Deno.serve(async (request: Request) => {
         if (reason.includes("E2E_RECYCLE_LEASE_INVALID") || reason.includes("E2E_RECYCLE_OTHER_RUN_ACTIVE") || reason.includes("E2E_RECYCLE_BACKEND_RUN_ACTIVE")) {
           throw new ApiError(409, "E2E_RECYCLE_BUSY", "已有其他 E2E 測試正在執行，或執行鎖已失效，無法安全重置舊測試資料。");
         }
-        if (reason.includes("E2E_RECYCLE_QA_ARTIFACTS_REMAIN") || reason.includes("TEST_DATA_CROSS_BOUNDARY")) {
-          throw new ApiError(409, "E2E_RECYCLE_BLOCKED", "部分舊測試資料仍有外部關聯，已取消新一輪測試以防止資料持續累積。");
+        if (reason.includes("TEST_DATA_CROSS_BOUNDARY")) {
+          // Preserve the fail-closed behavior: never delete formal-member-linked data.
+          throw new ApiError(409, "E2E_RECYCLE_BLOCKED",
+            "測試資料與非測試會員存在關聯，已停止新一輪 E2E，請先檢查跨帳號資料。",
+            { blockage: "cross_member_boundary" });
+        }
+        if (reason.includes("E2E_RECYCLE_QA_ARTIFACTS_REMAIN")) {
+          // The SQL transaction rolls back on an incomplete purge. The number in
+          // its error message is a safe aggregate, not member or ticket data.
+          const remaining = /E2E_RECYCLE_QA_ARTIFACTS_REMAIN:\s*(\d+)/.exec(reason);
+          throw new ApiError(409, "E2E_RECYCLE_BLOCKED",
+            "上一輪 QA 資源未完全回收，已停止新一輪 E2E；請檢查測試資源的依賴關係。",
+            { blockage: "qa_artifacts_remain",
+              ...(remaining ? { remainingQaArtifacts: Number(remaining[1]) } : {}) });
         }
         throw new ApiError(503, "E2E_RECYCLE_FAILED", "無法安全重置上輪 E2E 測試資料，本輪測試已停止。");
       }

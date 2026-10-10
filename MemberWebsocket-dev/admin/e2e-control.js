@@ -1486,6 +1486,13 @@
     if (!response.ok || !parsed || parsed.ok !== true) {
       const error = new Error(parsed?.error?.message || 'E2E 後端服務拒絕操作。');
       error.code = parsed?.error?.code || 'E2E_API_ERROR';
+      const blocker = parsed?.error?.details;
+      if (error.code === 'E2E_RECYCLE_BLOCKED' && blocker?.blockage === 'qa_artifacts_remain') {
+        const count = Number(blocker.remainingQaArtifacts);
+        if (Number.isSafeInteger(count) && count > 0 && count <= 1000000) {
+          error.message += '（目前仍有 ' + count + ' 筆 QA 資源待清理）';
+        }
+      }
       error.apiDiagnostic = diagnostic('http', {
         httpStatus: Number(response.status || 0),
         responseParsed: Boolean(parsed),
