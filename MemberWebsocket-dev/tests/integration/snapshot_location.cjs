@@ -9,7 +9,7 @@ test('snapshot policy uses real PostgreSQL, admin authorization, version guard, 
  const db=await load();
  try{
   await db.exec('select maintenance.ensure_required_system_baseline();');
-  await db.exec(read('supabase/migrations/20261010015823_snapshot_location_policy.sql'));
+  await db.exec(read('supabase/migrations/20261010021829_snapshot_location_policy.sql'));
   const one=async(q,args=[]) => (await db.query(q,args)).rows[0];
   const member=(await one("insert into members(line_user_id,member_code,status,membership_status,is_test_account) values('test:snapshot','QA-SNAPSHOT','active','active',true) returning id")).id;
   await db.exec("insert into admins(line_user_id,role,status) values('test:admin','admin','active');");

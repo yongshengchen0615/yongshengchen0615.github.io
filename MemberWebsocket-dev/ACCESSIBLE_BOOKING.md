@@ -25,4 +25,4 @@ API 維持 LINE 身分驗證、會員狀態／條款、維護／撤銷、管理�
 
 部署：先套用 `booking_accessible_receipt_registration` migration，再部署 `booking-receipt-api`，最後發布前端。回復時先發布前一版本前端／API；新增可空欄位可暫時保留，避免刪除已提交的收據或服務紀錄。schema migration 檔名與已套用的正式 migration 版本一致。
 
-定位政策發布順序：先套用 `20261010015823_snapshot_location_policy.sql`，再部署 `booking-admin-api` 和 `booking-receipt-api`，最後發布前端。回復前先由授權管理員關閉定位要求，再回復前端與兩支 API；保留新增欄位、函式及 Audit，不刪除收據或歷史紀錄。若仍要求定位，必須保留使用新驗證 RPC 的 receipt API，避免舊版 API 略過政策。
+定位政策發布順序：先套用 `20261010021829_snapshot_location_policy.sql`，再部署 `booking-admin-api` 和 `booking-receipt-api`，最後發布前端。回復前先由授權管理員關閉定位要求，再回復前端與兩支 API；保留新增欄位、函式及 Audit，不刪除收據或歷史紀錄。若仍要求定位，必須保留使用新驗證 RPC 的 receipt API，避免舊版 API 略過政策。
