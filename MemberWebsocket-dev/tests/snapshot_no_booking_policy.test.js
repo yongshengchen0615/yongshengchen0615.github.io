@@ -15,7 +15,7 @@ test('snapshot receipt API explicitly skips global booking requirement while ret
 });
 
 test('snapshot receipt migration removes only the prebooking gate and retains availability, ownership, idempotency and SQL ACL', () => {
- const sql=read('supabase/migrations/20261010145000_snapshot_tickets_without_advance_booking.sql');
+ const sql=read('supabase/migrations/20261010145511_snapshot_tickets_without_advance_booking.sql');
  assert.match(sql, /create or replace function public\.validate_snapshot_ticket_selection/);
  assert.match(sql, /create or replace function public\.register_snapshot_receipt_v2/);
  assert.doesNotMatch(sql, /if p_booking_id is null then raise exception 'BOOKING_TICKET_CONFIRMATION_REQUIRED'/);
