@@ -289,70 +289,89 @@ async function prepareTestAccountConsents(
     throw new ApiError(403, "TEST_MEMBER_SELECTION_FORBIDDEN", "E2E 條款前置只能套用到啟用中的測試會員。");
   }
 
-  const termsResult = await supabase
-    .from("membership_terms")
-    .select("id,version,status,required,effective_at,activated_at")
-    .eq("status", "active")
-    .eq("required", true)
-    .order("activated_at", { ascending: false, nullsFirst: false })
-    .limit(5);
-  if (termsResult.error) throw new ApiError(503, "MEMBERSHIP_TERMS_READ_FAILED", "目前無法讀取 E2E 會員條款前置狀態。");
+  // The member API resolves targeted E2E terms first, falling back to
+  // production terms. Never assign one member's targeted terms to another.
+  const [productionResult, e2eResult] = await Promise.all([
+    supabase.from("membership_terms")
+      .select("id,scope,e2e_member_id,version,required,reconsent_existing,effective_at,activated_at")
+      .eq("status", "active").eq("scope", "production").maybeSingle(),
+    supabase.from("membership_terms")
+      .select("id,scope,e2e_member_id,version,required,reconsent_existing,effective_at,activated_at")
+      .eq("status", "active").eq("scope", "e2e").in("e2e_member_id", memberIds),
+  ]);
+  if (productionResult.error || e2eResult.error) {
+    throw new ApiError(503, "MEMBERSHIP_TERMS_READ_FAILED", "目前無法讀取 E2E 會員條款前置狀態。");
+  }
   const nowMs = Date.now();
-  const activeTerms = (termsResult.data || []).find((row: any) => {
-    if (!row.effective_at) return true;
-    const effectiveMs = new Date(row.effective_at).getTime();
-    return Number.isFinite(effectiveMs) && effectiveMs <= nowMs;
-  });
-
-  // No active required terms is a valid environment state. Do not invent legal
-  // copy or create synthetic consent evidence; the consent gate is inactive in
-  // this state, so the paired runner can continue and mark terms coverage skipped.
-  if (!activeTerms?.id) {
+  const effective = (term: any): boolean =>
+    Boolean(term?.id) && Number.isFinite(new Date(term.effective_at).getTime()) &&
+    new Date(term.effective_at).getTime() <= nowMs;
+  const targeted = new Map<string, any>();
+  for (const term of e2eResult.data || []) {
+    if (effective(term) && memberIds.includes(String(term.e2e_member_id))) {
+      targeted.set(String(term.e2e_member_id), term);
+    }
+  }
+  const production = effective(productionResult.data) ? productionResult.data : null;
+  const applicable = memberIds.map((memberId) => ({
+    memberId,
+    terms: targeted.get(memberId) || production,
+  }));
+  // Active test accounts require reconsent only when their currently
+  // applicable terms request it. Optional documents must not be fabricated.
+  const required = applicable.filter(({ terms }) => terms?.reconsent_existing === true);
+  if (!required.length) {
     return {
       testMemberCount: memberIds.length,
       insertedCount: 0,
       currentConsentCount: memberIds.length,
+      consentRequiredCount: 0,
       termsVersion: null,
-      termsConfigured: false,
+      termsConfigured: applicable.some(({ terms }) => Boolean(terms?.id)),
       skipped: true,
-      skipCode: "MEMBERSHIP_TERMS_NOT_CONFIGURED",
+      skipCode: "MEMBERSHIP_RECONSENT_NOT_REQUIRED",
     };
   }
 
-  const existingResult = await supabase
-    .from("membership_consents")
-    .select("member_id")
-    .eq("terms_id", activeTerms.id)
-    .in("member_id", memberIds);
+  const termIds = [...new Set(required.map(({ terms }) => String(terms.id)))];
+  const existingResult = await supabase.from("membership_consents")
+    .select("member_id,terms_id,result")
+    .eq("result", "accepted")
+    .in("terms_id", termIds).in("member_id", memberIds);
   if (existingResult.error) throw new ApiError(503, "MEMBERSHIP_CONSENT_READ_FAILED", "目前無法確認測試會員條款同意狀態。");
-  const existing = new Set((existingResult.data || []).map((row: any) => String(row.member_id)));
-  const missing = memberIds.filter((id) => !existing.has(id));
+  const pairKey = (memberId: string, termsId: string): string => memberId + ":" + termsId;
+  const existing = new Set((existingResult.data || []).map((row: any) => pairKey(String(row.member_id), String(row.terms_id))));
+  const missing = required.filter(({ memberId, terms }) => !existing.has(pairKey(memberId, String(terms.id))));
   if (missing.length) {
     const insertResult = await supabase.from("membership_consents").upsert(
-      missing.map((memberId) => ({ member_id: memberId, terms_id: activeTerms.id, result: "accepted" })),
+      missing.map(({ memberId, terms }) => ({ member_id: memberId, terms_id: terms.id, result: "accepted" })),
       { onConflict: "member_id,terms_id", ignoreDuplicates: true },
     );
     if (insertResult.error) throw new ApiError(503, "MEMBERSHIP_CONSENT_FIXTURE_FAILED", "目前無法建立測試會員條款前置資料。");
   }
 
-  const verifyResult = await supabase
-    .from("membership_consents")
-    .select("member_id")
-    .eq("terms_id", activeTerms.id)
-    .in("member_id", memberIds);
+  const verifyResult = await supabase.from("membership_consents")
+    .select("member_id,terms_id,result")
+    .eq("result", "accepted")
+    .in("terms_id", termIds).in("member_id", memberIds);
   if (verifyResult.error) throw new ApiError(503, "MEMBERSHIP_CONSENT_READ_FAILED", "目前無法驗證測試會員條款前置資料。");
-  const currentConsentCount = new Set((verifyResult.data || []).map((row: any) => String(row.member_id))).size;
-  if (currentConsentCount !== memberIds.length) throw new ApiError(503, "MEMBERSHIP_CONSENT_FIXTURE_INCOMPLETE", "測試會員條款前置資料未完整建立。");
+  const verified = new Set((verifyResult.data || []).map((row: any) => pairKey(String(row.member_id), String(row.terms_id))));
+  const readyCount = memberIds.length - required.filter(({ memberId, terms }) =>
+    !verified.has(pairKey(memberId, String(terms.id)))).length;
+  if (readyCount !== memberIds.length) {
+    throw new ApiError(503, "MEMBERSHIP_CONSENT_FIXTURE_INCOMPLETE", "測試會員條款前置資料未完整建立。");
+  }
 
   const detail = {
     testMemberCount: memberIds.length,
     insertedCount: missing.length,
-    currentConsentCount,
-    termsVersion: asText(activeTerms.version, 80),
+    currentConsentCount: readyCount,
+    consentRequiredCount: required.length,
+    termsVersion: [...new Set(required.map(({ terms }) => asText(terms.version, 80)))].join(", "),
     termsConfigured: true,
     skipped: false,
   };
-  await audit(supabase, identity, "test_control.test_consent.prepare", "membership_terms", String(activeTerms.id), detail);
+  await audit(supabase, identity, "test_control.test_consent.prepare", "membership_terms", "per-member", detail);
   await emitRealtimeEvent(supabase, "test_mode.membership_consent.prepared");
   return detail;
 }
