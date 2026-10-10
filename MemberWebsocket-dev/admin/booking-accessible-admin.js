@@ -186,6 +186,9 @@
       meta.append(code,time);
 
       info.append(heading,meta);
+      if (receipt.requestedBenefits?.length) {
+        const requested = document.createElement('small'); requested.textContent = `會員登記票券：${receipt.requestedBenefits.map(item => item.title || item.id).join('、')}`; info.append(requested);
+      }
       if (receipt.reviewStatus === 'completed') {
         const summary = document.createElement('div'); summary.className = 'accessible-admin-record-summary';
         const service = document.createElement('span');
@@ -457,7 +460,7 @@
     root.replaceChildren();
     hint.textContent = '';
 
-    const currentBenefits = Array.isArray(state.options?.currentBenefits) ? state.options.currentBenefits : [];
+    const currentBenefits = [...(Array.isArray(state.options?.currentBenefits) ? state.options.currentBenefits : []), ...(Array.isArray(state.options?.requestedBenefits) ? state.options.requestedBenefits.map(item => ({...item,status:'pending'})) : [])];
     const currentStatus = String(state.options?.currentBookingStatus || '');
     if (currentStatus === 'completed') {
       if (!currentBenefits.length) {
@@ -575,8 +578,10 @@
       message(options.currentBookingStatus === 'completed'
         ? '這筆預約已完成；請核對既有票券紀錄後補綁收據。'
         : '請核對收據、實際服務與本次使用票券後送出。');
+      return true;
     } catch (error) {
       if (generation === state.generation) message(error.message || '目前無法載入票券審核資料。',true);
+      return false;
     } finally {
       if (generation === state.generation) el('accessibleAdminBenefitFields').disabled = false;
     }
@@ -624,6 +629,8 @@
       (options.bookings || []).forEach(booking => {
         el('accessibleAdminExisting').append(new Option(`${booking.bookingDate} ${booking.startTime} ${booking.status === 'completed' ? '已完成' : '已確認'} · ${booking.title}`,booking.bookingId));
       });
+      if (options.requestedBookingId) el('accessibleAdminExisting').value = options.requestedBookingId;
+      if (options.requestedBenefits?.length) el('accessibleAdminReceiptMeta').textContent += ` · 會員登記：${options.requestedBenefits.map(item => item.title || item.id).join('、')}`;
       (options.services || []).forEach(service => {
         const row = document.createElement('div'); row.className = 'accessible-admin-item'; row.dataset.serviceId = service.id;
         const choice = document.createElement('label'); choice.className = 'accessible-admin-service-choice';
@@ -644,7 +651,9 @@
         });
         row.append(choice,minutesLabel,quantityLabel); el('accessibleAdminItems').append(row);
       });
-      renderBenefits();
+      if (el('accessibleAdminExisting').value && !await handleExistingBookingChange()) return;
+      if (!state.selected || state.selected.receiptId !== receipt.receiptId) return;
+      else renderBenefits();
       el('accessibleAdminDate').value = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       el('accessibleAdminSubmit').disabled = false; el('accessibleAdminDismiss').disabled = false;
       message(options.requirePrimaryTechnician === false && !options.primaryTechnicianConfigured ? '目前不必預約主要技師也能成立預約；此收據可登記為現場安排，依現有規則不新增主要技師集點與會員服務時間。' : options.primaryTechnicianConfigured ? (options.rewardRules?.length ? '請依序核對收據、實際服務、票券與點數後完成審核。' : '目前未設定服務集點規則，這次只記錄服務時間；請先在服務類型設定集點卡與每點分鐘數，才會自動發點。') : '尚未設定主要技師；請先設定，或連結已有預約。',options.requirePrimaryTechnician !== false && !options.primaryTechnicianConfigured);

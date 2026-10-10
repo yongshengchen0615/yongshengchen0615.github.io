@@ -156,6 +156,7 @@
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminSnapshotHeading">
                 <div class="booking-admin-settings-block-heading"><h4 id="bookingAdminSnapshotHeading">快照模式</h4></div>
                 <label class="booking-admin-toggle"><input id="bookingAdminSnapshotLocationRequired" type="checkbox"><span><strong>快照前必須取得定位</strong><small>僅快照模式適用；不限定服務距離，也不儲存精確座標。一般預約不受影響。</small></span></label>
+                <label class="booking-admin-toggle"><input id="bookingAdminTicketBookingRequired" type="checkbox" checked><span><strong>使用票券必須有有效預約</strong><small>適用集點卡與活動票券、快照登記。關閉後仍驗證票券資格與定位；有限制服務項目的票券，直接使用時仍須選擇符合項目的預約。</small></span></label>
               </section>
 
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminReminderHeading">
@@ -245,7 +246,7 @@
 
   function cacheElements() {
     [
-      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminReminderEnabled','bookingAdminSnapshotLocationRequired','bookingAdminReminderTime','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
+      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminReminderEnabled','bookingAdminSnapshotLocationRequired','bookingAdminTicketBookingRequired','bookingAdminReminderTime','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminAccessiblePendingCount','bookingAdminConfirmedCount',
       'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminStandardMode','bookingAdminAccessibleMode','bookingAdminStandardModeCount','bookingAdminAccessibleModeCount','bookingAdminStandardQueueView','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
@@ -626,6 +627,7 @@
     els.bookingAdminNotice.value = String(settings.bookingNotice || '');
     els.bookingAdminReminderEnabled.checked = settings.reminderEnabled === true;
     els.bookingAdminSnapshotLocationRequired.checked = settings.snapshotLocationRequired === true;
+    els.bookingAdminTicketBookingRequired.checked = settings.ticketBookingRequired !== false;
     els.bookingAdminReminderTime.value = String(settings.reminderTime || '18:00');
     renderHoursPreview();
   }
@@ -739,6 +741,7 @@
         bookingNotice,
         reminderEnabled: els.bookingAdminReminderEnabled.checked,
         snapshotLocationRequired: els.bookingAdminSnapshotLocationRequired.checked,
+        ticketBookingRequired: els.bookingAdminTicketBookingRequired.checked,
         reminderTime,
         expectedUpdatedAt: state.booking.settings?.updatedAt || '',
       }, true);
@@ -1169,6 +1172,52 @@
     });
   }
 
+  function openCompletedBookingModal(booking, group) {
+    els.bookingAdminCrudModalTitle.textContent = '更正已完成訂單';
+    els.bookingAdminCrudModalBody.innerHTML = '<form class="booking-admin-form"><p>填寫每位客人的實際項目與分鐘。系統會預覽點數及會員服務時間的差額，確認後追加補正紀錄。</p><fieldset data-correction-fields><div data-correction-people></div><label>更正原因<input data-correction-reason required maxlength="500"></label></fieldset><div data-correction-preview role="status" aria-live="polite"></div><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel class="button button-outline" type="button">取消</button><button class="button button-dark" type="submit">預覽並確認補正</button></div></form>';
+    const form = els.bookingAdminCrudModalBody.querySelector('form');
+    const people = group?.participants?.length ? group.participants : [{position:1,items:booking.items || []}];
+    let requestId = '';
+    people.forEach((person,index) => {
+      const section = document.createElement('fieldset'); section.dataset.correctionPosition = person.position || index+1;
+      const legend = document.createElement('legend'); legend.textContent = `第 ${index+1} 位 · ${person.technicianName || '現場安排'}`; section.append(legend);
+      const existing = new Map((person.items || []).map(item => [item.serviceId,item]));
+      const services = new Map((state.catalog.services || []).map(service => [service.serviceId,service]));
+      for (const item of person.items || []) if (!services.has(item.serviceId)) services.set(item.serviceId,{serviceId:item.serviceId,title:item.serviceTitle,durationMinutes:item.unitDurationMinutes});
+      services.forEach(service => {
+        if (service.serviceId === STORE_SERVICE_ID) return;
+        const old = existing.get(service.serviceId);
+        const row = document.createElement('label'); row.className='booking-admin-toggle';
+        const check = document.createElement('input'); check.type='checkbox'; check.dataset.correctionService=service.serviceId; check.checked=Boolean(old);
+        const title = document.createElement('span'); title.textContent=service.title || old?.serviceTitle || '服務項目';
+        const minutes = document.createElement('input'); minutes.type='number'; minutes.min='1'; minutes.max='720'; minutes.step='1'; minutes.dataset.correctionMinutes=''; minutes.value=String(old?.unitDurationMinutes || service.durationMinutes || 30); minutes.setAttribute('aria-label',`${title.textContent} 實際分鐘`);
+        const quantity = document.createElement('select'); quantity.dataset.correctionQuantity=''; quantity.append(new Option('1 份','1'),new Option('2 份','2')); quantity.value=String(old?.quantity || 1); quantity.setAttribute('aria-label',`${title.textContent} 數量`);
+        const sync=()=>{minutes.disabled=quantity.disabled=!check.checked;}; check.addEventListener('change',sync); sync();
+        row.append(check,title,minutes,quantity); section.append(row);
+      });
+      form.querySelector('[data-correction-people]').append(section);
+    });
+    form.addEventListener('input',()=>{requestId='';form.querySelector('[data-correction-preview]').textContent='';});
+    form.querySelector('[data-cancel]').addEventListener('click',closeModal);
+    form.addEventListener('submit',async event=>{
+      event.preventDefault(); if(state.busy) return;
+      const participants=[...form.querySelectorAll('[data-correction-position]')].map(section=>({position:Number(section.dataset.correctionPosition),items:[...section.querySelectorAll('[data-correction-service]:checked')].map(check=>({serviceId:check.dataset.correctionService,minutes:Number(check.parentElement.querySelector('[data-correction-minutes]').value),quantity:Number(check.parentElement.querySelector('[data-correction-quantity]').value)}))}));
+      const reason=form.querySelector('[data-correction-reason]').value.trim();
+      const payload={bookingId:booking.bookingId,expectedUpdatedAt:booking.updatedAt,participants,reason,requestId:requestId||(requestId='correction_'+crypto.randomUUID().replaceAll('-',''))};
+      const fields=form.querySelector('[data-correction-fields]'); fields.disabled=true; state.busy=true;
+      try {
+        const {adjustment}=await operationsRequest('admin.booking.completed.preview',payload);
+        const preview=`服務對象的會員服務時間：${adjustment.before.serviceMinutes} → ${adjustment.after.serviceMinutes} 分鐘（差額 ${adjustment.serviceMinutesDelta>=0?'+':''}${adjustment.serviceMinutesDelta}）\n${Number(adjustment.before.friendRewardMinutes||0)!==Number(adjustment.after.friendRewardMinutes||0)?`代預約會員的獎勵時間：${adjustment.before.friendRewardMinutes} → ${adjustment.after.friendRewardMinutes} 分鐘\n`:''}`+(adjustment.pointDeltas||[]).map(item=>`${item.memberId===booking.memberId?'預約會員':'服務對象'} · ${item.cardTitle}：${item.delta>=0?'+':''}${item.delta} 點`).join('\n');
+        form.querySelector('[data-correction-preview]').textContent=preview;
+        if (!window.confirm(`${preview}\n\n原因：${reason}\n確認追加補正？`)) return;
+        await operationsRequest('admin.booking.completed.correct',{...payload,expectedPreview:adjustment},true);
+        els.bookingAdminCrudModal.classList.add('hidden'); await refreshAll(true);
+      } catch(error) {showMessage(form.querySelector('[data-modal-message]'),error?.message||'無法補正，請重新整理後確認。','error');}
+      finally {state.busy=false;fields.disabled=false;}
+    });
+    showModal();
+  }
+
   function renderBookings() {
     const bookings = (state.booking.bookings || [])
       .filter((booking) => state.filter === 'all' || booking.status === state.filter)
@@ -1241,6 +1290,9 @@
       const cancellationPending = Boolean(booking.cancellationRequestedAt && !booking.cancellationReviewedAt);
       if (cancellationPending) appendNote(card, '會員已提出取消申請，請至「取消申請」分頁選擇保留預約或確認取消；審核完成前不可修改、確認或完成此預約。', true);
 
+      if (booking.status === 'completed') {
+        card.appendChild(actionButton('更正已完成訂單', 'button button-outline', () => openCompletedBookingModal(booking, group)));
+      }
       if (canEditBooking(booking)) {
         const note = document.createElement('label');
         note.className = 'booking-admin-note-field';
@@ -1325,7 +1377,7 @@
 
     const dateTime = document.createElement('p');
     dateTime.className = 'booking-received-datetime';
-    dateTime.textContent = `${formatBookingDateSummary(booking.bookingDate)} 營業班次 · ${String(booking.startAt || '').slice(0, 10) || booking.bookingDate} ${String(booking.startTime || '—').slice(0, 5)}–${String(booking.endAt || '').slice(0, 10) || booking.bookingDate} ${String(booking.endTime || '—').slice(0, 5)}`;
+    dateTime.textContent = `${formatBookingDateSummary(booking.bookingDate)} 營業班次 · ${String(booking.startTime || '—').slice(0, 5)}–${String(booking.endTime || '—').slice(0, 5)}${String(booking.endAt || '').slice(0, 10) > String(booking.startAt || '').slice(0, 10) ? '（隔日）' : ''}`;
     summary.appendChild(dateTime);
 
     const contactName = document.createElement('p');

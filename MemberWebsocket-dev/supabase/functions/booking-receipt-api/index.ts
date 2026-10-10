@@ -1,3 +1,4 @@
+import { bookingTicketUsageError } from "../_shared/booking-ticket-usage.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { resolveUserTestIdentity, TestModeAuthError } from "../_shared/test-mode-auth.ts";
@@ -98,6 +99,8 @@ async function requireMember(supabase:SupabaseClient,identity:Identity):Promise<
   return member;
 }
 function dbError(error:unknown):ApiError{
+  const ticketError=bookingTicketUsageError(error,(status,code,message)=>new ApiError(status,code,message));
+  if(ticketError) return ticketError as ApiError;
   const raw=error as {message?:string;details?:string;code?:string};
   if(raw?.code==="22P02"||raw?.code==="22007"||raw?.code==="22008") return new ApiError(400,"INVALID_INPUT","日期、時間或服務項目格式不正確。");
   if(raw?.code==="23P01") return new ApiError(409,"BOOKING_SLOT_TAKEN","此時間已有預約，請優先連結該會員已有預約，或核對服務日期與時間。");
@@ -192,7 +195,7 @@ function localTaipeiNowMs():number{
 }
 async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
   const result=await supabase.from("bookings")
-    .select("id,status,updated_at,end_at,booking_date,end_time,starts_next_day,cancellation_requested_at,cancellation_reviewed_at,booking_receipts(receipt_id,status,created_at,bound_at,failure_reason)")
+    .select("id,status,updated_at,end_at,booking_date,end_time,starts_next_day,cancellation_requested_at,cancellation_reviewed_at,booking_receipts!booking_receipts_booking_id_fkey(receipt_id,status,created_at,bound_at,failure_reason)")
     .eq("member_id",member.id)
     .in("status",["confirmed","completed"])
     .order("booking_date",{ascending:false})
@@ -224,7 +227,7 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
     };
   });
   const submissions=await supabase.from("booking_receipts")
-    .select("receipt_id,booking_id,status,created_at,updated_at,failure_reason,booking_completion_settlements:bookings(booking_completion_settlements(service_minutes,reward_details))")
+    .select("receipt_id,booking_id,status,created_at,updated_at,failure_reason,requested_benefits,requested_booking_id,booking_completion_settlements:bookings!booking_receipts_booking_id_fkey(booking_completion_settlements(service_minutes,reward_details),booking_completion_adjustments(after_settlement,created_at,id))")
     .eq("member_id",member.id).eq("submission_mode","accessible").in("status",["awaiting_review","bound","failed"])
     .order("updated_at",{ascending:false}).limit(10);
   if(submissions.error) throw new ApiError(500,"DATABASE_ERROR","收據登記狀態暫時無法讀取。");
@@ -232,8 +235,8 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
   if(settings.error) throw new ApiError(503,"SNAPSHOT_POLICY_UNAVAILABLE","目前無法確認快照定位政策，請稍後重試。");
   return {snapshotLocationRequired:settings.data.snapshot_location_required===true,bookings,submissions:(submissions.data||[]).map((r:any)=>({receiptId:r.receipt_id,bookingId:r.booking_id,
     status:r.status,createdAt:r.created_at,updatedAt:r.updated_at,
-    dismissed:r.failure_reason==="admin-dismissed",
-    settlement:r.booking_completion_settlements?.booking_completion_settlements||null}))};
+    dismissed:r.failure_reason==="admin-dismissed",cancelled:r.failure_reason==="member-cancelled",requestedBenefits:r.requested_benefits||[],requestedBookingId:r.requested_booking_id||"",
+    settlement:effectiveSettlement(r.booking_completion_settlements)}))};
 }
 async function prepare(supabase:SupabaseClient,identity:Identity,member:any,body:Json):Promise<Json>{
   const bookingId=asText(body.bookingId,80);
@@ -246,8 +249,8 @@ async function prepare(supabase:SupabaseClient,identity:Identity,member:any,body
   if(!Number.isSafeInteger(size)||size<1||size>MAX_FILE_BYTES) throw new ApiError(413,"RECEIPT_FILE_TOO_LARGE","收據圖片不可超過 5 MB。");
 
   const objectPath=`${member.id}/${accessible?"accessible":bookingId}/${crypto.randomUUID()}.${extensionFor(mime)}`;
-  const result=await supabase.rpc(accessible?"prepare_snapshot_receipt_request":"prepare_booking_receipt_request",{
-    ...(accessible?{p_location:body.location??null}:{p_booking_id:bookingId}),p_member_id:member.id,p_request_id:requestId,
+  const result=await supabase.rpc(accessible?"prepare_snapshot_receipt_v2":"prepare_booking_receipt_request",{
+    ...(accessible?{p_location:body.location??null,p_benefits:normalizeAccessibleBenefits(body.benefits),p_booking_id:asText(body.requestedBookingId,80)||null}:{p_booking_id:bookingId}),p_member_id:member.id,p_request_id:requestId,
     p_object_path:objectPath,p_mime_type:mime,p_size_bytes:size
   });
   if(result.error) throw dbError(result.error);
@@ -281,7 +284,7 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
   if(String(receipt.member_id)!==String(member.id)) throw new ApiError(403,"RECEIPT_NOT_OWNED","不可操作其他會員的收據。");
   const accessible=receipt.submission_mode==="accessible";
   if(receipt.status==="bound"||receipt.status==="awaiting_review"){
-    const repeat=await supabase.rpc(accessible?"finalize_snapshot_receipt_request":"finalize_booking_receipt_request",{
+    const repeat=await supabase.rpc(accessible?"finalize_snapshot_receipt_v2":"finalize_booking_receipt_request",{
       p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,
       ...(accessible?{p_location:body.location??null}:{p_expected_booking_updated_at:expectedUpdatedAt}),p_actual_mime_type:receipt.declared_mime_type,
       p_actual_size_bytes:receipt.declared_size_bytes,p_sha256_hex:"0".repeat(64)
@@ -316,7 +319,7 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
     throw new ApiError(400,"RECEIPT_SIZE_MISMATCH","收據圖片大小與上傳資料不一致。");
   }
   const hash=await fileSha256Hex(bytes);
-  const finalized=await supabase.rpc(accessible?"finalize_snapshot_receipt_request":"finalize_booking_receipt_request",{
+  const finalized=await supabase.rpc(accessible?"finalize_snapshot_receipt_v2":"finalize_booking_receipt_request",{
     p_receipt_id:receiptId,p_member_id:member.id,p_actor_line_user_id:identity.lineUserId,
     ...(accessible?{p_location:body.location??null}:{p_expected_booking_updated_at:expectedUpdatedAt}),p_actual_mime_type:declared,
     p_actual_size_bytes:downloaded.data.size,p_sha256_hex:hash
@@ -328,6 +331,13 @@ async function finalize(supabase:SupabaseClient,identity:Identity,member:any,bod
   }
   return (finalized.data||{}) as Json;
 }
+function effectiveSettlement(booking:any):any {
+  if (Array.isArray(booking)) booking=booking[0];
+  const original=Array.isArray(booking?.booking_completion_settlements)?booking.booking_completion_settlements[0]:booking?.booking_completion_settlements;
+  const latest=(booking?.booking_completion_adjustments||[]).slice().sort((a:any,b:any)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)))[0];
+  if (!latest) return original||null;
+  return {...original,service_minutes:latest.after_settlement?.serviceMinutes||0,reward_details:latest.after_settlement?.rewards||[],corrected_at:latest.created_at};
+}
 async function adminList(supabase:SupabaseClient):Promise<Json>{
   const result=await supabase.from("booking_receipts")
     .select("receipt_id,booking_id,status,created_at,updated_at,bound_at,actual_mime_type,actual_size_bytes")
@@ -338,12 +348,13 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
 
   const accessible=await supabase.from("booking_receipts")
     .select(`
-      receipt_id,booking_id,status,failure_reason,created_at,updated_at,bound_at,
+      receipt_id,booking_id,status,failure_reason,requested_benefits,requested_booking_id,created_at,updated_at,bound_at,
       members(display_name,member_code),
-      bookings(
+      bookings!booking_receipts_booking_id_fkey(
         id,booking_date,start_time,status,total_duration_minutes,completed_at,
         booking_items(service_id,service_title,unit_duration_minutes,quantity,service_type),
         booking_completion_settlements(service_minutes,reward_details,created_at),
+        booking_completion_adjustments(after_settlement,created_at,id),
         booking_benefit_selections(benefit_kind,title_snapshot,status,redeemed_at,result)
       )
     `)
@@ -358,7 +369,7 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
     const settlements=Array.isArray(booking?.booking_completion_settlements)
       ? booking.booking_completion_settlements
       : booking?.booking_completion_settlements ? [booking.booking_completion_settlements] : [];
-    const settlement=settlements[0]||null;
+    const settlement=effectiveSettlement(booking)||settlements[0]||null;
     const rewards=Array.isArray(settlement?.reward_details)?settlement.reward_details:[];
     const points=rewards.reduce((sum:number,reward:any)=>sum+Math.max(0,Number(reward?.points||0)),0);
     const services=(Array.isArray(booking?.booking_items)?booking.booking_items:[])
@@ -383,6 +394,7 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
     const dismissed=status==="failed"&&String(row.failure_reason||"")==="admin-dismissed";
     return {
       receiptId:String(row.receipt_id||""),
+      requestedBenefits:row.requested_benefits||[],requestedBookingId:row.requested_booking_id||"",
       bookingId:String(row.booking_id||""),
       status,
       reviewStatus:status==="awaiting_review"?"pending":status==="bound"?"completed":dismissed?"dismissed":"failed",
@@ -410,7 +422,7 @@ async function adminList(supabase:SupabaseClient):Promise<Json>{
       updatedAt:row.updatedAt,
       createdAt:row.createdAt,
       memberName:row.memberName,
-      memberCode:row.memberCode,
+      memberCode:row.memberCode,requestedBenefits:row.requestedBenefits,requestedBookingId:row.requestedBookingId,
     }));
 
   return {
@@ -634,7 +646,7 @@ async function validateAccessibleBenefits(
 }
 
 async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Json>{
-  const receipt=await supabase.from("booking_receipts").select("member_id,status,updated_at")
+  const receipt=await supabase.from("booking_receipts").select("member_id,status,updated_at,requested_benefits,requested_booking_id")
     .eq("receipt_id",asText(body.receiptId,80)).eq("submission_mode","accessible").maybeSingle();
   if(receipt.error) throw new ApiError(500,"DATABASE_ERROR","收據資料暫時無法讀取。");
   if(!receipt.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到這筆收據。");
@@ -654,7 +666,7 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
   const [services,settings,bookings,rewardRules,memberResult,currentBenefitsResult]=await Promise.all([
     supabase.from("booking_services").select("id,title,duration_minutes,service_type,counts_toward_membership").eq("is_active",true).is("deleted_at",null).neq("id","00000000-0000-4000-8000-000000000010").order("title"),
     supabase.from("booking_settings").select("primary_technician_id,require_primary_technician").eq("id",1).maybeSingle(),
-    supabase.from("bookings").select("id,booking_date,start_time,status,booking_items(service_id,service_title),booking_receipts(status)").eq("member_id",receipt.data.member_id)
+    supabase.from("bookings").select("id,booking_date,start_time,status,booking_items(service_id,service_title),booking_receipts!booking_receipts_booking_id_fkey(status)").eq("member_id",receipt.data.member_id)
       .in("status",["confirmed","completed"]).order("booking_date",{ascending:false}).limit(80),
     supabase.from("booking_service_type_rewards").select("minutes_per_point,booking_service_types(name),point_cards(title)"),
     supabase.from("members").select("id,birthday").eq("id",receipt.data.member_id).maybeSingle(),
@@ -676,6 +688,7 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
   );
 
   return {
+    requestedBenefits:receipt.data.requested_benefits||[],requestedBookingId:receipt.data.requested_booking_id||"",
     rewardRules:(rewardRules.data||[]).map((r:any)=>({serviceType:r.booking_service_types?.name||"",minutesPerPoint:r.minutes_per_point,cardTitle:r.point_cards?.title||""})),
     services:services.data||[],
     primaryTechnicianConfigured:Boolean(settings.data?.primary_technician_id),
@@ -714,7 +727,7 @@ Deno.serve(async(request:Request)=>{
   try{
     const body=await readJsonObject(request,MAX_REQUEST_BYTES,ApiError);
     const action=asText(body.action,100);
-    const userActions=new Set(["user.booking.receipt.list","user.booking.receipt.prepare","user.booking.receipt.finalize"]);
+    const userActions=new Set(["user.booking.receipt.list","user.booking.receipt.prepare","user.booking.receipt.finalize","user.booking.receipt.options","user.booking.receipt.cancel"]);
     const adminActions=new Set(["admin.booking.receipt.list","admin.booking.receipt.url","admin.booking.receipt.options","admin.booking.receipt.register","admin.booking.receipt.dismiss"]);
     if(!userActions.has(action)&&!adminActions.has(action)) throw new ApiError(404,"ACTION_NOT_FOUND","不支援的收據操作。");
 
@@ -727,9 +740,21 @@ Deno.serve(async(request:Request)=>{
     if(userActions.has(action)){
       if(asText(body.clientType,20)!=="booking") throw new ApiError(403,"CLIENT_ACTION_MISMATCH","操作端與功能不相符。");
       const identity=await resolveUserIdentity(supabase,body);
-      await consumeRateLimit(supabase,identity,action!=="user.booking.receipt.list");
+      await consumeRateLimit(supabase,identity,action!=="user.booking.receipt.list"&&action!=="user.booking.receipt.options");
       const member=await requireMember(supabase,identity);
       if(action==="user.booking.receipt.list") data=await memberList(supabase,member);
+      else if(action==="user.booking.receipt.options") {
+        const catalog=await accessibleBenefitCatalog(supabase,member);
+        const choices=await supabase.rpc("member_ticket_booking_options",{p_member_id:member.id});
+        const policy=await supabase.from("booking_settings").select("ticket_booking_required").eq("id",1).single();
+        if(choices.error||policy.error) throw new ApiError(503,"SNAPSHOT_POLICY_UNAVAILABLE","目前無法確認票券政策。");
+        data={...catalog,ticketBookingRequired:policy.data.ticket_booking_required!==false,
+          items:(catalog.items as any[]).map(item=>({...item,eligibleBookings:(choices.data as any)?.[item.kind]?.[item.selectionId]||[]}))};
+      } else if(action==="user.booking.receipt.cancel") {
+        const cancelled=await supabase.rpc("cancel_snapshot_receipt_request",{p_receipt_id:asText(body.receiptId,80),p_member_id:member.id,p_actor:identity.lineUserId,p_expected_updated_at:asText(body.expectedUpdatedAt,100)||null});
+        if(cancelled.error) throw dbError(cancelled.error);
+        data=cancelled.data||{};
+      }
       else if(action==="user.booking.receipt.prepare") data=await prepare(supabase,identity,member,body);
       else data=await finalize(supabase,identity,member,body);
     }else{
@@ -754,7 +779,7 @@ Deno.serve(async(request:Request)=>{
             );
         const result=action==="admin.booking.receipt.dismiss"
           ? await supabase.rpc("dismiss_accessible_receipt_request",{p_receipt_id:receiptId,p_expected_updated_at:asText(body.expectedUpdatedAt,100)||null,p_actor:identity.lineUserId})
-          : await supabase.rpc("register_accessible_receipt_with_benefits_request",{
+          : await supabase.rpc("register_snapshot_receipt_v2",{
             p_receipt_id:receiptId,p_expected_receipt_updated_at:asText(body.expectedUpdatedAt,100)||null,p_actor:identity.lineUserId,
             p_booking_id:bookingId||null,p_booking_date:asText(body.bookingDate,10)||null,
             p_start_time:asText(body.startTime,8)||null,p_items:Array.isArray(body.items)?body.items:[],

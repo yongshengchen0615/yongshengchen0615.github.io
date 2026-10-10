@@ -13,8 +13,9 @@ export function bookingTicketUsageError(error: unknown, createError: (status: nu
   return null;
 }
 
-export function ticketBookingId(value: unknown, createError: (status: number, code: string, message: string) => Error): string {
+export function ticketBookingId(value: unknown, createError: (status: number, code: string, message: string) => Error): string | null {
   const id = String(value ?? "").trim();
+  if (id === 'no-booking') return null;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
     throw createError(400, "BOOKING_TICKET_CONFIRMATION_REQUIRED", "請先選擇管理員已確認、尚未完成的預約。");
   }

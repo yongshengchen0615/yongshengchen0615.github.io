@@ -147,3 +147,10 @@ body.booking-receipt-modal-open{overflow:hidden;}
 .booking-receipt-file-label input{width:100%;min-height:44px;}
 .booking-receipt-modal :is(button,input):focus-visible{outline:3px solid var(--theme-focus-ring,#5475b9);outline-offset:2px;}
 @media(max-width:600px){.booking-receipt-modal{align-items:end}.booking-receipt-modal-card{max-height:92dvh;border-radius:20px 20px 12px 12px;}}
+
+#snapshotTicketFields{margin:16px 0;padding:14px;border:1px solid var(--theme-border);border-radius:14px;min-width:0;}
+#snapshotTicketFields p{font-size:14px;line-height:1.6;}
+#snapshotTicketChoices{display:grid;gap:10px;margin-bottom:14px;}
+#snapshotTicketChoices label{display:flex;align-items:start;gap:10px;line-height:1.6;}
+#snapshotTicketChoices input{flex:none;margin-top:5px;}
+#snapshotTicketBooking{display:block;width:100%;min-height:44px;margin-top:6px;background:var(--theme-surface);color:inherit;}

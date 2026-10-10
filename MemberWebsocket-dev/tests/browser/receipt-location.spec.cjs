@@ -52,6 +52,7 @@ test.beforeAll(async()=>{
           if(url.searchParams.get('mode')==='uncertain'&&state.finalize.length===1)return json(res,{code:'API_RESPONSE_UNCERTAIN',message:'Uncertain result'},503);
           return json(res,{receiptId:'QA-RECEIPT',status:'awaiting_review',alreadyApplied:state.finalize.length>1});
         }
+        if(action==='user.booking.receipt.options')return json(res,{ticketBookingRequired:url.searchParams.get('mode')==='tickets-required',items:[{kind:'event',selectionId:'QA-TICKET',title:'QA held ticket',selectable:true,eligibleBookings:[{bookingId:'00000000-0000-4000-8000-000000000001',bookingDate:'2099-01-01',startTime:'10:00',title:'QA booking'}]},{kind:'event',selectionId:'QA-EXPIRED',title:'Expired',selectable:false,disabledReason:'票券已過期'}]});
         if(action==='user.booking.receipt.list')return json(res,{snapshotLocationRequired:url.searchParams.get('mode')==='location-required',bookings:[],submissions:[]});
         if(action==='user.event.bootstrap')return json(res,{profile:{displayName:'QA',tierKey:'general'},usedTickets:[],usedTicketCount:0,offers:[{
           ticket:{eventTicketId:'QA-GEO',title:'GPS QA',ticketType:'coupon',description:'GPS receipt QA',usageMethod:'Once',usageInstructions:'Once',requiresLocation:true,allowedTierKeys:['general'],prizes:[]},
@@ -224,4 +225,11 @@ test('invalid receipt images are rejected; cancel preserves all business records
   expect(runs.get(run).prepare).toHaveLength(0);
   expect(runs.get(run).finalize).toHaveLength(0);
   expect(runs.get(run).uploads).toHaveLength(0);
+});
+
+test('snapshot selected held ticket reaches prepare with an eligible booking and expired ticket stays disabled',async({page})=>{
+ const run='snapshot-ticket-selection';await open(page,run,'tickets-required');await expect(page.locator('[data-snapshot-id="QA-TICKET"]')).toBeEnabled();
+ await expect(page.locator('[data-snapshot-id="QA-EXPIRED"]')).toBeDisabled();await page.locator('[data-snapshot-id="QA-TICKET"]').check();
+ await capture(page);await page.locator('#bookingReceiptSubmit').click();await expect(page.locator('#bookingReceiptModal')).toBeHidden();
+ expect(runs.get(run).prepare[0]).toMatchObject({benefits:[{kind:'event',id:'QA-TICKET'}],requestedBookingId:'00000000-0000-4000-8000-000000000001'});
 });

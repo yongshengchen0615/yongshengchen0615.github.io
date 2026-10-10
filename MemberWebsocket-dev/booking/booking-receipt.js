@@ -21,6 +21,8 @@
     opener: null,
     previousShellInert: null,
     photoGeneration: 0,
+    ticketGeneration: 0,
+    ticketsLoading: false,
     busy: false,
     listLoading: false,
   };
@@ -75,6 +77,7 @@
           <p id="bookingReceiptFileMeta"></p>
         </div>
         <p id="bookingReceiptMessage" class="booking-receipt-message hidden" role="status" aria-live="polite"></p>
+        <fieldset id="snapshotTicketFields" class="hidden"><legend>登記本次要使用的票券</legend><p>送件只記錄使用意願；管理員核對服務項目並核准後才核銷。審核時會重新確認票券是否仍可使用。</p><div id="snapshotTicketChoices"></div><label>關聯預約<select id="snapshotTicketBooking" aria-label="票券關聯預約"></select></label></fieldset>
         <div class="booking-receipt-actions">
           <button id="bookingReceiptCancel" class="button button-light" type="button">取消</button>
           <button id="bookingReceiptSubmit" class="button button-dark" type="button" disabled>上傳收據並送出審核</button>
@@ -161,6 +164,8 @@
     if (state.busy) return;
     stopCamera();
     resetModalState();
+    state.ticketGeneration += 1;
+    state.ticketsLoading = false;
     document.getElementById('bookingReceiptModal')?.classList.add('hidden');
     document.body.classList.remove('booking-receipt-modal-open');
     const shell = document.querySelector('.app-shell');
@@ -181,6 +186,12 @@
     state.opener = document.activeElement;
     resetModalState();
     state.accessible = accessible;
+    state.ticketGeneration += 1;
+    state.ticketsLoading = false;
+    document.getElementById('snapshotTicketChoices').replaceChildren();
+    document.getElementById('snapshotTicketBooking').replaceChildren();
+    document.getElementById('snapshotTicketBooking').dataset.required = 'false';
+    document.getElementById('snapshotTicketFields').classList.toggle('hidden', !accessible);
     document.getElementById('bookingReceiptTitle').textContent = accessible ? '拍收據，請管理員登記' : '拍攝收據並送出審核';
     modal.querySelector('.booking-receipt-help').textContent = accessible
       ? '拍下本次收據並送出即可，不必填寫預約。管理員核對服務項目後，才會登記服務時間與點數。等待登記時重新拍攝，會取代目前收據。'
@@ -244,7 +255,53 @@
 
   function openAccessible() {
     openModal('', '', true, { skipCamera: true });
+    void loadSnapshotTickets();
     return authorizeSnapshot();
+  }
+
+  async function loadSnapshotTickets() {
+    const generation = state.ticketGeneration;
+    state.ticketsLoading = true;
+    const fields = document.getElementById('snapshotTicketFields');
+    fields.classList.remove('hidden'); fields.disabled = true;
+    const choices = document.getElementById('snapshotTicketChoices');
+    choices.textContent = '正在讀取票券與使用條件…';
+    try {
+      const current = session();
+      const catalog = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.options');
+      if (generation !== state.ticketGeneration || !state.accessible) return;
+      choices.replaceChildren();
+      const items = (catalog.items || []).filter(item => item.selectionId && !item.claimRequired);
+      items.forEach(item => {
+        const label = document.createElement('label');
+        const check = document.createElement('input'); check.type = 'checkbox';
+        check.dataset.snapshotKind = item.kind; check.dataset.snapshotId = item.selectionId;
+        check.disabled = item.selectable !== true || (catalog.ticketBookingRequired && !item.eligibleBookings?.length);
+        const text = document.createElement('span');
+        text.textContent = `${item.title} · ${item.conditionLabel || item.subtitle || ''}${check.disabled ? ` · ${item.disabledReason || '需有符合資格的已確認預約'}` : ''}`;
+        label.append(check, text); choices.append(label);
+        check.addEventListener('change', () => { resetTicketRequest(); renderBookings(); });
+      });
+      if (!items.length) choices.textContent = '目前沒有可登記的已持有票券，可以只送出收據。';
+      function renderBookings() {
+        const selected = [...choices.querySelectorAll('[data-snapshot-id]:checked')].map(check => items.find(item => item.kind === check.dataset.snapshotKind && item.selectionId === check.dataset.snapshotId));
+        const common = selected.length ? (selected[0].eligibleBookings || []).filter(booking => selected.every(item => item.eligibleBookings?.some(b => b.bookingId === booking.bookingId))) : [];
+        const select = document.getElementById('snapshotTicketBooking'); const previous = select.value;
+        select.replaceChildren(new Option(catalog.ticketBookingRequired ? '選券後請選擇有效預約' : '由管理員核對服務紀錄', ''));
+        common.filter(booking => booking.bookingId !== 'no-booking').forEach(booking => select.append(new Option(`${booking.bookingDate} ${booking.startTime} · ${booking.title}`, booking.bookingId)));
+        select.value = common.some(b => b.bookingId === previous) ? previous : common.length === 1 && common[0].bookingId !== 'no-booking' ? common[0].bookingId : '';
+        select.required = catalog.ticketBookingRequired && selected.length > 0;
+        select.dataset.required = String(catalog.ticketBookingRequired);
+      }
+      renderBookings(); fields.disabled = false;
+      document.getElementById('snapshotTicketBooking').onchange = resetTicketRequest;
+    } catch (error) {
+      if (generation === state.ticketGeneration) choices.textContent = error?.message || '無法讀取票券，可只送收據或關閉後重試。';
+    } finally { if (generation === state.ticketGeneration) state.ticketsLoading = false; }
+  }
+
+  function resetTicketRequest() {
+    state.requestId = ''; state.prepared = null; state.uploaded = false;
   }
 
   async function openAccessibleE2ESnapshot(blob) {
@@ -459,10 +516,18 @@
 
   async function submitReceipt() {
     if (state.busy || !state.selectedFile || (!state.selectedBookingId && !state.accessible)) return;
+    if (state.accessible && state.ticketsLoading) { setMessage('票券仍在讀取中，請稍候。', true); return; }
+    const selectedBenefits = state.accessible ? [...document.querySelectorAll('[data-snapshot-id]:checked')].map(check => ({ kind: check.dataset.snapshotKind, id: check.dataset.snapshotId })) : [];
+    const requestedBookingId = state.accessible ? document.getElementById('snapshotTicketBooking').value : '';
+    if (selectedBenefits.length && document.getElementById('snapshotTicketBooking').dataset.required === 'true' && !requestedBookingId) {
+      setMessage('請先選擇這些票券共同符合的已確認預約。', true); return;
+    }
     const currentSession = session();
     if (!currentSession) return setMessage('登入狀態已失效，請重新整理後再試。', true);
 
     state.busy = true;
+    const ticketFields = document.getElementById('snapshotTicketFields');
+    if (ticketFields) ticketFields.disabled = true;
     const submit = document.getElementById('bookingReceiptSubmit');
     const cancel = document.getElementById('bookingReceiptCancel');
     const close = document.getElementById('bookingReceiptClose');
@@ -486,7 +551,7 @@
         currentSession.idToken,
         'user.booking.receipt.prepare',
         {
-          ...(state.accessible ? { accessible: true, location: state.location } : { bookingId: state.selectedBookingId }),
+          ...(state.accessible ? { accessible: true, location: state.location, benefits: selectedBenefits, requestedBookingId } : { bookingId: state.selectedBookingId }),
           requestId,
           mimeType: String(file.type || '').toLowerCase(),
           sizeBytes: file.size,
@@ -541,6 +606,7 @@
     } finally {
       if (!submitted) {
         state.busy = false;
+        if (ticketFields) ticketFields.disabled = false;
         [submit, cancel, close, imageInput].forEach((button) => { if (button) button.disabled = false; });
         if (retake) retake.disabled = false;
       }

@@ -19,12 +19,14 @@
     select.append(placeholder);
     for (const booking of bookings) {
       const option = document.createElement('option'); option.value = booking.bookingId;
-      option.textContent = `${booking.bookingDate} ${booking.startTime} · ${booking.title || '預約服務'}`;
+      option.textContent = booking.bookingId === 'no-booking' ? booking.title : `${booking.bookingDate} ${booking.startTime} · ${booking.title || '預約服務'}`;
       select.append(option);
     }
     select.value = bookings.some(booking => booking.bookingId === previous) ? previous : bookings.length === 1 ? bookings[0].bookingId : '';
     const hint = document.createElement('small');
-    hint.textContent = '需為本人、管理員已確認且尚未完成的預約；票券也須符合該筆預約的服務項目。';
+    hint.textContent = bookings.some(booking => booking.bookingId === 'no-booking')
+      ? '目前允許不綁定預約；效期、點數及定位要求仍會於使用時驗證。'
+      : '需為本人、管理員已確認且尚未完成的預約；票券也須符合該筆預約的服務項目。';
     label.append(title, select, hint); container.replaceChildren(label); fields.set(container, select);
     select.addEventListener('change', onChange);
   }
