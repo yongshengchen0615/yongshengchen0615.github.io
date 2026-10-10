@@ -27,7 +27,7 @@
   <link rel="stylesheet" href="./booking-receipt-admin.css?v=booking-receipt-admin-dark-20261001-4">
   <link rel="stylesheet" href="./fixed-ticket-admin.css?v=fixed-ticket-calendar-dark-20260927-1-ui-20261006-1">
   <link rel="stylesheet" href="./test-mode.css?v=test-mode-ui-20260920-3">
-  <link rel="stylesheet" href="./test-control.css?v=replay-system-20260927-1">
+  <link rel="stylesheet" href="./test-control.css?v=test-control-20261010-1">
   <link rel="stylesheet" href="./e2e-control.css?v=e2e-coverage-dark-20261005-1">
   <link rel="stylesheet" href="./e2e-flow-visualizer.css?v=e2e-flow-20261006-2">
   <link rel="stylesheet" href="./test-workspace-tabs.css?v=test-workspace-tabs-20260923-2">
@@ -46,7 +46,7 @@
   <script src="./member-workspace-tabs.js?v=member-workspace-tabs-20260929-1" defer></script>
   <script src="./terms.js?v=membership-terms-ui-20261005-2" defer></script>
   <script src="./test-mode.js?v=test-login-takeover-20261008-2" defer></script>
-  <script src="./test-control.js?v=test-control-20261005-3" defer></script>
+  <script src="./test-control.js?v=test-control-20261010-1" defer></script>
   <script src="../e2e-feature-coverage.js?v=feature-coverage-20261009-1-ongoing-20261010-1" defer></script>
   <script src="../e2e-scenario-graph.js?v=e2e-graph-20261004-2" defer></script>
   <script src="../e2e-professional-tester.js?v=professional-qa-20261005-2" defer></script>
@@ -401,13 +401,17 @@
             </div>
             <div class="test-control-heading-actions">
               <span id="automationTestRunnerBadge" class="test-mode-status-badge is-off">Runner：待命</span>
+              <label class="test-control-keep-history" for="keepTestHistoryOnPurge">
+                <input id="keepTestHistoryOnPurge" type="checkbox" checked>
+                保留 E2E 測試紀錄與失敗快照
+              </label>
               <button id="purgeTestDataButton" class="button button-danger" type="button">移除測試資料</button>
             </div>
           </div>
 
           <div class="test-mode-safety-note test-control-retention-note" role="note">
             <span class="test-mode-safety-icon" aria-hidden="true">i</span>
-            <p><strong>測試資料會保留</strong><span>自動化與真人 E2E 完成後，測試帳號產生的資料預設保留，方便檢查管理端與用戶端狀態。確認不再需要時，再使用「移除測試資料」一次清除；測試帳號與環境設定不會被刪除。</span></p>
+            <p><strong>測試資料與測試紀錄分開管理</strong><span>測試結束後，業務測試資料預設保留供檢查。使用「移除測試資料」時，可勾選保留 E2E 執行歷史、案例、步驟與失敗快照；無論是否勾選，測試帳號及環境設定都不會刪除。相關測試會員操作紀錄仍隨業務資料清理。</span></p>
           </div>
           <div id="automationTestMessage" class="form-message hidden" role="status" aria-live="polite"></div>
 
