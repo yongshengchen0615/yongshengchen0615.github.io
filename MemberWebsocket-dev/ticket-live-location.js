@@ -52,6 +52,13 @@
       const message = errorMessage(error);
       if (typeof onError === 'function') onError(message);
       if (error?.code === 1) {
+        // A denied watch does not resume after the user grants permission.
+        // Discard it so the next user attempt starts a fresh browser watch.
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+        latest = null;
         for (const waiter of [...waiters]) waiter.reject(new Error(message));
       }
     }
