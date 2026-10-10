@@ -122,6 +122,11 @@ jobs:
       - name: Check E2E refresh and purged-history recovery first
         run: npm test -- e2e-refresh.spec.cjs
         working-directory: MemberWebsocket-dev/tests/browser
+      - name: Fail fast on mobile member pass and GPS permission retry
+        run: |
+          npm test -- member-p2.spec.cjs --grep "membership pass actions stay grouped"
+          npm test -- receipt-location.spec.cjs --grep "GPS permission denial"
+        working-directory: MemberWebsocket-dev/tests/browser
       - name: Run real-browser admin, member, receipt and location flows
         run: npm test
         working-directory: MemberWebsocket-dev/tests/browser
