@@ -3,8 +3,8 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "1f2cd1d808475a3d560d0aab1d8cbaf7dd414e6a4b0b779ac5f0e26e3df965eb",
-    "admin/app.js": "e616fd14f80ee25d4c8a2403b81fe3cbd8041711f7b0eff9aefa94e8e7300b1c",
+    "admin/index.html": "a79aea18b126ce45c4b4f96829aa46aeed4d0b36d89fd1690f156d330410f10f",
+    "admin/app.js": "b22508c41ed00193efdbf55cfd5d3f91f41df5c5226483377012c4636b8b57ae",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
     "admin/grant-automation.js": "f3178a0bb26745d6cd7731b24ab8ab9aaec96a4dada62699a3609ae8b803e2b0",
@@ -134,6 +134,14 @@
       "cases": [
         "POINT_TEMPLATE_coupon",
         "POINT_TEMPLATE_lottery"
+      ]
+    },
+    {
+      "id": "points.16",
+      "module": "points",
+      "name": "集點票券庫刪除與兌換節點引用保護",
+      "cases": [
+        "POINT_TEMPLATE_DELETE"
       ]
     },
     {
