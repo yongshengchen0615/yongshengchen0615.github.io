@@ -144,3 +144,55 @@ test('member, friend and reward QR buttons display distinct payloads in closable
  await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await page.locator('#showMemberReferralQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();await page.keyboard.press('Escape');
  expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
 });
+
+for(const [width,theme] of [[320,'light'],[390,'dark'],[1280,'light']])test('membership pass actions stay grouped and usable at '+width+' '+theme,async({page},info)=>{
+  await page.setViewportSize({width,height:844});
+  await page.addInitScript(theme=>document.addEventListener('DOMContentLoaded',()=>document.documentElement.dataset.theme=theme),theme);
+  await openFriends(page,'friends');
+  await page.locator('#closeMemberFriends').click();
+  const group=page.locator('#memberPassActions');
+  const buttons=group.locator('button.member-referral-trigger');
+  await expect(buttons).toHaveCount(3);
+  expect(await buttons.evaluateAll(nodes=>nodes.map(node=>node.id))).toEqual(['showMemberIdentityQr','openMemberFriends','openMemberReferral']);
+  const layout=await page.evaluate(()=>{
+    const pass=document.getElementById('memberPass');
+    const actionGroup=document.getElementById('memberPassActions');
+    const controls=[...actionGroup.querySelectorAll('button')];
+    const area=pass.getBoundingClientRect();
+    const qr=controls[0].getBoundingClientRect();
+    const friend=controls[1].getBoundingClientRect();
+    const referral=controls[2].getBoundingClientRect();
+    return {
+      layout:getComputedStyle(actionGroup).display,
+      fits:controls.every(button=>{
+        const r=button.getBoundingClientRect();
+        return r.width>=70 && r.height>=44 && r.left>=area.left-1 && r.right<=area.right+1;
+      }),
+      // Card ornament pseudo-elements intentionally extend outside its clipped box.
+      // Test visible document overflow instead of scrollWidth of the decorative card.
+      overflows:document.documentElement.scrollWidth>window.innerWidth+1,
+      clipsOrnaments:getComputedStyle(pass).overflowX==='hidden',
+      qrFirst:qr.top<=friend.top+1 && qr.top<=referral.top+1,
+      qrFullRow:qr.bottom<=friend.top+2,
+      sideBySide:Math.abs(friend.top-referral.top)<2,
+    };
+  });
+  expect(layout.layout).toBe('grid');
+  expect(layout.fits).toBe(true);
+  expect(layout.overflows).toBe(false);
+  expect(layout.clipsOrnaments).toBe(true);
+  expect(layout.qrFirst).toBe(true);
+  expect(layout.sideBySide).toBe(true);
+  if(width<=420)expect(layout.qrFullRow).toBe(true);
+  await page.locator('#showMemberIdentityQr').click();
+  await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#showMemberIdentityQr')).toBeFocused();
+  await page.locator('#openMemberFriends').click();
+  await expect(page.locator('#memberFriendsModal')).toBeVisible();
+  await page.locator('#closeMemberFriends').click();
+  await page.locator('#openMemberReferral').click();
+  await expect(page.locator('#memberReferralModal')).toBeVisible();
+  await page.locator('#closeMemberReferral').click();
+  await info.attach('member-pass-actions-'+width+'-'+theme,{body:await page.locator('#memberPass').screenshot(),contentType:'image/png'});
+});

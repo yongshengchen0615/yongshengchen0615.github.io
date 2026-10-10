@@ -153,7 +153,7 @@
       identityQr.className = 'member-referral-trigger'; identityQr.textContent = '顯示會員 QR Code';
       identityQr.setAttribute('aria-haspopup', 'dialog');
       identityQr.addEventListener('click', () => window.QRDisplayDialog?.show({memberCode: state.profile?.memberCode, opener: identityQr}));
-      actions.append(identityQr);
+      actions.prepend(identityQr);
     }
 
     let modal = document.getElementById('memberReferralModal');
