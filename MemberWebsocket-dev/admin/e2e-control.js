@@ -7739,6 +7739,17 @@
       error.code = 'TEST_MAINTENANCE_REQUIRED';
       throw error;
     }
+    // A previous member E2E surface can activate a newer, member-targeted
+    // terms fixture after the initial account preflight. Re-evaluate the
+    // effective terms before each non-member surface starts.
+    if (surface !== 'member') {
+      const consent = await prepareEphemeralConsents([account]);
+      if (Number(consent?.currentConsentCount ?? 0) !== 1) {
+        const error = new Error('測試會員條款已變更，無法完成本用戶端前置檢查。');
+        error.code = 'E2E_TEST_MEMBER_CONSENT_NOT_READY';
+        throw error;
+      }
+    }
     const login = await postPublicTestMode(session, {
       action: 'test-mode.login',
       ...common,
