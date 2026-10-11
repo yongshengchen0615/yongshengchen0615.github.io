@@ -667,6 +667,76 @@ async function validateAccessibleBenefits(
   return requested;
 }
 
+// A receipt's held-ticket IDs must remain reviewable even when the latest-offer
+// catalog hides older issues of the same reward or truncates its display list.
+// This is an admin-only read path; the approval RPC remains the final authority.
+async function snapshotRequestedBenefitOptions(
+  supabase:SupabaseClient, memberId:string, rawBenefits:unknown,
+):Promise<any[]>{
+  const requested=normalizeAccessibleBenefits(rawBenefits);
+  return await Promise.all(requested.map(async selection=>{
+    const eligible=await supabase.rpc("validate_snapshot_ticket_selection",{
+      p_member:memberId,p_booking:null,p_benefits:[selection],
+    });
+    // Expected business-rule failures make a ticket visibly unavailable; a
+    // database/service failure must surface as an error rather than disguising it.
+    const businessFailures=[
+      "BOOKING_BENEFIT_NOT_AVAILABLE","BOOKING_BENEFIT_RESERVED",
+      "BOOKING_BENEFIT_LOCATION_REQUIRED","MEMBERSHIP_REQUIRED",
+      "POINT_TICKET_INSUFFICIENT_POINTS","EVENT_TICKET_DAILY_LIMIT_REACHED",
+      "TICKET_BATCH_LIMIT_EXCEEDED",
+    ];
+    const failure=String(eligible.error?.message||"");
+    if(eligible.error&&!businessFailures.some(code=>failure.includes(code))) throw dbError(eligible.error);
+    const selectable=!eligible.error;
+    const base={
+      kind:selection.kind,selectionId:selection.id,
+      selectable,claimRequired:false,
+      disabledReason:selectable?"":"票券已失效、額度不足或已被其他預約選用，請重新核對。",
+    };
+    if(selection.kind==="points"){
+      const issued=await supabase.from("point_tickets")
+        .select("ticket_id,ticket_title,point_card_id,reward_id,threshold_stamps")
+        .eq("member_id",memberId).eq("ticket_id",selection.id).maybeSingle();
+      if(issued.error) throw dbError(issued.error);
+      if(!issued.data) return {...base,title:"原登記集點卡票券",selectable:false};
+      const [card,balance,reward]=await Promise.all([
+        supabase.from("point_cards").select("id,title").eq("id",issued.data.point_card_id).maybeSingle(),
+        supabase.from("point_balances").select("stamps").eq("member_id",memberId).eq("point_card_id",issued.data.point_card_id).maybeSingle(),
+        issued.data.reward_id
+          ? supabase.from("point_card_rewards").select("required_service_ids,required_service_match_mode").eq("id",issued.data.reward_id).maybeSingle()
+          : Promise.resolve({data:null,error:null}),
+      ]);
+      if(card.error||balance.error||reward.error) throw dbError(card.error||balance.error||reward.error);
+      return {
+        ...base,title:String(issued.data.ticket_title||"集點卡票券"),
+        cardId:String(issued.data.point_card_id),cardTitle:String(card.data?.title||"集點卡"),
+        pointCost:Math.max(0,Number(issued.data.threshold_stamps||0)),
+        pointBalance:Math.max(0,Number(balance.data?.stamps||0)),
+        requiredServiceIds:reward.data?.required_service_ids||[],
+        requiredServiceMatchMode:reward.data?.required_service_match_mode==="all"?"all":"any",
+        subtitle:"會員原先登記的集點卡票券",
+      };
+    }
+    const claim=await supabase.from("event_ticket_claims")
+      .select("claim_id,ticket_title,event_ticket_id")
+      .eq("member_id",memberId).eq("claim_id",selection.id).maybeSingle();
+    if(claim.error) throw dbError(claim.error);
+    if(!claim.data) return {...base,title:"原登記活動票券",selectable:false};
+    const event=await supabase.from("event_tickets")
+      .select("required_service_ids,required_service_match_mode")
+      .eq("id",claim.data.event_ticket_id).maybeSingle();
+    if(event.error) throw dbError(event.error);
+    return {
+      ...base,title:String(claim.data.ticket_title||"活動票券"),
+      selectable:selectable&&!!event.data,
+      requiredServiceIds:event.data?.required_service_ids||[],
+      requiredServiceMatchMode:event.data?.required_service_match_mode==="all"?"all":"any",
+      subtitle:"會員原先登記的活動票券",
+    };
+  }));
+}
+
 async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Json>{
   const receipt=await supabase.from("booking_receipts").select("member_id,status,updated_at,requested_benefits,requested_booking_id")
     .eq("receipt_id",asText(body.receiptId,80)).eq("submission_mode","accessible").maybeSingle();
@@ -708,6 +778,17 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
     memberResult.data,
     currentBooking&&String(currentBooking.status)==="confirmed"?requestedBookingId:"",
   );
+  const heldOptions=receipt.data.status==="awaiting_review"
+    ? await snapshotRequestedBenefitOptions(supabase,receipt.data.member_id,receipt.data.requested_benefits)
+    : [];
+  // Exact receipt-held tickets override stale/latest promotional preview rows.
+  // This also restores earlier issued ticket IDs missing from the catalog.
+  const heldKeys=new Set(heldOptions.map(option=>`${option.kind}:${option.selectionId}`));
+  benefitCatalog.items=[
+    ...(Array.isArray(benefitCatalog.items)?benefitCatalog.items:[])
+      .filter((item:any)=>!heldKeys.has(`${item.kind}:${item.selectionId}`)),
+    ...heldOptions,
+  ];
 
   return {
     requestedBenefits:receipt.data.requested_benefits||[],requestedBookingId:receipt.data.requested_booking_id||"",
