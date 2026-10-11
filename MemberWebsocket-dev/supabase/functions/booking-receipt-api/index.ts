@@ -249,8 +249,12 @@ async function prepare(supabase:SupabaseClient,identity:Identity,member:any,body
   if(!Number.isSafeInteger(size)||size<1||size>MAX_FILE_BYTES) throw new ApiError(413,"RECEIPT_FILE_TOO_LARGE","收據圖片不可超過 5 MB。");
 
   const objectPath=`${member.id}/${accessible?"accessible":bookingId}/${crypto.randomUUID()}.${extensionFor(mime)}`;
+  // Snapshot intent is never an advance reservation: a caller-supplied
+  // requestedBookingId must not invoke the regular confirmed-booking gate.
+  // Admin review may still link the receipt to a booking or create a
+  // retrospective booking after validating actual services.
   const result=await supabase.rpc(accessible?"prepare_snapshot_receipt_v2":"prepare_booking_receipt_request",{
-    ...(accessible?{p_location:body.location??null,p_benefits:normalizeAccessibleBenefits(body.benefits),p_booking_id:asText(body.requestedBookingId,80)||null}:{p_booking_id:bookingId}),p_member_id:member.id,p_request_id:requestId,
+    ...(accessible?{p_location:body.location??null,p_benefits:normalizeAccessibleBenefits(body.benefits),p_booking_id:null}:{p_booking_id:bookingId}),p_member_id:member.id,p_request_id:requestId,
     p_object_path:objectPath,p_mime_type:mime,p_size_bytes:size
   });
   if(result.error) throw dbError(result.error);
