@@ -67,6 +67,7 @@ test('snapshot receipt prepare ignores a caller-supplied booking id; normal book
    crypto:require('node:crypto').webcrypto,
    extensionFor:()=> 'jpg',
    ApiError:class extends Error{},dbError:(err)=>err,
+   normalizeAccessibleBenefits: value => value,
  });
  vm.runInContext(stripTypeScriptTypes(section),context);
  const bookingId='30000000-0000-4000-8000-000000000001';
