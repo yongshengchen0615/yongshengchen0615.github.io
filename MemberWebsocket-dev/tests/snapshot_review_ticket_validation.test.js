@@ -94,3 +94,81 @@ test('historically removed point reward does not invalidate a still-valid issued
   const f = fixture({ missingReward: true });
   assert.equal((await f.review()).length, 1);
 });
+
+test('admin review options restore exact originally submitted ticket IDs from canonical SQL checks', async () => {
+  const api = source;
+  assert.match(api, /heldOptions=receipt\.data\.status==="awaiting_review"/);
+  assert.match(api, /snapshotRequestedBenefitOptions\(supabase,receipt\.data\.member_id,receipt\.data\.requested_benefits\)/);
+  assert.match(api, /heldKeys\.has\(/);
+  assert.match(api, /\.\.\.heldOptions/);
+
+  const code = stripTypeScriptTypes(api.slice(
+    api.indexOf('async function snapshotRequestedBenefitOptions('),
+    api.indexOf('async function registrationOptions('),
+  ));
+  const names = [], memberId = 'member-001';
+  const rows = {
+    point_tickets: { ticket_id:'OLD-TICKET',ticket_title:'原先核發的票券',point_card_id:'CARD-001',reward_id:'REWARD-001',threshold_stamps:3 },
+    point_cards: { id:'CARD-001',title:'集點卡' },
+    point_balances: { stamps:9 },
+    point_card_rewards: { required_service_ids:['service-A'],required_service_match_mode:'all' },
+  };
+  const supabase = {
+    from(table) {
+      names.push(table);
+      const query = {
+        select() { return query; },
+        eq() { return query; },
+        maybeSingle: async () => ({ data: rows[table] || null,error:null }),
+      };
+      return query;
+    },
+    rpc: async(name,args) => {
+      assert.equal(name,'validate_snapshot_ticket_selection');
+      assert.equal(args.p_booking,null);
+      assert.equal(args.p_member,memberId);
+      return {data:args.p_benefits,error:null};
+    },
+  };
+  const context = vm.createContext({
+    normalizeAccessibleBenefits: value => value,
+    dbError: error => error,
+    String, Set, Map, Array, Promise, Number, Math,
+  });
+  vm.runInContext(code,context);
+  const result = await context.snapshotRequestedBenefitOptions(
+    supabase,memberId,[{kind:'points',id:'OLD-TICKET'}],
+  );
+  assert.equal(result[0].selectionId,'OLD-TICKET');
+  assert.equal(result[0].selectable,true);
+  assert.equal(result[0].pointCost,3);
+  assert.equal(result[0].pointBalance,9);
+  assert.equal(result[0].requiredServiceMatchMode,'all');
+  assert.equal(Array.from(result[0].requiredServiceIds).join(','),'service-A');
+  assert.deepEqual(names,['point_tickets','point_cards','point_balances','point_card_rewards']);
+});
+
+test('admin snapshot option keeps truly invalid issued tickets disabled', async () => {
+  const code = stripTypeScriptTypes(source.slice(
+    source.indexOf('async function snapshotRequestedBenefitOptions('),
+    source.indexOf('async function registrationOptions('),
+  ));
+  const ctx = vm.createContext({
+    normalizeAccessibleBenefits: v => v,dbError:e => e,
+    String,Set,Map,Array,Promise,Number,Math,
+  });
+  vm.runInContext(code,ctx);
+  const db = {
+    rpc:async()=>({error:{message:'BOOKING_BENEFIT_NOT_AVAILABLE'}}),
+    from:() => {
+      const q = {select(){return q;},eq(){return q;},maybeSingle:async()=>({
+        data:{ticket_title:'無效票券',point_card_id:'card',threshold_stamps:1},error:null,
+      })};
+      return q;
+    },
+  };
+  const items = await ctx.snapshotRequestedBenefitOptions(db,'member',[{kind:'points',id:'expired'}]);
+  assert.equal(items.length,1);
+  assert.equal(items[0].selectable,false);
+  assert.match(items[0].disabledReason,/票券已失效/);
+});
