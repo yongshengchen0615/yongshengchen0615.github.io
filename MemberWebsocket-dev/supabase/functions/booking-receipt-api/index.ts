@@ -574,74 +574,93 @@ async function validateAccessibleBenefits(
     .maybeSingle();
   if(receipt.error) throw dbError(receipt.error);
   if(!receipt.data) throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到這筆收據。");
-  // Completed accessible receipts are immutable. Skip consumed-benefit validation
-  // so the database RPC can return its existing settlement idempotently.
+  // A completed receipt must reach the idempotent register RPC even after
+  // its tickets have been consumed.
   if(String(receipt.data.status||"")==="bound") return [];
 
-  const memberResult=await supabase.from("members").select("id,birthday").eq("id",receipt.data.member_id).maybeSingle();
-  if(memberResult.error) throw dbError(memberResult.error);
-  if(!memberResult.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到會員資料。");
-
   let serviceIds:string[]=[];
-  let currentBookingId="";
   if(bookingId){
     const booking=await supabase.from("bookings")
       .select("id,member_id,status,booking_items(service_id)")
-      .eq("id",bookingId)
-      .maybeSingle();
+      .eq("id",bookingId).maybeSingle();
     if(booking.error) throw dbError(booking.error);
-    if(!booking.data||String(booking.data.member_id)!==String(receipt.data.member_id)) throw new ApiError(403,"BOOKING_NOT_OWNED","不可操作其他會員的預約。");
-    if(String(booking.data.status)!=="confirmed") throw new ApiError(409,"BOOKING_NOT_EDITABLE","已完成的預約不可再變更票券。");
-    currentBookingId=bookingId;
+    if(!booking.data||String(booking.data.member_id)!==String(receipt.data.member_id)) {
+      throw new ApiError(403,"BOOKING_NOT_OWNED","不可操作其他會員的預約。");
+    }
+    if(String(booking.data.status)!=="confirmed") {
+      throw new ApiError(409,"BOOKING_NOT_EDITABLE","已完成的預約不可再變更票券。");
+    }
     serviceIds=(booking.data.booking_items||[]).map((row:any)=>String(row.service_id||"")).filter(Boolean);
   }else{
-    const items=Array.isArray(rawItems)?rawItems:[];
-    serviceIds=items.map((row:any)=>asText(row?.serviceId,60)).filter(Boolean);
+    serviceIds=(Array.isArray(rawItems)?rawItems:[])
+      .map((row:any)=>asText(row?.serviceId,60)).filter(Boolean);
   }
 
-  const catalog=await accessibleBenefitCatalog(supabase,memberResult.data,currentBookingId);
-  const optionByKey=new Map<string,any>();
-  for(const option of Array.isArray(catalog.items)?catalog.items:[]){
-    const kind=String((option as any)?.kind||"");
-    const selectionId=String((option as any)?.selectionId||"");
-    if((kind==="points"||kind==="event")&&selectionId) optionByKey.set(`${kind}:${selectionId}`,option);
-  }
-
-  const selected=requested.map(selection=>{
-    const option=optionByKey.get(`${selection.kind}:${selection.id}`);
-    if(!option||option.selectable!==true) throw new ApiError(409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一張票券目前不可使用，請重新整理後再審核。");
-    return option;
+  // The display catalog intentionally contains only the latest offer per
+  // reward/event, and may omit an older still-valid issued ticket. Never use
+  // that truncated catalog as the authorization source for review.
+  // This RPC validates each exact ticket ID, owner, status, expiry, tier,
+  // GPS restrictions, concurrent reservation, balance and redemption limits.
+  // register_snapshot_receipt_v2 repeats the check inside settlement's
+  // transaction so there is no approval race.
+  const canonical=await supabase.rpc("validate_snapshot_ticket_selection",{
+    p_member:receipt.data.member_id,
+    p_booking:null,
+    p_benefits:requested,
   });
+  if(canonical.error) throw dbError(canonical.error);
 
-  const eventCount=requested.filter(item=>item.kind==="event").length;
-  const pointCount=requested.filter(item=>item.kind==="points").length;
-  const eventLimit=selectionLimit(catalog.eventTicketMaxPerDay);
-  const pointLimit=selectionLimit(catalog.pointTicketMaxPerRedemption);
-  if(eventLimit>0&&eventCount>eventLimit) throw new ApiError(409,"EVENT_TICKET_SELECTION_LIMIT_EXCEEDED",`活動票券每筆預約最多可選 ${eventLimit} 張。`);
-  if(pointLimit>0&&pointCount>pointLimit) throw new ApiError(409,"POINT_TICKET_SELECTION_LIMIT_EXCEEDED",`集點卡票券每筆預約最多可選 ${pointLimit} 張。`);
-
-  const selectedServiceIds=new Set(serviceIds);
-  for(const option of selected){
-    const required=(Array.isArray(option?.requiredServiceIds)?option.requiredServiceIds:[]).map((v:unknown)=>String(v||"")).filter(Boolean);
-    const mode=option?.requiredServiceMatchMode==="all"?"all":"any";
-    const eligible=!required.length||(mode==="all"?required.every((id:string)=>selectedServiceIds.has(id)):required.some((id:string)=>selectedServiceIds.has(id)));
+  // Check service-specific rules against the *issued* ticket's source,
+  // rather than against the current/latest catalog reward. The database
+  // revalidates the ticket again when it binds and redeems the benefits.
+  const pointIds=requested.filter(item=>item.kind==="points").map(item=>item.id);
+  const eventIds=requested.filter(item=>item.kind==="event").map(item=>item.id);
+  const [points,claims]=await Promise.all([
+    pointIds.length
+      ? supabase.from("point_tickets").select("ticket_id,reward_id").eq("member_id",receipt.data.member_id).in("ticket_id",pointIds)
+      : Promise.resolve({data:[],error:null}),
+    eventIds.length
+      ? supabase.from("event_ticket_claims").select("claim_id,event_ticket_id").eq("member_id",receipt.data.member_id).in("claim_id",eventIds)
+      : Promise.resolve({data:[],error:null}),
+  ]);
+  if(points.error) throw dbError(points.error);
+  if(claims.error) throw dbError(claims.error);
+  const pointRows=points.data||[];
+  const claimRows=claims.data||[];
+  const rewardIds=[...new Set(pointRows.map((row:any)=>String(row.reward_id||"")).filter(Boolean))];
+  const eventSourceIds=[...new Set(claimRows.map((row:any)=>String(row.event_ticket_id||"")).filter(Boolean))];
+  const [rewards,events]=await Promise.all([
+    rewardIds.length
+      ? supabase.from("point_card_rewards").select("id,required_service_ids,required_service_match_mode").in("id",rewardIds)
+      : Promise.resolve({data:[],error:null}),
+    eventSourceIds.length
+      ? supabase.from("event_tickets").select("id,required_service_ids,required_service_match_mode").in("id",eventSourceIds)
+      : Promise.resolve({data:[],error:null}),
+  ]);
+  if(rewards.error) throw dbError(rewards.error);
+  if(events.error) throw dbError(events.error);
+  const pointsById=new Map(pointRows.map((row:any)=>[String(row.ticket_id),row]));
+  const claimsById=new Map(claimRows.map((row:any)=>[String(row.claim_id),row]));
+  const rewardsById=new Map((rewards.data||[]).map((row:any)=>[String(row.id),row]));
+  const eventsById=new Map((events.data||[]).map((row:any)=>[String(row.id),row]));
+  const selectedServices=new Set(serviceIds);
+  for(const selection of requested){
+    const issued=selection.kind==="points"?pointsById.get(selection.id):claimsById.get(selection.id);
+    const rule=issued&&(selection.kind==="points"
+      ? rewardsById.get(String(issued.reward_id||""))
+      : eventsById.get(String(issued.event_ticket_id||"")));
+    if(!issued||!rule) {
+      throw new ApiError(409,"BOOKING_BENEFIT_NOT_AVAILABLE","所選票券的規則已變動，請重新確認票券。");
+    }
+    const required=(Array.isArray(rule.required_service_ids)?rule.required_service_ids:[])
+      .map((id:unknown)=>String(id||"")).filter(Boolean);
+    const eligible=!required.length||(rule.required_service_match_mode==="all"
+      ? required.every((id:string)=>selectedServices.has(id))
+      : required.some((id:string)=>selectedServices.has(id)));
     if(!eligible){
-      throw new ApiError(409,"BOOKING_BENEFIT_SERVICE_REQUIRED",`票券「${String(option?.title||"預約票券")}」不符合本次實際服務項目限制。`);
+      throw new ApiError(409,"BOOKING_BENEFIT_SERVICE_REQUIRED","其中一張票券不符合本次實際服務項目，請重新核對。");
     }
   }
-
-  const pointBudgetByCard=new Map<string,{required:number;available:number}>();
-  for(const option of selected.filter((item:any)=>item?.kind==="points")){
-    const key=String(option?.cardId||option?.cardTitle||"");
-    const current=pointBudgetByCard.get(key)||{required:0,available:Math.max(0,Number(option?.pointBalance||0))};
-    current.required+=Math.max(0,Number(option?.pointCost||0));
-    current.available=Math.min(current.available,Math.max(0,Number(option?.pointBalance||0)));
-    pointBudgetByCard.set(key,current);
-  }
-  for(const budget of pointBudgetByCard.values()){
-    if(budget.required>budget.available) throw new ApiError(409,"POINT_TICKET_INSUFFICIENT_POINTS","會員目前可用點數不足，請取消部分集點卡票券。");
-  }
-
   return requested;
 }
 
