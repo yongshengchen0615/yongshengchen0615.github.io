@@ -151,8 +151,12 @@ test('ticket policy, snapshot intent/review and append-only order corrections us
     const separateEvent=(await one("insert into event_tickets(event_ticket_id,title,ticket_type,status,starts_on,ends_on,created_by,updated_by)values('QA-SNAPSHOT-NO-BOOKING-EVENT','QA extra snapshot event','coupon','active',(clock_timestamp()at time zone'Asia/Taipei')::date-1,(clock_timestamp()at time zone'Asia/Taipei')::date+1,'test:controls-admin','test:controls-admin')returning id")).id;
     await run("insert into event_ticket_claims(claim_id,event_ticket_id,member_id,ticket_type,ticket_title)values('QA-SNAPSHOT-NO-BOOKING',$1,$2,'coupon','QA snapshot no booking')",[separateEvent,member]);
     const newBenefits=[{kind:'event',id:'QA-SNAPSHOT-NO-BOOKING'}];
+    // Snapshot submission and review are independent of the NORMAL
+    // redemption booking policy, even when an admin flips it in between.
+    assert.equal(await save(false),false);
     const newReceipt=(await prepare('QA-NO-ADVANCE-BOOKING',newBenefits)).receiptId;
     assert.equal((await finalize(newReceipt)).status,'awaiting_review');
+    assert.equal(await save(true),true);
     await run('update booking_settings set require_primary_technician=false where id=1');
     const items=[{serviceId:service,quantity:1,minutes:60}];
     const result=(await one("select register_snapshot_receipt_v2($1,updated_at,'test:controls-admin',null,'2026-01-01','12:00',$2,$3,'QA retrospective review') result from booking_receipts where receipt_id=$1",[newReceipt,JSON.stringify(items),JSON.stringify(newBenefits)])).result;
