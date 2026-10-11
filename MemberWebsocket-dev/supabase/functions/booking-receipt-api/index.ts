@@ -649,10 +649,13 @@ async function validateAccessibleBenefits(
     const rule=issued&&(selection.kind==="points"
       ? rewardsById.get(String(issued.reward_id||""))
       : eventsById.get(String(issued.event_ticket_id||"")));
-    if(!issued||!rule) {
+    if(!issued||(selection.kind==="event"&&!rule)) {
       throw new ApiError(409,"BOOKING_BENEFIT_NOT_AVAILABLE","所選票券的規則已變動，請重新確認票券。");
     }
-    const required=(Array.isArray(rule.required_service_ids)?rule.required_service_ids:[])
+    // A historic point reward may have been removed after ticket issuance.
+    // In that case the canonical booking service matcher treats it as
+    // unrestricted rather than revoking an otherwise valid issued ticket.
+    const required=(Array.isArray(rule?.required_service_ids)?rule.required_service_ids:[])
       .map((id:unknown)=>String(id||"")).filter(Boolean);
     const eligible=!required.length||(rule.required_service_match_mode==="all"
       ? required.every((id:string)=>selectedServices.has(id))
