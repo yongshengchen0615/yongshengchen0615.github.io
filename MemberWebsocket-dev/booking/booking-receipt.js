@@ -77,7 +77,7 @@
           <p id="bookingReceiptFileMeta"></p>
         </div>
         <p id="bookingReceiptMessage" class="booking-receipt-message hidden" role="status" aria-live="polite"></p>
-        <fieldset id="snapshotTicketFields" class="hidden"><legend>登記本次要使用的票券</legend><p class="snapshot-ticket-intro">選擇本次希望使用的票券；提交只會登記使用意願，管理員審核通過後才核銷。</p><p id="snapshotTicketSelectionSummary" class="snapshot-ticket-selection-summary" role="status" aria-live="polite">尚未選擇票券；可只送出收據。</p><div id="snapshotTicketChoices" role="group" aria-label="選擇本次要登記使用的票券"></div></fieldset>
+        <fieldset id="snapshotTicketFields" class="hidden"><legend>登記本次要使用的票券</legend><p class="snapshot-ticket-intro">選擇本次希望使用的票券；快照模式不需要事先有有效預約，送出只登記使用意願，管理員審核實際服務後才核銷。</p><p id="snapshotTicketSelectionSummary" class="snapshot-ticket-selection-summary" role="status" aria-live="polite">尚未選擇票券；可只送出收據。</p><div id="snapshotTicketChoices" role="group" aria-label="選擇本次要登記使用的票券"></div></fieldset>
         <div class="booking-receipt-actions">
           <button id="bookingReceiptCancel" class="button button-light" type="button">取消</button>
           <button id="bookingReceiptSubmit" class="button button-dark" type="button" disabled>上傳收據並送出審核</button>

@@ -37,3 +37,49 @@ test('snapshot receipt sends intent without booking ID while standard redemption
  assert.match(receipt, /check\.dataset\.snapshotKind = item\.kind/);
  assert.match(receipt, /check\.dataset\.snapshotId = item\.selectionId/);
 });
+
+test('snapshot and booking settings explicitly document the independent booking policy', () => {
+ const admin = read('admin/booking-panel-core.js');
+ const member = read('booking/booking-receipt.js');
+ assert.match(admin, /使用票券必須有有效預約/);
+ assert.match(admin, /僅限制一般票券核銷/);
+ assert.match(admin, /快照模式不需要事先有有效預約/);
+ assert.doesNotMatch(admin, /也適用快照登記/);
+ assert.match(member, /快照模式不需要事先有有效預約/);
+});
+
+test('snapshot receipt prepare ignores a caller-supplied booking id; normal booking receipts retain it', async () => {
+ const vm = require('node:vm');
+ const { stripTypeScriptTypes } = require('node:module');
+ const source = read('supabase/functions/booking-receipt-api/index.ts');
+ const section = source.slice(source.indexOf('async function prepare('),source.indexOf('async function finalize('));
+ const sent = [];
+ const db = {
+   rpc: async (name,args) => {
+     sent.push({name,args});
+     return {data:{receiptId:'QA-PREPARED',status:'awaiting_review',alreadyPrepared:true},error:null};
+   }
+ };
+ const context = vm.createContext({
+   asText:(v,m=1000) => String(v ?? '').trim().slice(0,m),
+   ALLOWED_MIME:new Set(['image/jpeg']),MAX_FILE_BYTES:5*1024*1024,
+   BUCKET:'booking-receipts',
+   crypto:require('node:crypto').webcrypto,
+   extensionFor:()=> 'jpg',
+   ApiError:class extends Error{},dbError:(err)=>err,
+   normalizeAccessibleBenefits: value => value,
+ });
+ vm.runInContext(stripTypeScriptTypes(section),context);
+ const bookingId='30000000-0000-4000-8000-000000000001';
+ const request={requestId:'QA-REQUEST',mimeType:'image/jpeg',sizeBytes:100};
+ const member={id:'10000000-0000-4000-8000-000000000001'};
+ await context.prepare(db,{},member,{...request,accessible:true,
+   requestedBookingId:bookingId,benefits:[{kind:'points',id:'QA-TICKET'}]});
+ assert.equal(sent[0].name,'prepare_snapshot_receipt_v2');
+ assert.equal(sent[0].args.p_booking_id,null);
+ assert.equal(sent[0].args.p_benefits[0].id,'QA-TICKET');
+ await context.prepare(db,{},member,{...request,bookingId});
+ assert.equal(sent[1].name,'prepare_booking_receipt_request');
+ assert.equal(sent[1].args.p_booking_id,bookingId);
+ assert.equal('p_benefits' in sent[1].args,false);
+});

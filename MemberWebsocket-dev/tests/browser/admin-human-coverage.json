@@ -16,7 +16,7 @@
     "admin/event-ticket-redemption-limit.js": "6391ce8e930503aae1291ce767da938204219f1b63f285b7425c19b1095de7d0",
     "admin/integration-hub.js": "696f38801b5e8755e706c3e0153aa023a1d47f01a3f68456dd8e5a7fec868b33",
     "admin/booking-panel.js": "7a6103a3541c015a6149060e5252b61ee9e3a19b43ceef806446bae0de1cf998",
-    "admin/booking-panel-core.js": "c74d757db5aff0e666d08082eb432a714754132ed1bd1d0159b7bf47fbaf9c56",
+    "admin/booking-panel-core.js": "80cf5dcf844575e8eeca60a5d5c685cabcf0e46a1c9f79bddcc6d99838071689",
     "admin/booking-resources.js": "421534c24977f3e9756a150990dd7accb109fc7074a4986840ad22282ecb8542",
     "admin/booking-always-open.js": "9cb236902a7f3f36cf3fe4c3f13fbbac622f000c72d36ec34f7d4dde08e6e54a",
     "admin/booking-cancellation-sync.js": "a8367bb6565d054af976ec1ffdf950874a4e8f14a3917d2e036bc1744016db19",
@@ -340,7 +340,7 @@
     {
       "id": "booking.34",
       "module": "booking",
-      "name": "跨夜時段、提前日數、公用時間、提醒與說明",
+      "name": "跨夜時段、提前日數、票券預約政策（快照豁免）、提醒與說明",
       "cases": [
         "BOOKING_SHARED_SETTINGS",
         "TICKET_BOOKING_POLICY_ENTRY"

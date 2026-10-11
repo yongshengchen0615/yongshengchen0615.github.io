@@ -155,7 +155,7 @@
 
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminTicketPolicyHeading">
                 <div class="booking-admin-settings-block-heading"><div><span class="booking-admin-settings-eyebrow">全域票券政策</span><h4 id="bookingAdminTicketPolicyHeading">票券使用規則</h4></div><span class="booking-admin-settings-badge">集點卡與活動票券共用</span></div>
-                <label class="booking-admin-toggle"><input id="bookingAdminTicketBookingRequired" type="checkbox" checked><span><strong>使用票券必須有有效預約</strong><small>適用集點卡與活動票券，也適用快照登記。關閉後仍驗證票券資格與定位；有限制服務項目的票券，直接使用時仍須選擇符合項目的預約。</small></span></label>
+                <label class="booking-admin-toggle"><input id="bookingAdminTicketBookingRequired" type="checkbox" checked><span><strong>使用票券必須有有效預約</strong><small>僅限制一般票券核銷（集點卡與活動票券）。快照模式不需要事先有有效預約，管理員審核時會依實際服務項目核對票券資格並結算；票券效期、定位及使用限制仍照常檢查。</small></span></label>
               </section>
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminSnapshotHeading">
                 <div class="booking-admin-settings-block-heading"><h4 id="bookingAdminSnapshotHeading">快照模式</h4></div>
