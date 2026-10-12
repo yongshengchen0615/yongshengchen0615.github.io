@@ -98,7 +98,7 @@ test('historically removed point reward does not invalidate a still-valid issued
 test('admin review options restore exact originally submitted ticket IDs from canonical SQL checks', async () => {
   const api = source;
   assert.match(api, /heldOptions=receipt\.data\.status==="awaiting_review"/);
-  assert.match(api, /snapshotRequestedBenefitOptions\\(supabase,receipt\\.data\\.member_id,receipt\\.data\\.requested_benefits,/);
+  assert.ok(api.includes('snapshotRequestedBenefitOptions(supabase,receipt.data.member_id,receipt.data.requested_benefits,'));
   assert.match(api, /heldKeys\.has\(/);
   assert.match(api, /\.\.\.heldOptions/);
 
