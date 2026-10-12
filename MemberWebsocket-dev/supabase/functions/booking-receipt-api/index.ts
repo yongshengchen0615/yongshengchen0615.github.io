@@ -107,7 +107,9 @@ function dbError(error:unknown):ApiError{
   const message=String(raw?.message||"")+" "+String(raw?.details||"");
   const rules:Array<[string,number,string,string]>=[
     ["SNAPSHOT_LOCATION_REQUIRED",409,"SNAPSHOT_LOCATION_REQUIRED","快照前須取得定位，請允許定位後重試。"],
-    ["SNAPSHOT_LOCATION_INVALID",409,"SNAPSHOT_LOCATION_INVALID","定位已失效或格式不正確，請重新定位後重試。"],
+    ["SNAPSHOT_LOCATION_INVALID",409,"SNAPSHOT_LOCATION_INVALID","定位已失效、精準度不足或格式不正確，請重新定位後重試。"],
+    ["SNAPSHOT_LOCATION_NOT_CONFIGURED",409,"SNAPSHOT_LOCATION_NOT_CONFIGURED","管理端尚未設定快照可使用地點，請聯絡管理員。"],
+    ["SNAPSHOT_LOCATION_OUT_OF_RANGE",409,"SNAPSHOT_LOCATION_OUT_OF_RANGE","目前定位不在管理端指定的快照地點範圍內，請到指定地點後重新定位。"],
     ["ADMIN_REQUIRED",403,"ADMIN_REQUIRED","管理端帳號尚未授權。"],
     ["MEMBERSHIP_REQUIRED",403,"MEMBERSHIP_REQUIRED","會員目前無法使用此功能。"],
     ["INVALID_BOOKING_ITEMS",400,"INVALID_BOOKING_ITEMS","請選擇有效服務項目與分鐘數。"],
@@ -234,9 +236,11 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
     .eq("member_id",member.id).eq("submission_mode","accessible").in("status",["awaiting_review","bound","failed"])
     .order("updated_at",{ascending:false}).limit(10);
   if(submissions.error) throw new ApiError(500,"DATABASE_ERROR","收據登記狀態暫時無法讀取。");
-  const settings = await supabase.from("booking_settings").select("snapshot_location_required").eq("id",1).single();
+  const settings = await supabase.from("booking_settings").select("snapshot_location_required,snapshot_locations").eq("id",1).single();
   if(settings.error) throw new ApiError(503,"SNAPSHOT_POLICY_UNAVAILABLE","目前無法確認快照定位政策，請稍後重試。");
-  return {snapshotLocationRequired:settings.data.snapshot_location_required===true,bookings,submissions:(submissions.data||[]).map((r:any)=>({receiptId:r.receipt_id,bookingId:r.booking_id,
+  return {snapshotLocationRequired:settings.data.snapshot_location_required===true,
+    snapshotLocations:settings.data.snapshot_location_required===true && Array.isArray(settings.data.snapshot_locations)
+      ? settings.data.snapshot_locations : [],bookings,submissions:(submissions.data||[]).map((r:any)=>({receiptId:r.receipt_id,bookingId:r.booking_id,
     status:r.status,createdAt:r.created_at,updatedAt:r.updated_at,
     dismissed:r.failure_reason==="admin-dismissed",cancelled:r.failure_reason==="member-cancelled",requestedBenefits:r.requested_benefits||[],requestedBookingId:r.requested_booking_id||"",
     settlement:effectiveSettlement(r.booking_completion_settlements)}))};
