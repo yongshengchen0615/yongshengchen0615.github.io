@@ -257,7 +257,7 @@
 
   async function snapshotLocation() {
     if (!session()) throw new Error('登入狀態已失效，請重新整理。');
-    if (!window.isSecureContext || !navigator.geolocation?.getCurrentPosition) {
+    if (window.isSecureContext === false || !navigator.geolocation?.getCurrentPosition) {
       throw new Error('此裝置不支援安全 GPS 定位，請使用 HTTPS 及支援定位的瀏覽器。');
     }
     // Do not await a network policy fetch before prompting: this is initiated
