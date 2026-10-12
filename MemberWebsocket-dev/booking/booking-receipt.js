@@ -272,7 +272,29 @@
       resolve(point);
     }, error => reject(new Error(error?.code === 1 ? '定位權限未開啟，請允許 GPS 後按「重新定位」。'
       : error?.code === 3 ? 'GPS 定位逾時，請按「重新定位」重試。' : '暫時無法取得 GPS 定位，請按「重新定位」重試。')),
-    { maximumAge: 0, timeout: 12000, enableHighAccuracy: true }));
+    { maximumAge: 0, timeout: 12000, enableHighAccuracy: true })).then(async point => {
+      // The permission prompt has already happened. Now check the latest
+      // server-managed geofence policy and display the configured place name.
+      const current = session();
+      if (!current) throw new Error('登入狀態已失效，請重新整理。');
+      const policy = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.list');
+      if (policy.snapshotLocationRequired === true) {
+        const locations = Array.isArray(policy.snapshotLocations) ? policy.snapshotLocations : [];
+        if (!locations.length) throw new Error('管理端尚未設定快照可使用地點，請聯絡管理員。');
+        const allowed = locations.map(item => String(item.name || '').trim()).filter(Boolean).join('、');
+        const toRadians = degrees => degrees * Math.PI / 180;
+        const near = locations.some(location => {
+          const lat = Number(location.latitude), lon = Number(location.longitude), meters = Number(location.radiusMeters);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(meters)) return false;
+          const dLat = toRadians(point.latitude - lat), dLon = toRadians(point.longitude - lon);
+          const arc = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat)) * Math.cos(toRadians(point.latitude)) * Math.sin(dLon / 2) ** 2;
+          const distance = 2 * 6371000 * Math.asin(Math.sqrt(Math.min(1, arc)));
+          return distance <= meters && point.accuracy <= meters;
+        });
+        if (!near) throw new Error(`目前不在快照指定地點「${allowed || '管理端設定的地點'}」範圍內，請抵達後重新定位。`);
+      }
+      return point;
+    });
   }
 
   async function authorizeSnapshot(start = true) {
