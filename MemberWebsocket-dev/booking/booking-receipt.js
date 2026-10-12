@@ -476,7 +476,7 @@
           selectionSummary.classList.toggle('has-selection', chosen > 0);
           selectionSummary.textContent = chosen
             ? '本次已選擇 ' + chosen + ' 張票券；送出後由管理員審核，不會立即核銷，也不需要事先預約。'
-            : '尚未選擇票券；可只送出收據，不需要事先預約。';
+            : '尚未選擇票券；可只送出收據，無需事先預約。';
         }
       }
       renderBookings();
