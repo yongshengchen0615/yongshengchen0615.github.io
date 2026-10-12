@@ -79,7 +79,7 @@ async function open(page,run,mode='',accessible=true) {
   // Keep the explicit denied-permission scenario ungranted; camera/upload
   // fixtures receive a valid geolocation so that they test their own behavior.
   if (accessible && mode !== 'location-required') {
-    await page.context().grantPermissions(['geolocation'],{origin:base});
+    await page.context().grantPermissions(['geolocation','camera'],{origin:base});
     await page.context().setGeolocation({latitude:25.033964,longitude:121.564468,accuracy:10});
   }
   await page.goto(base+'/receipt?run='+run+'&mode='+mode);
