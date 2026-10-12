@@ -181,22 +181,25 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         const reservedForOtherBooking = Boolean(reservationBookingId && reservationBookingId !== currentBookingId);
         const reservedForCurrentBooking = Boolean(reservationBookingId && reservationBookingId === currentBookingId);
         const hasTicket = Boolean(ticketId);
+        const locationRestricted = offer.requiresLocation === true;
         const hasEnoughPoints = pointCost > 0 && pointBalance >= pointCost;
         return {
           kind: 'points', id: offer.rewardId, title: offer.ticketTitle,
           subtitle: `${offer.cardTitle} · 消耗 ${pointCost} 點`,
-          statusLabel: reservedForOtherBooking ? '已預約使用' : hasEnoughPoints ? '可使用' : '點數不足',
+          statusLabel: reservedForOtherBooking ? '已預約使用' : locationRestricted ? '需定位使用' : hasEnoughPoints ? '可使用' : '點數不足',
           startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId, cardTitle: offer.cardTitle, cardStyleKey: offer.styleKey,
           pointCost, pointBalance, totalPointBalance, reservedPointBalance, otherBookingReserved,
           requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
           reservedForBooking: Boolean(reservationBookingId),
           reservedForCurrentBooking,
-          selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking, selectionId: offer.ticketId,
+          selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking && !locationRestricted, selectionId: offer.ticketId,
           conditionLabel: `${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel} · ` : '預約項目限制：不限 · '}本卡可用 ${pointBalance} 點${otherBookingReserved > 0 ? ` · 其他預約已保留 ${otherBookingReserved} 點` : ''} · 此票券需 ${pointCost} 點 · ${pointTicketMaxPerRedemption === 0 ? '單次預約使用張數不限' : `單次預約最多使用 ${pointTicketMaxPerRedemption} 張`}`,
           disabledReason: !hasTicket
             ? '目前沒有可核銷的票券'
             : reservedForOtherBooking
               ? '此票券已選入另一筆預約，服務完成或取消後才會釋放'
+              : locationRestricted
+                ? '此票券限定在指定地點使用，無法透過預約或快照補登直接核銷；請在票券頁完成定位驗證'
               : !hasEnoughPoints
                 ? `可用點數不足：目前可用 ${pointBalance} 點，此票券需要 ${pointCost} 點`
                 : '',

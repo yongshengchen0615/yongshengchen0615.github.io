@@ -5,6 +5,7 @@ type JsonRow = Record<string, any>;
 export type CurrentPointOffer = {
   rewardId: string;
   ticketId?: string;
+  requiresLocation?: boolean;
   pointCardId: string;
   cardTitle: string;
   styleKey: string;
@@ -18,6 +19,7 @@ export type CurrentPointOffer = {
 
 export type AvailablePointTicketRef = {
   ticketId: string;
+  requiresLocation: boolean;
   rewardId: string;
   pointCardId: string;
   ticketTemplateId: string;
@@ -71,6 +73,7 @@ export function selectLatestPointOffers(
   const templateById = new Map(templates.map((row) => [text(row.id), row]));
   const tickets: AvailablePointTicketRef[] = availableTickets.map((row) => ({
     ticketId: text(row.ticket_id),
+    requiresLocation: row.requires_location === true,
     rewardId: text(row.reward_id),
     pointCardId: text(row.point_card_id),
     ticketTemplateId: text(row.ticket_template_id),
@@ -92,12 +95,15 @@ export function selectLatestPointOffers(
     if (!rewardId || !pointCardId || !ticketTemplateId || thresholdStamps <= 0) continue;
     if (!relationActive(card, template, today)) continue;
 
-    const availableTicket = tickets.find((ticket) =>
+    const matchesOffer = (ticket: AvailablePointTicketRef) =>
       ticket.pointCardId === pointCardId && (
         ticket.rewardId === rewardId ||
         (ticket.ticketTemplateId === ticketTemplateId && ticket.thresholdStamps === thresholdStamps)
-      )
-    );
+      );
+    // A reward may have multiple issued tickets. Prefer one that can actually
+    // be selected during booking/snapshot review (which has no GPS proof).
+    const availableTicket = tickets.find((ticket) => !ticket.requiresLocation && matchesOffer(ticket))
+      || tickets.find(matchesOffer);
     if (!availableTicket) continue;
 
     const offer: CurrentPointOffer = {
@@ -113,6 +119,7 @@ export function selectLatestPointOffers(
       sortOrder: number(card?.sort_order),
     };
     if (availableTicket.ticketId) offer.ticketId = availableTicket.ticketId;
+    offer.requiresLocation = availableTicket.requiresLocation;
     offers.push(offer);
   }
 
@@ -184,7 +191,7 @@ export async function loadLatestPointOffers(
 ): Promise<Array<CurrentPointOffer & { cardId: string; expiresOn: string }>> {
   const ticketsResult = await supabase
     .from("point_tickets")
-    .select("ticket_id,reward_id,point_card_id,ticket_template_id,threshold_stamps")
+    .select("ticket_id,reward_id,point_card_id,ticket_template_id,threshold_stamps,requires_location")
     .eq("member_id", memberId)
     .eq("status", "available")
     .limit(200);

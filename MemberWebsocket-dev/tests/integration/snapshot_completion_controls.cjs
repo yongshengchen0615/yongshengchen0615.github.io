@@ -7,7 +7,7 @@ test('ticket policy, snapshot intent/review and append-only order corrections us
  const db=await load();const one=async(q,args=[]) => (await db.query(q,args)).rows[0];
  const run=(q,args=[])=>db.query(q,args);
  try{
-  for(const name of ['20261006023020_booking_ticket_usage_consistency.sql','20261006081433_booking_primary_requirement_fixed_notification_time.sql','20261006133127_member_p2_features.sql','20261010021829_snapshot_location_policy.sql',migration,'20261010145511_snapshot_tickets_without_advance_booking.sql']) await db.exec(fs.readFileSync(path.join(__dirname,'../../supabase/migrations',name),'utf8'));
+  for(const name of ['20261006023020_booking_ticket_usage_consistency.sql','20261006081433_booking_primary_requirement_fixed_notification_time.sql','20261006133127_member_p2_features.sql','20261010021829_snapshot_location_policy.sql',migration,'20261010145511_snapshot_tickets_without_advance_booking.sql','20261012092000_snapshot_location_restriction_error.sql']) await db.exec(fs.readFileSync(path.join(__dirname,'../../supabase/migrations',name),'utf8'));
   await db.exec("select maintenance.ensure_required_system_baseline();select maintenance.ensure_event_ticket_settings_baseline();insert into admins(line_user_id,role,status)values('test:controls-admin','admin','active');");
   const member=(await one("insert into members(line_user_id,member_code,status,membership_status,is_test_account,surname,salutation,phone)values('test:controls-member','QA-CONTROLS','active','active',true,'測試','mr','+886912345678')returning id")).id;
   const other=(await one("insert into members(line_user_id,member_code,status,membership_status,is_test_account)values('test:controls-other','QA-OTHER','active','active',true)returning id")).id;
@@ -61,6 +61,11 @@ test('ticket policy, snapshot intent/review and append-only order corrections us
   await t.test('snapshot submits without booking but normal redemption still needs one',async()=>{
    await save(true);
    await assert.rejects(redeem('event',['QA-SNAPSHOT-CLAIM'],'QA-DIRECT-BLOCKED'),/BOOKING_TICKET_CONFIRMATION_REQUIRED/);
+   // A location-only ticket is not a missing/expired ticket. Snapshot upload
+   // must identify the actual GPS restriction, independently of booking policy.
+   await run("update event_tickets set requires_location=true,redemption_locations='[{\"id\":\"qa\",\"name\":\"QA\",\"latitude\":25.033,\"longitude\":121.5654,\"radiusMeters\":100}]' where id=$1",[snapshotEvent]);
+   try { await assert.rejects(prepare('QA-SNAPSHOT-GPS-REJECT'),/BOOKING_BENEFIT_LOCATION_REQUIRED/); }
+   finally { await run("update event_tickets set requires_location=false,redemption_locations='[]' where id=$1",[snapshotEvent]); }
    receipt=(await prepare('QA-SNAPSHOT-REQUEST')).receiptId;
    assert.equal((await one('select requested_booking_id from booking_receipts where receipt_id=$1',[receipt])).requested_booking_id,null);
    assert.equal((await one("select status from event_ticket_claims where claim_id='QA-SNAPSHOT-CLAIM'")).status,'claimed');
