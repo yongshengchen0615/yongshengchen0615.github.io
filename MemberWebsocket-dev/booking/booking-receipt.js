@@ -27,6 +27,54 @@
     listLoading: false,
   };
 
+  // Snapshot-mode GPS stays in memory only; it is never stored in localStorage.
+  // Starting it from the mode toggle keeps the permission request tied to a user action.
+  let modeLocation = null;
+  let modeLocationGeneration = 0;
+  let modeLocationPending = null;
+
+  function freshModeLocation() {
+    const fix = modeLocation;
+    if (!fix || !Number.isFinite(fix.timestamp) || fix.timestamp < Date.now() - 120000
+      || !Number.isFinite(fix.accuracy) || fix.accuracy <= 0 || fix.accuracy > 100) return null;
+    return fix;
+  }
+
+  function reportModeLocation(status, message = '') {
+    window.dispatchEvent(new CustomEvent('booking:snapshot-location-state', {
+      detail: { status, message }
+    }));
+  }
+
+  function beginSnapshotMode() {
+    const generation = ++modeLocationGeneration;
+    modeLocation = null;
+    reportModeLocation('requesting');
+    const pending = snapshotLocation().then(point => {
+      if (generation === modeLocationGeneration) {
+        modeLocation = point;
+        reportModeLocation('ready');
+      }
+      return generation === modeLocationGeneration ? point : null;
+    }).catch(error => {
+      if (generation === modeLocationGeneration) {
+        reportModeLocation('error', error?.message || '無法取得 GPS 定位，請重新嘗試。');
+      }
+      throw error;
+    }).finally(() => {
+      if (modeLocationPending === pending) modeLocationPending = null;
+    });
+    modeLocationPending = pending;
+    return pending;
+  }
+
+  function endSnapshotMode() {
+    ++modeLocationGeneration;
+    modeLocation = null;
+    modeLocationPending = null;
+    reportModeLocation('idle');
+  }
+
   function session() {
     return window.BookingSystem?.getSession?.() || null;
   }
@@ -208,39 +256,45 @@
   }
 
   async function snapshotLocation() {
-    const current = session();
-    if (!current) throw new Error('登入狀態已失效，請重新整理。');
-    const policy = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.list');
-    if (policy.snapshotLocationRequired !== true) return null;
-    const locations = Array.isArray(policy.snapshotLocations) ? policy.snapshotLocations : [];
-    if (!locations.length) throw new Error('管理端尚未設定快照可使用地點，請聯絡管理員。');
-    const allowed = locations.map(item => String(item.name || '').trim()).filter(Boolean).join('、');
-    if (!navigator.geolocation?.getCurrentPosition) throw new Error('此裝置不支援定位；快照前須取得定位，請使用支援的裝置。');
+    if (!session()) throw new Error('登入狀態已失效，請重新整理。');
+    if (window.isSecureContext === false || !navigator.geolocation?.getCurrentPosition) {
+      throw new Error('此裝置不支援定位，請使用 HTTPS 及支援 GPS 定位的瀏覽器。');
+    }
+    // Do not await a network policy fetch before prompting: this is initiated
+    // immediately by the member entering snapshot mode.
     return await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(position => {
       const point = { latitude: position.coords.latitude, longitude: position.coords.longitude,
         accuracy: position.coords.accuracy, timestamp: position.timestamp };
-      if (!Object.values(point).every(Number.isFinite) || Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180 || point.accuracy < 0
+      if (!Object.values(point).every(Number.isFinite) || Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180 || point.accuracy <= 0 || point.accuracy > 100
         || point.timestamp < Date.now() - 120000 || point.timestamp > Date.now() + 30000) {
-        reject(new Error('定位已失效或格式不正確，請重新定位。')); return;
-      }
-      const radius = 6371000;
-      const toRadians = degrees => degrees * Math.PI / 180;
-      const near = locations.some(location => {
-        const lat = Number(location.latitude), lon = Number(location.longitude), meters = Number(location.radiusMeters);
-        if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(meters)) return false;
-        const dLat = toRadians(point.latitude - lat), dLon = toRadians(point.longitude - lon);
-        const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat)) * Math.cos(toRadians(point.latitude)) * Math.sin(dLon / 2) ** 2;
-        const distance = 2 * radius * Math.asin(Math.sqrt(Math.min(1, a)));
-        return distance <= meters && point.accuracy <= meters;
-      });
-      if (!near) {
-        reject(new Error(`目前不在快照指定地點「${allowed || '管理端設定的地點'}」範圍內，請抵達後重新定位。`));
-        return;
+        reject(new Error('GPS 定位不夠精準或已失效（需在 100 公尺內），請重新定位。')); return;
       }
       resolve(point);
-    }, error => reject(new Error(error?.code === 1 ? '定位權限未開啟，請允許定位後按「重新定位」。'
-      : error?.code === 3 ? '定位逾時，請按「重新定位」重試。' : '暫時無法取得定位，請按「重新定位」重試。')),
-    { maximumAge: 0, timeout: 12000, enableHighAccuracy: false }));
+    }, error => reject(new Error(error?.code === 1 ? '定位權限未開啟，請允許 GPS 後按「重新定位」。'
+      : error?.code === 3 ? 'GPS 定位逾時，請按「重新定位」重試。' : '暫時無法取得 GPS 定位，請按「重新定位」重試。')),
+    { maximumAge: 0, timeout: 12000, enableHighAccuracy: true })).then(async point => {
+      // The permission prompt has already happened. Now check the latest
+      // server-managed geofence policy and display the configured place name.
+      const current = session();
+      if (!current) throw new Error('登入狀態已失效，請重新整理。');
+      const policy = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.list');
+      if (policy.snapshotLocationRequired === true) {
+        const locations = Array.isArray(policy.snapshotLocations) ? policy.snapshotLocations : [];
+        if (!locations.length) throw new Error('管理端尚未設定快照可使用地點，請聯絡管理員。');
+        const allowed = locations.map(item => String(item.name || '').trim()).filter(Boolean).join('、');
+        const toRadians = degrees => degrees * Math.PI / 180;
+        const near = locations.some(location => {
+          const lat = Number(location.latitude), lon = Number(location.longitude), meters = Number(location.radiusMeters);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(meters)) return false;
+          const dLat = toRadians(point.latitude - lat), dLon = toRadians(point.longitude - lon);
+          const arc = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat)) * Math.cos(toRadians(point.latitude)) * Math.sin(dLon / 2) ** 2;
+          const distance = 2 * 6371000 * Math.asin(Math.sqrt(Math.min(1, arc)));
+          return distance <= meters && point.accuracy <= meters;
+        });
+        if (!near) throw new Error(`目前不在快照指定地點「${allowed || '管理端設定的地點'}」範圍內，請抵達後重新定位。`);
+      }
+      return point;
+    });
   }
 
   async function authorizeSnapshot(start = true) {
@@ -253,7 +307,9 @@
     if (input) input.disabled = true;
     setMessage('正在確認快照定位設定…');
     try {
-      const point = await snapshotLocation();
+      // Reuse the mode-entry fix if fresh; otherwise retry in this dialog.
+      const point = freshModeLocation() || await (modeLocationPending || beginSnapshotMode());
+      if (!point) return false;
       if (generation !== state.photoGeneration || document.getElementById('bookingReceiptModal')?.classList.contains('hidden')) return false;
       state.location = point; state.snapshotReady = true;
       if (input) input.disabled = false;
@@ -271,8 +327,10 @@
 
   function openAccessible() {
     openModal('', '', true, { skipCamera: true });
-    void loadSnapshotTickets();
-    return authorizeSnapshot();
+    return authorizeSnapshot().then(ready => {
+      if (ready) void loadSnapshotTickets();
+      return ready;
+    });
   }
 
   async function loadSnapshotTickets() {
@@ -284,9 +342,10 @@
     choices.textContent = '正在讀取票券與使用條件…';
     try {
       const current = session();
-      const catalog = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.options');
+      const catalog = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.options', { location: state.location });
       if (generation !== state.ticketGeneration || !state.accessible) return;
       choices.replaceChildren();
+      window.dispatchEvent(new CustomEvent('booking:snapshot-benefit-options', { detail: { items: catalog.items || [] } }));
       const items = (catalog.items || []).filter(item => item.selectionId && !item.claimRequired);
       const selectionSummary = document.getElementById('snapshotTicketSelectionSummary');
       items.forEach(item => {
@@ -756,6 +815,8 @@
 
   window.BookingReceipts = Object.freeze({
     openAccessible,
+    beginSnapshotMode,
+    endSnapshotMode,
     openAccessibleE2ESnapshot,
     openBooking: openModal,
     refresh: refreshListAndDecorate,
@@ -766,6 +827,7 @@
   window.addEventListener('DOMContentLoaded', ensureModal);
   window.addEventListener('pagehide', () => {
     state.photoGeneration += 1;
+    endSnapshotMode();
     stopCamera();
   });
   window.addEventListener('qr-scan-dialog:opening', () => {

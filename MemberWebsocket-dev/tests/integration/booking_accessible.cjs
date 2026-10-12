@@ -13,7 +13,7 @@ test('accessible mode remembers preference, exposes eligible tickets safely and 
   const w = dom.window;
   try {
     let opens=0,refreshes=0;
-    w.BookingReceipts={openAccessible:()=>opens++,refresh:()=>refreshes++};
+    w.BookingReceipts={openAccessible:()=>opens++,refresh:()=>refreshes++,beginSnapshotMode:async()=>{w.dispatchEvent(new w.CustomEvent('booking:snapshot-location-state',{detail:{status:'ready'}}));},endSnapshotMode:()=>{}};
     w.BookingBenefits={getItems:()=>[],syncNow:()=>{}};
     w.eval(read('ui-components.js'));w.eval(read('booking/booking-accessible.js'));
     await tick();
@@ -169,6 +169,7 @@ test('accessible receipt camera sends a receipt without a booking and locks dupl
   const dom=new JSDOM('<div id="bookingView"></div>',{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window; const calls=[];
   try {
+    Object.defineProperty(w.navigator,'geolocation',{value:{getCurrentPosition:ok=>ok({coords:{latitude:25.03,longitude:121.56,accuracy:15},timestamp:Date.now()})}});
     Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:async()=>({getTracks:()=>[{stop(){}}]})}});
     w.HTMLMediaElement.prototype.play=async()=>{};
     w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){}});
@@ -200,6 +201,7 @@ test('accessible E2E screen snapshot hook is test-session gated and skips the ph
   const dom=new JSDOM('<div id="bookingView"></div>',{url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window; let cameraCalls=0;
   try {
+    Object.defineProperty(w.navigator,'geolocation',{value:{getCurrentPosition:ok=>ok({coords:{latitude:25.03,longitude:121.56,accuracy:15},timestamp:Date.now()})}});
     Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:async()=>{cameraCalls+=1;throw new Error('camera must not run');}}});
     w.BookingSystem={getSession:()=>({config:{},idToken:'fixture'}),request:async()=>({bookings:[],submissions:[]})};
     w.supabase={createClient:()=>({storage:{from:()=>({uploadToSignedUrl:async()=>({})})}})};
