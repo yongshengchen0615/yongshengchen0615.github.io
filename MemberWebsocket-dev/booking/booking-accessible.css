@@ -42,3 +42,17 @@
   .booking-accessible-switch .button { width: 100%; min-height: 52px; }
 }
 @media (prefers-reduced-motion: reduce) { .booking-accessible-mode * { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+
+.booking-snapshot-gps-status {
+  margin: 16px 0 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--theme-border,#d5ded8);
+  border-radius: 12px;
+  color: var(--theme-text,#18241f);
+  background: var(--theme-surface,#fcfdfb);
+}
+.booking-snapshot-gps-status.error {
+  color: var(--theme-warning-text,#876117);
+  border-color: var(--theme-warning,#bd9b48);
+}
+.booking-accessible-panel .button:disabled { opacity: .55; cursor: not-allowed; }
