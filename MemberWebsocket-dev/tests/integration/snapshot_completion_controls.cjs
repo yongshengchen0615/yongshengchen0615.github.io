@@ -61,6 +61,11 @@ test('ticket policy, snapshot intent/review and append-only order corrections us
   await t.test('snapshot submits without booking but normal redemption still needs one',async()=>{
    await save(true);
    await assert.rejects(redeem('event',['QA-SNAPSHOT-CLAIM'],'QA-DIRECT-BLOCKED'),/BOOKING_TICKET_CONFIRMATION_REQUIRED/);
+   // A location-only ticket is not a missing/expired ticket. Snapshot upload
+   // must identify the actual GPS restriction, independently of booking policy.
+   await run("update event_tickets set requires_location=true,redemption_locations='[{\"id\":\"qa\",\"name\":\"QA\",\"latitude\":25.033,\"longitude\":121.5654,\"radiusMeters\":100}]' where id=$1",[snapshotEvent]);
+   try { await assert.rejects(prepare('QA-SNAPSHOT-GPS-REJECT'),/BOOKING_BENEFIT_LOCATION_REQUIRED/); }
+   finally { await run("update event_tickets set requires_location=false,redemption_locations='[]' where id=$1",[snapshotEvent]); }
    receipt=(await prepare('QA-SNAPSHOT-REQUEST')).receiptId;
    assert.equal((await one('select requested_booking_id from booking_receipts where receipt_id=$1',[receipt])).requested_booking_id,null);
    assert.equal((await one("select status from event_ticket_claims where claim_id='QA-SNAPSHOT-CLAIM'")).status,'claimed');
