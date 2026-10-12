@@ -11,7 +11,7 @@ test('snapshot receipt selection has a clear count without advance booking', () 
   assert.match(source, /id="snapshotTicketChoices" role="group" aria-label="選擇本次要登記使用的票券"/);
   assert.match(source, /id="snapshotTicketSelectionSummary"[^>]*role="status" aria-live="polite"/);
   assert.match(source, /const selectionSummary = document\.getElementById\('snapshotTicketSelectionSummary'\)/);
-  assert.match(source, /chosen \+ ' 張票券/);
+  assert.match(source, /checked\.length \+ ' 張票券/);
   assert.match(source, /不需要事先預約/);
   assert.doesNotMatch(source, /id="snapshotTicketBooking"/);
   assert.match(source, /snapshotTicketSelectionSummary'\)\.textContent = '正在確認可登記的票券/);
@@ -27,7 +27,7 @@ test('snapshot ticket cards preserve original choice payload and disabled busine
   assert.match(source, /check\.disabled = blocked/);
   assert.match(source, /item\.disabledReason/);
   assert.match(source, /label\.classList\.toggle\('is-selected', check\.checked\)/);
-  assert.match(source, /indicator\.textContent = check\.checked \? '已選擇' : '點選使用'/);
+  assert.match(source, /status\.textContent = selected \? '已選擇'/);
   assert.match(source, /resetTicketRequest\(\);\s*renderBookings\(\);/);
   assert.match(source, /const selectedBenefits = state\.accessible \? \[\.\.\.document\.querySelectorAll\('\[data-snapshot-id\]:checked'\)\]/);
   assert.doesNotMatch(source, /requestedBookingId/);
@@ -70,7 +70,7 @@ test('snapshot option cards have an ordered hierarchy, selected state and attach
   assert.match(source, /label\.append\(copy, check, indicator\)/);
   assert.match(source, /snapshot-ticket-claim-action/);
   assert.match(source, /option\.classList\.toggle\('is-selected', check\.checked\)/);
-  assert.match(source, /selectionSummary\.classList\.toggle\('has-selection', chosen > 0\)/);
+  assert.match(source, /selectionSummary\.classList\.toggle\('has-selection', checked\.length > 0\)/);
   assert.match(css, /grid-template-columns:minmax\(0,1fr\) 28px/);
   assert.match(css, /#snapshotTicketChoices \.snapshot-ticket-claim-action/);
   assert.match(css, /#snapshotTicketChoices \.snapshot-ticket-option\.is-unavailable/);
