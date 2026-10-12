@@ -324,8 +324,18 @@
     });
     document.addEventListener('visibilitychange', () => {
       const context = presenceContext;
-      if (!context || context.closed) return;
-      if (document.visibilityState !== 'visible') return;
+      if (!context) return;
+      // LINE WebView may become hidden without firing pagehide when the LIFF page is closed.
+      if (document.visibilityState !== 'visible') {
+        void stopPresence('hidden', true);
+        return;
+      }
+      // Use a fresh ID so a delayed offline beacon cannot close the resumed session.
+      if (context.closed) {
+        presenceContext = null;
+        void startPresence(context.config, context.surface, currentPresenceIdToken(context), 'resume');
+        return;
+      }
       if (Date.now() - Number(context.lastSeenSignalAt || 0) >= PRESENCE_RESUME_SIGNAL_MS) {
         context.onlineRecorded = false;
         void startPresence(context.config, context.surface, currentPresenceIdToken(context), 'resume');
@@ -396,15 +406,19 @@
       const body = window.TestModeClient && typeof window.TestModeClient.payload === 'function'
         ? window.TestModeClient.payload(payload)
         : payload;
+      // Send a simple POST to avoid CORS preflight during WebView teardown.
+      // The Edge Function has verify_jwt=false and authenticates the LINE/test token in the body.
+      const jsonBody = JSON.stringify(body);
+      if (navigator && typeof navigator.sendBeacon === 'function') {
+        const beaconBody = new Blob([jsonBody], { type: 'text/plain;charset=UTF-8' });
+        if (navigator.sendBeacon(endpoint, beaconBody)) return Promise.resolve(true);
+      }
       return fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': String(context.config.supabasePublishableKey)
-        },
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         cache: 'no-store',
         keepalive: true,
-        body: JSON.stringify(body)
+        body: jsonBody
       }).catch(() => null);
     } catch (_) {
       return Promise.resolve(null);
