@@ -339,15 +339,15 @@
     const fields = document.getElementById('snapshotTicketFields');
     fields.classList.remove('hidden'); fields.disabled = true;
     const choices = document.getElementById('snapshotTicketChoices');
+      const previouslyChecked = new Set(
+        [...choices.querySelectorAll('[data-snapshot-id]:checked')]
+          .map(check => String(check.dataset.snapshotKind) + ':' + String(check.dataset.snapshotId))
+      );
     choices.textContent = '正在讀取票券與使用條件…';
     try {
       const current = session();
       const catalog = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.options', { location: state.location });
       if (generation !== state.ticketGeneration || !state.accessible) return;
-      const previouslyChecked = new Set(
-        [...choices.querySelectorAll('[data-snapshot-id]:checked')]
-          .map(check => String(check.dataset.snapshotKind) + ':' + String(check.dataset.snapshotId))
-      );
       choices.replaceChildren();
       window.dispatchEvent(new CustomEvent('booking:snapshot-benefit-options', { detail: { items: catalog.items || [] } }));
       // Show eligible unclaimed event tickets so the member can claim them first.
