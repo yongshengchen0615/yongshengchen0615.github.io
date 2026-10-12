@@ -362,6 +362,7 @@
         option.className = 'snapshot-ticket-option';
         const label = document.createElement('label');
         label.className = 'snapshot-ticket-choice';
+        option.classList.toggle('is-unavailable', blocked);
         label.classList.toggle('is-unavailable', blocked);
         const check = document.createElement('input');
         check.type = 'checkbox';
@@ -372,6 +373,7 @@
         check.checked = !blocked && previouslyChecked.has(String(item.kind) + ':' + String(item.selectionId));
         check.setAttribute('aria-label', '登記使用' + String(item.title || '此票券'));
         label.classList.toggle('is-selected', check.checked);
+        option.classList.toggle('is-selected', check.checked);
         const copy = document.createElement('span');
         copy.className = 'snapshot-ticket-copy';
         const heading = document.createElement('span');
@@ -383,12 +385,12 @@
         kind.className = 'snapshot-ticket-kind';
         kind.dataset.kind = item.kind;
         kind.textContent = item.kind === 'points' ? '集點卡票券' : '活動票券';
-        heading.append(title, kind);
+        heading.append(kind, title);
         copy.append(heading);
         if (item.cardTitle && item.kind === 'points') {
           const sourceName = document.createElement('span');
           sourceName.className = 'snapshot-ticket-source';
-          sourceName.textContent = String(item.cardTitle);
+          sourceName.textContent = '來源集點卡：' + String(item.cardTitle);
           copy.append(sourceName);
         }
         const condition = document.createElement('span');
@@ -414,8 +416,10 @@
         }
         const indicator = document.createElement('span');
         indicator.className = 'snapshot-ticket-choice-status';
-        indicator.textContent = blocked ? '不可使用' : check.checked ? '已選擇' : '點選使用';
-        label.append(check, copy, indicator);
+        indicator.textContent = blocked
+          ? (item.kind === 'event' && item.claimRequired === true ? '需先領取' : '不可使用')
+          : check.checked ? '已選擇' : '點選使用';
+        label.append(copy, check, indicator);
         option.append(label);
         if (item.kind === 'event' && item.claimRequired === true) {
           const claimButton = document.createElement('button');
@@ -451,11 +455,15 @@
               }
             }
           });
-          option.append(claimButton);
+          const claimAction = document.createElement('div');
+          claimAction.className = 'snapshot-ticket-claim-action';
+          claimAction.append(claimButton);
+          option.append(claimAction);
         }
         choices.append(option);
         check.addEventListener('change', () => {
           label.classList.toggle('is-selected', check.checked);
+          option.classList.toggle('is-selected', check.checked);
           indicator.textContent = check.checked ? '已選擇' : '點選使用';
           resetTicketRequest();
           renderBookings();
@@ -464,9 +472,12 @@
       if (!items.length) choices.textContent = '目前沒有可登記或可領取的票券，可以只送出收據。';
       function renderBookings() {
         const chosen = choices.querySelectorAll('[data-snapshot-id]:checked').length;
-        if (selectionSummary) selectionSummary.textContent = chosen
-          ? '本次已選擇 ' + chosen + ' 張票券；送出後由管理員核對實際服務並審核，不需要事先預約。'
-          : '無需事先預約；可選擇票券，或只送出收據。';
+        if (selectionSummary) {
+          selectionSummary.classList.toggle('has-selection', chosen > 0);
+          selectionSummary.textContent = chosen
+            ? '本次已選擇 ' + chosen + ' 張票券；送出後由管理員審核，不會立即核銷，也不需要事先預約。'
+            : '尚未選擇票券；可只送出收據，無需事先預約。';
+        }
       }
       renderBookings();
     } catch (error) {

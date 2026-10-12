@@ -62,3 +62,28 @@ test('snapshot renders unclaimed event offers, claims explicitly and never sends
   const css = read('booking/booking-receipt.css');
   assert.match(css, /#snapshotTicketChoices \.snapshot-ticket-claim-button/);
 });
+
+test('snapshot option cards have an ordered hierarchy, selected state and attached claim footer', () => {
+  const source = read('booking/booking-receipt.js');
+  const css = read('booking/booking-receipt.css');
+  assert.match(source, /heading\.append\(kind, title\)/);
+  assert.match(source, /label\.append\(copy, check, indicator\)/);
+  assert.match(source, /snapshot-ticket-claim-action/);
+  assert.match(source, /option\.classList\.toggle\('is-selected', check\.checked\)/);
+  assert.match(source, /selectionSummary\.classList\.toggle\('has-selection', chosen > 0\)/);
+  assert.match(css, /grid-template-columns:minmax\(0,1fr\) 28px/);
+  assert.match(css, /#snapshotTicketChoices \.snapshot-ticket-claim-action/);
+  assert.match(css, /#snapshotTicketChoices \.snapshot-ticket-option\.is-unavailable/);
+});
+test('snapshot overview shows both claimable event tickets and owned tickets without redeeming them', () => {
+  const source = read('booking/booking-accessible.js');
+  const css = read('booking/booking-accessible.css');
+  assert.match(source, /snapshot-overview-ticket/);
+  assert.match(source, /snapshot-overview-heading/);
+  assert.match(source, /snapshot-overview-status/);
+  assert.match(source, /item\.kind === 'event' && item\.claimRequired === true/);
+  assert.match(source, /拍攝快照時可先領取/);
+  assert.doesNotMatch(source, /BookingSystem\.claimEventTicket/);
+  assert.match(css, /\.booking-accessible-tickets \.snapshot-overview-ticket/);
+  assert.match(css, /@media \(max-width: 600px\)/);
+});
