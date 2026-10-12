@@ -30,14 +30,15 @@ test('point offer selection prefers a ticket that does not require GPS, even if 
   assert.equal(onlyRestricted[0].requiresLocation,true);
 });
 
-test('the catalog disables GPS-only point tickets and describes the actual problem', () => {
+test('the booking catalog allows GPS-only point tickets while snapshot retains location controls', () => {
   const latest = read('supabase/functions/_shared/latest-available-offers.ts');
   const catalog = read('supabase/functions/_shared/booking-benefits.ts');
   const api = read('supabase/functions/booking-receipt-api/index.ts');
   assert.match(latest, /threshold_stamps,requires_location/);
   assert.match(catalog, /const locationRestricted = offer\.requiresLocation === true/);
-  assert.match(catalog, /!reservedForOtherBooking && !locationRestricted/);
-  assert.match(catalog, /此票券限定在指定地點使用/);
+  assert.match(catalog, /selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking,/);
+  assert.match(catalog, /現場單獨使用需 GPS 定位/);
+  assert.doesNotMatch(catalog, /!reservedForOtherBooking && !locationRestricted/);
   assert.match(api, /failure\.includes\("BOOKING_BENEFIT_LOCATION_REQUIRED"\)/);
 });
 
