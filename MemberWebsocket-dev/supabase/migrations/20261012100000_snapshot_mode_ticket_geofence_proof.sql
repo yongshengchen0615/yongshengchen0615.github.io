@@ -734,4 +734,5 @@ revoke all on function public.validate_snapshot_ticket_selection(uuid,uuid,jsonb
 grant execute on function public.validate_snapshot_ticket_selection(uuid,uuid,jsonb,text) to service_role;
 revoke all on function public.validate_snapshot_ticket_selection(uuid,uuid,jsonb) from public,anon,authenticated;
 grant execute on function public.validate_snapshot_ticket_selection(uuid,uuid,jsonb) to service_role;
+notify pgrst, 'reload schema';
 commit;
