@@ -56,3 +56,57 @@
   border-color: var(--theme-warning,#bd9b48);
 }
 .booking-accessible-panel .button:disabled { opacity: .55; cursor: not-allowed; }
+
+/* Snapshot overview: readable ticket hierarchy without suggesting this list redeems tickets. */
+.booking-accessible-tickets .snapshot-overview-ticket{
+  display:grid;gap:9px;min-width:0;padding:16px;
+  border:1.5px solid var(--theme-border,#d5ded8);border-radius:16px;
+  color:var(--theme-text,#18241f);background:var(--theme-surface-raised,#fff);
+  overflow-wrap:anywhere;
+}
+.booking-accessible-tickets .snapshot-overview-heading{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  flex-wrap:wrap;gap:10px;min-width:0;
+}
+.booking-accessible-tickets .snapshot-overview-heading-copy{
+  display:grid;gap:6px;min-width:0;flex:1 1 150px;
+}
+.booking-accessible-tickets .snapshot-overview-heading h4{
+  margin:0;font-size:1.1rem;line-height:1.4;
+}
+.booking-accessible-tickets .snapshot-overview-kind,
+.booking-accessible-tickets .snapshot-overview-status{
+  display:inline-flex;width:max-content;max-width:100%;padding:4px 9px;
+  border-radius:999px;font-size:.78rem;line-height:1.35;font-weight:800;
+}
+.booking-accessible-tickets .snapshot-overview-kind{
+  background:var(--theme-surface-muted,#edf1ed);
+  color:var(--theme-text-muted,#627168);
+}
+.booking-accessible-tickets [data-kind="points"] .snapshot-overview-kind{
+  background:var(--theme-positive-soft,#e7f2eb);
+  color:var(--theme-positive-text,#276947);
+}
+.booking-accessible-tickets [data-kind="event"] .snapshot-overview-kind{
+  background:var(--theme-warning-soft,#fff4d9);
+  color:var(--theme-warning-text,#876117);
+}
+.booking-accessible-tickets .snapshot-overview-status{
+  background:var(--theme-surface-muted,#edf1ed);
+  color:var(--theme-text,#18241f);
+}
+.booking-accessible-tickets .snapshot-overview-ticket p{
+  margin:0;font-size:.95rem;line-height:1.55;
+}
+.booking-accessible-tickets .snapshot-overview-ticket .snapshot-overview-source{font-weight:750}
+.booking-accessible-tickets .snapshot-overview-ticket .snapshot-overview-expiry{
+  color:var(--theme-text-muted,#627168);
+}
+.booking-accessible-tickets .snapshot-overview-ticket .snapshot-overview-claim-help{
+  padding-top:8px;border-top:1px solid var(--theme-border,#d5ded8);
+  color:var(--theme-warning-text,#876117);
+}
+@media (max-width: 600px){
+  .booking-accessible-tickets .snapshot-overview-ticket{padding:13px;gap:8px}
+  .booking-accessible-tickets .snapshot-overview-heading{gap:8px}
+}
