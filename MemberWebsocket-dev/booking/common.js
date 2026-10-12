@@ -176,8 +176,17 @@
     });
     document.addEventListener('visibilitychange', () => {
       const context = presenceContext;
-      if (!context || context.closed) return;
-      if (document.visibilityState !== 'visible') return;
+      if (!context) return;
+      // LIFF close is not guaranteed to dispatch pagehide on every LINE WebView.
+      if (document.visibilityState !== 'visible') {
+        void stopPresence('hidden');
+        return;
+      }
+      if (context.closed) {
+        presenceContext = null;
+        void startPresence(context.config, 'booking', currentPresenceIdToken(context), 'resume');
+        return;
+      }
       if (Date.now() - Number(context.lastSeenSignalAt || 0) >= PRESENCE_RESUME_SIGNAL_MS) {
         context.onlineRecorded = false;
         void startPresence(context.config, 'booking', currentPresenceIdToken(context), 'resume');
@@ -250,12 +259,32 @@
     schedulePresenceHeartbeat();
   }
 
+  function sendPresenceExit(context, reason) {
+    const endpoint = String(context.config.supabaseFunctionUrl || '').trim();
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/functions\/v1\/[A-Za-z0-9_-]+$/i.test(endpoint)) return Promise.resolve(null);
+    const jsonBody = JSON.stringify(presenceBody(context, 'offline', reason));
+    // Beacon/simple POST skips a preflight which may be cancelled on LINE WebView close.
+    try {
+      if (navigator && typeof navigator.sendBeacon === 'function') {
+        const beacon = new Blob([jsonBody], { type: 'text/plain;charset=UTF-8' });
+        if (navigator.sendBeacon(endpoint, beacon)) return Promise.resolve(true);
+      }
+    } catch (_) {}
+    return fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      cache: 'no-store',
+      keepalive: true,
+      body: jsonBody
+    }).catch(() => null);
+  }
+
   async function stopPresence(reason = 'pagehide') {
     const context = presenceContext;
     if (!context || context.closed) return;
     clearPresenceHeartbeat();
     context.closed = true;
-    await sendPresence(context, 'offline', reason);
+    await sendPresenceExit(context, reason);
   }
 
   function bookingNoticeElement() {
