@@ -48,3 +48,17 @@ test('snapshot ticket cards respect responsive theme and remain native checkboxe
   assert.match(html, /booking-receipt\.css\?v=[^" ]*snapshot-ticket-ui-20261010-1/);
   assert.match(html, /booking-receipt\.js\?v=[^" ]*snapshot-ticket-ui-20261010-1/);
 });
+
+test('snapshot renders unclaimed event offers, claims explicitly and never sends unissued event identifiers', () => {
+  const receipt = read('booking/booking-receipt.js');
+  assert.match(receipt, /item\.selectionId \|\| \(item\.kind === 'event' && item\.claimRequired === true\)/);
+  assert.match(receipt, /item\.selectable !== true \|\| item\.claimRequired === true/);
+  assert.match(receipt, /snapshot-ticket-claim-button/);
+  assert.match(receipt, /BookingSystem\.claimEventTicket\(currentSession\.config, currentSession\.idToken, String\(item\.id \|\| ''\)\)/);
+  assert.match(receipt, /await loadSnapshotTickets\(\)/);
+  assert.match(receipt, /previouslyChecked\.has\(String\(item\.kind\) \+ ':' \+ String\(item\.selectionId\)\)/);
+  assert.match(receipt, /check\.disabled = blocked/);
+  assert.match(receipt, /data-snapshot-id\]:checked/);
+  const css = read('booking/booking-receipt.css');
+  assert.match(css, /#snapshotTicketChoices \.snapshot-ticket-claim-button/);
+});
