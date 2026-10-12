@@ -100,8 +100,8 @@ export function selectLatestPointOffers(
         ticket.rewardId === rewardId ||
         (ticket.ticketTemplateId === ticketTemplateId && ticket.thresholdStamps === thresholdStamps)
       );
-    // A reward may have multiple issued tickets. Prefer one that can actually
-    // be selected during booking/snapshot review (which has no GPS proof).
+    // A reward may have multiple issued tickets. Prefer a non-GPS instance
+    // when both are available, but GPS tickets are also selectable for booking.
     const availableTicket = tickets.find((ticket) => !ticket.requiresLocation && matchesOffer(ticket))
       || tickets.find(matchesOffer);
     if (!availableTicket) continue;

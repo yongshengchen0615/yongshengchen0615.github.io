@@ -45,12 +45,16 @@ test('completion uses one database transaction to redeem and settle', () => {
   assert.match(adminOps, /EVENT_TICKET_DAILY_LIMIT_REACHED/);
 });
 
-test('location-restricted tickets cannot use booking auto-redemption', () => {
+test('booking selection does not require GPS while direct ticket redemption still validates location', () => {
   const source = read('supabase/functions/_shared/booking-benefits.ts');
-  const migration = read('supabase/migrations/20261002093000_booking_benefit_selection_redemption.sql');
-  assert.match(source, /!offer\.requiresLocation/);
-  assert.match(source, /需於票券頁完成定位核銷/);
-  assert.match(migration, /BOOKING_BENEFIT_LOCATION_REQUIRED/);
+  const migration = read('supabase/migrations/20261012133000_booking_selection_without_gps.sql');
+  assert.match(source, /selectable: visibility\.tierEligible,/);
+  assert.match(source, /selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking,/);
+  assert.match(source, /現場單獨使用需 GPS 定位/);
+  assert.doesNotMatch(source, /!offer\.requiresLocation|!reservedForOtherBooking && !locationRestricted/);
+  assert.match(migration, /Booking ticket selection expresses reservation intent/);
+  assert.match(migration, /if v_event\.requires_location and p_booking_id is null/);
+  assert.match(migration, /verify_ticket_redemption_locations/);
 });
 
 

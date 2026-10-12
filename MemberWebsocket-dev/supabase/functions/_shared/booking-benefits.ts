@@ -186,21 +186,20 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         return {
           kind: 'points', id: offer.rewardId, title: offer.ticketTitle,
           subtitle: `${offer.cardTitle} · 消耗 ${pointCost} 點`,
-          statusLabel: reservedForOtherBooking ? '已預約使用' : locationRestricted ? '需定位使用' : hasEnoughPoints ? '可使用' : '點數不足',
+          statusLabel: reservedForOtherBooking ? '已預約使用' : !hasEnoughPoints ? '點數不足' : locationRestricted ? '可預約選用' : '可使用',
           startsOn: '', endsOn: offer.expiresOn, cardId: offer.cardId, cardTitle: offer.cardTitle, cardStyleKey: offer.styleKey,
           pointCost, pointBalance, totalPointBalance, reservedPointBalance, otherBookingReserved,
           requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
           reservedForBooking: Boolean(reservationBookingId),
           reservedForCurrentBooking,
           requiresLocation: locationRestricted,
-          selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking && !locationRestricted, selectionId: offer.ticketId,
-          conditionLabel: `${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel} · ` : '預約項目限制：不限 · '}本卡可用 ${pointBalance} 點${otherBookingReserved > 0 ? ` · 其他預約已保留 ${otherBookingReserved} 點` : ''} · 此票券需 ${pointCost} 點 · ${pointTicketMaxPerRedemption === 0 ? '單次預約使用張數不限' : `單次預約最多使用 ${pointTicketMaxPerRedemption} 張`}`,
+          // Booking selection records intent; only direct ticket redemption requires GPS.
+          selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking, selectionId: offer.ticketId,
+          conditionLabel: `${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel} · ` : '預約項目限制：不限 · '}本卡可用 ${pointBalance} 點${otherBookingReserved > 0 ? ` · 其他預約已保留 ${otherBookingReserved} 點` : ''} · 此票券需 ${pointCost} 點 · ${pointTicketMaxPerRedemption === 0 ? '單次預約使用張數不限' : `單次預約最多使用 ${pointTicketMaxPerRedemption} 張`}${locationRestricted ? ' · 現場單獨使用需 GPS 定位' : ''}`,
           disabledReason: !hasTicket
             ? '目前沒有可核銷的票券'
             : reservedForOtherBooking
               ? '此票券已選入另一筆預約，服務完成或取消後才會釋放'
-              : locationRestricted
-                ? '此票券限定在指定地點使用，無法透過預約或快照補登直接核銷；請在票券頁完成定位驗證'
               : !hasEnoughPoints
                 ? `可用點數不足：目前可用 ${pointBalance} 點，此票券需要 ${pointCost} 點`
                 : '',
@@ -219,13 +218,13 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           subtitle: visibility.locked ? visibility.lockReason : offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
           statusLabel: visibility.locked ? '需升級' : offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
           requiresLocation: offer.requiresLocation === true,
-          selectable: visibility.tierEligible && !offer.requiresLocation,
+          selectable: visibility.tierEligible,
           locked:visibility.locked,
           selectionId: offer.claimId || '',
           claimRequired: visibility.tierEligible && !offer.claimed,
           requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
-          conditionLabel: `${eventTicketMaxPerDay === 0 ? '每日使用張數不限' : `每日最多使用 ${eventTicketMaxPerDay} 張`} · ${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel}` : '預約項目限制：不限'}`,
-          disabledReason: visibility.locked ? visibility.lockReason : offer.requiresLocation ? '此票券需於票券頁完成定位核銷' : '',
+          conditionLabel: `${eventTicketMaxPerDay === 0 ? '每日使用張數不限' : `每日最多使用 ${eventTicketMaxPerDay} 張`} · ${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel}` : '預約項目限制：不限'}${offer.requiresLocation === true ? ' · 現場單獨使用需 GPS 定位' : ''}`,
+          disabledReason: visibility.locked ? visibility.lockReason : '',
         };
       }),
       ...activities.map((item: any) => ({

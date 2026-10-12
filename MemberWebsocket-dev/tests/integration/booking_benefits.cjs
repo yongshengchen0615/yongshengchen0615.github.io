@@ -79,6 +79,45 @@ test('0/1/N benefit cards render safely inside booking form and expose only elig
   }
 });
 
+test('regular booking can select GPS-restricted point and event tickets without accessing geolocation', async () => {
+  const restricted = [
+    { ...items[0], selectionId: 'PT-GPS', requiresLocation: true, statusLabel: '可預約選用', conditionLabel: '現場單獨使用需 GPS 定位' },
+    { ...items[1], id: 'EVENT-GPS', requiresLocation: true, conditionLabel: '現場單獨使用需 GPS 定位' },
+  ];
+  let claimed = 0;
+  const h = fixture(
+    async () => ({ pointTicketMaxPerRedemption: 2, eventTicketMaxPerDay: 2, items: restricted }),
+    async () => { claimed++; return { ticket: { claimId: 'EC-GPS' }, alreadyClaimed: false }; },
+  );
+  let gpsCalls = 0;
+  try {
+    Object.defineProperty(h.w.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition: () => { gpsCalls++; throw Error('booking must not ask for GPS'); } },
+    });
+    h.start();
+    await tick(10);
+    const point = h.el('bookingBenefitsList').querySelector('[data-booking-benefit-id="PT-GPS"]');
+    const event = h.el('bookingBenefitsList').querySelector('[data-booking-benefit-id="EVENT-GPS"]');
+    assert.ok(point && event);
+    assert.equal(point.disabled, false);
+    assert.equal(event.disabled, false);
+    assert.match(h.el('bookingBenefitsList').textContent, /現場單獨使用需 GPS 定位/);
+    point.click();
+    h.el('bookingBenefitsList').querySelector('[data-booking-benefit-id="EVENT-GPS"]').click();
+    await tick(15);
+    assert.equal(claimed, 1, 'event claim is allowed without a GPS proof');
+    assert.equal(gpsCalls, 0, 'ordinary booking must not request user location');
+    assert.deepEqual(JSON.parse(JSON.stringify(h.w.BookingBenefits.selectionPayload())), [
+      { kind: 'points', id: 'PT-GPS' },
+      { kind: 'event', id: 'EC-GPS' },
+    ]);
+    h.w.BookingBenefits.syncNow();
+    await tick(15);
+    assert.equal(gpsCalls, 0);
+  } finally { h.close(); }
+});
+
 test('point ticket selection cannot exceed the current balance on the same card', async () => {
   const pointItems = [
     { kind: 'points', id: 'reward-a', selectionId: 'PT-A', selectable: true, title: '票券 A', cardId: 'CARD', cardTitle: '集點卡', pointCost: 6, pointBalance: 10, statusLabel: '可使用', conditionLabel: '本卡目前 10 點 · 此票券需 6 點' },
