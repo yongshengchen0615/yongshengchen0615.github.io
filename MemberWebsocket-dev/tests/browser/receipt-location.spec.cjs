@@ -58,6 +58,17 @@ test.beforeAll(async()=>{
           state.claimed=true;
           return json(res,{ticket:{claimId:'QA-NEW-CLAIM'},alreadyClaimed:false});
         }
+        if(action==='user.booking.receipt.options'&&url.searchParams.get('mode')==='ticket-limits')return json(res,{
+          pointTicketMaxPerRedemption:2,eventTicketMaxPerDay:2,usedTodayCount:1,
+          items:[
+            {kind:'points',selectionId:'QA-P1',title:'A 卡票券 1',cardId:'card-A',cardTitle:'A 卡',pointCost:5,pointBalance:8,selectable:true},
+            {kind:'points',selectionId:'QA-P2',title:'A 卡票券 2',cardId:'card-A',cardTitle:'A 卡',pointCost:5,pointBalance:8,selectable:true},
+            {kind:'points',selectionId:'QA-P3',title:'B 卡票券 1',cardId:'card-B',cardTitle:'B 卡',pointCost:1,pointBalance:20,selectable:true},
+            {kind:'points',selectionId:'QA-P4',title:'B 卡票券 2',cardId:'card-B',cardTitle:'B 卡',pointCost:1,pointBalance:20,selectable:true},
+            {kind:'event',selectionId:'QA-E1',title:'活動票券 1',selectable:true},
+            {kind:'event',selectionId:'QA-E2',title:'活動票券 2',selectable:true}
+          ]
+        });
         if(action==='user.booking.receipt.options'&&url.searchParams.get('mode')==='unclaimed-event')return json(res,{
           ticketBookingRequired:false,items:[state.claimed
             ? {kind:'event',id:'QA-UNCLAIMED',selectionId:'QA-NEW-CLAIM',title:'QA new event',claimRequired:false,
@@ -310,4 +321,35 @@ test('snapshot lists unclaimed event tickets and enables selection only after cl
   await page.locator('#bookingReceiptSubmit').click();
   await expect(page.locator('#bookingReceiptModal')).toBeHidden();
   expect(runs.get(run).prepare[0].benefits).toEqual([{kind:'event',id:'QA-NEW-CLAIM'}]);
+});
+
+test('snapshot blocks cumulative point overspend and configured ticket quantity limits',async({page})=>{
+ const run='snapshot-point-limits';
+ await open(page,run,'ticket-limits');
+ const point1=page.locator('[data-snapshot-id="QA-P1"]');
+ const point2=page.locator('[data-snapshot-id="QA-P2"]');
+ const point3=page.locator('[data-snapshot-id="QA-P3"]');
+ const point4=page.locator('[data-snapshot-id="QA-P4"]');
+ const event1=page.locator('[data-snapshot-id="QA-E1"]');
+ const event2=page.locator('[data-snapshot-id="QA-E2"]');
+ await point1.check();
+ await expect(point2).toBeDisabled();
+ await expect(point2.locator('..')).toContainText('點數不足');
+ await expect(point3).toBeEnabled();
+ await point3.check();
+ await expect(point4).toBeDisabled();
+ await expect(point4.locator('..')).toContainText('單次上限 2 張');
+ await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('A 卡預計扣 5 點');
+ await event1.check();
+ await expect(event2).toBeDisabled();
+ await expect(event2.locator('..')).toContainText('每日上限 2 張');
+ await point1.uncheck();
+ await expect(point2).toBeEnabled();
+ await expect(point4).toBeEnabled();
+ await event1.uncheck();
+ await expect(event2).toBeEnabled();
+ await capture(page);
+ await page.locator('#bookingReceiptSubmit').click();
+ await expect(page.locator('#bookingReceiptModal')).toBeHidden();
+ expect(runs.get(run).prepare[0].benefits).toEqual([{kind:'points',id:'QA-P3'}]);
 });
