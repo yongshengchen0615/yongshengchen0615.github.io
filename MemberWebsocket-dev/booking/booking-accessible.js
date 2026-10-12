@@ -122,6 +122,7 @@
     setMode(preferred);
   });
   window.addEventListener('booking:benefits-loaded', event => renderTickets(event.detail?.items));
+  window.addEventListener('booking:snapshot-benefit-options', event => { if (enabled) renderTickets(event.detail?.items); });
   window.addEventListener('booking:receipts-updated', event => renderStatus(event.detail?.submissions));
   window.addEventListener('booking:receipt-load-error', () => {
     if (el('bookingAccessibleStatus')) el('bookingAccessibleStatus').textContent = '暫時無法更新收據狀態，請按「更新登記狀態與票券」重試。';
