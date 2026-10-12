@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'../..');
 let server,base;
 const runs=new Map();
 const fixtureScripts=new Map();
-const blank=()=>({prepare:[],finalize:[],uploads:[],redeem:[],attempts:0,status:'confirmed'});
+const blank=()=>({prepare:[],finalize:[],uploads:[],redeem:[],claimCalls:[],claimed:false,attempts:0,status:'confirmed'});
 const json=(res,data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
 function shell(surface,run,mode) {
   const html=fs.readFileSync(path.join(root,surface,'index.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
@@ -18,7 +18,7 @@ function shell(surface,run,mode) {
     navigator.mediaDevices.getUserMedia=async constraints=>{if(denied){denied=false;throw new DOMException('Permission denied','NotAllowedError');}const stream=await original(constraints);window.fixtureStreams.push(stream);return stream;};
     async function request(_config,_type,_token,action,payload={}){const response=await fetch('/api?run='+run+'&mode='+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload})});const body=await response.json();if(!response.ok)throw Object.assign(new Error(body.message),{code:body.code});return body;}
     const config={supabaseUrl:location.origin,supabasePublishableKey:'local-fixture'};
-    window.BookingSystem={getSession:()=>({config,idToken:'local-fixture'}),request};
+    window.BookingSystem={getSession:()=>({config,idToken:'local-fixture'}),request,claimEventTicket:(_config,_token,eventTicketId)=>request(config,'booking','local-fixture','user.booking.event-ticket.claim',{eventTicketId})};
     window.supabase={createClient:()=>({storage:{from:()=>({uploadToSignedUrl:async(objectPath,token,file,options)=>{const response=await fetch('/upload?run='+run+'&token='+token,{method:'PUT',headers:{'Content-Type':options.contentType},body:file});return {error:response.ok?null:Object.assign(new Error('Upload unavailable'),{code:'RECEIPT_UPLOAD_UNAVAILABLE'})};}})}})};
     window.addEventListener('booking:accessible-receipt-submitted',()=>window.fixtureEvents++);
     window.MemberSystem={loadConfig:async()=>config,signIn:async()=> 'local-fixture',request,subscribeRealtime:()=>()=>{},bindDialogKeyboard(){}};
@@ -52,6 +52,20 @@ test.beforeAll(async()=>{
           if(url.searchParams.get('mode')==='uncertain'&&state.finalize.length===1)return json(res,{code:'API_RESPONSE_UNCERTAIN',message:'Uncertain result'},503);
           return json(res,{receiptId:'QA-RECEIPT',status:'awaiting_review',alreadyApplied:state.finalize.length>1});
         }
+        if(action==='user.booking.event-ticket.claim') {
+          state.claimCalls.push(payload);
+          if(payload.eventTicketId!=='QA-UNCLAIMED')return json(res,{code:'EVENT_NOT_FOUND',message:'Wrong event'},400);
+          state.claimed=true;
+          return json(res,{ticket:{claimId:'QA-NEW-CLAIM'},alreadyClaimed:false});
+        }
+        if(action==='user.booking.receipt.options'&&url.searchParams.get('mode')==='unclaimed-event')return json(res,{
+          ticketBookingRequired:false,items:[state.claimed
+            ? {kind:'event',id:'QA-UNCLAIMED',selectionId:'QA-NEW-CLAIM',title:'QA new event',claimRequired:false,
+                selectable:Boolean(payload.location?.latitude),requiresLocation:true,disabledReason:'快照 GPS 未通過定位驗證'}
+            : {kind:'event',id:'QA-UNCLAIMED',selectionId:'',title:'QA new event',claimRequired:true,
+                selectable:false,requiresLocation:true,disabledReason:'會員尚未領取'}
+          ]
+        });
         if(action==='user.booking.receipt.options')return json(res,{ticketBookingRequired:url.searchParams.get('mode')==='tickets-required',items:[{kind:'event',selectionId:'QA-TICKET',title:'QA held ticket',selectable:true,eligibleBookings:[]},{kind:'event',selectionId:'QA-EXPIRED',title:'Expired',selectable:false,disabledReason:'票券已過期'}]});
         if(action==='user.booking.receipt.list')return json(res,{snapshotLocationRequired:url.searchParams.get('mode')==='location-required',snapshotLocations:[{name:'QA 指定門市',latitude:25.033964,longitude:121.564468,radiusMeters:100}],bookings:[],submissions:[]});
         if(action==='user.event.bootstrap')return json(res,{profile:{displayName:'QA',tierKey:'general'},usedTickets:[],usedTicketCount:0,offers:[{
@@ -276,4 +290,24 @@ test('snapshot ticket cards show selection feedback without a booking selector',
   await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('無需事先預約');
   await expect(page.locator('#snapshotTicketBooking')).toHaveCount(0);
   expect(runs.get(run).prepare).toHaveLength(0);
+});
+
+test('snapshot lists unclaimed event tickets and enables selection only after claiming with GPS',async({page})=>{
+  const run='snapshot-unclaimed-event';
+  await open(page,run,'unclaimed-event');
+  const offer=page.locator('.snapshot-ticket-option').filter({hasText:'QA new event'});
+  await expect(offer).toBeVisible();
+  await expect(offer.locator('input[type="checkbox"]')).toBeDisabled();
+  await expect(offer).toContainText('尚未領取');
+  expect(runs.get(run).claimCalls).toHaveLength(0);
+  await offer.locator('.snapshot-ticket-claim-button').click();
+  await expect(page.locator('[data-snapshot-id="QA-NEW-CLAIM"]')).toBeEnabled();
+  await expect(page.locator('.snapshot-ticket-claim-button')).toHaveCount(0);
+  expect(runs.get(run).claimCalls).toEqual([{eventTicketId:'QA-UNCLAIMED'}]);
+  await page.locator('[data-snapshot-id="QA-NEW-CLAIM"]').check();
+  await expect(page.locator('#snapshotTicketSelectionSummary')).toContainText('已選擇 1 張票券');
+  await capture(page);
+  await page.locator('#bookingReceiptSubmit').click();
+  await expect(page.locator('#bookingReceiptModal')).toBeHidden();
+  expect(runs.get(run).prepare[0].benefits).toEqual([{kind:'event',id:'QA-NEW-CLAIM'}]);
 });
