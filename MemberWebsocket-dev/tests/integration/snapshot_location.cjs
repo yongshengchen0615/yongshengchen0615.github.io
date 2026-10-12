@@ -65,8 +65,8 @@ function page(required){
  w.eval(read('booking/booking-receipt.js'));
  return {w,dom,calls,cameras:()=>cameras};
 }
-test('OFF opens without GPS; ON blocks unsupported/denied/timeout GPS and retries',async()=>{
- const off=page(false);try{await off.w.BookingReceipts.openAccessible();await tick();assert.equal(off.cameras(),1);}finally{off.w.close();}
+test('snapshot always requires GPS even when admin policy OFF; denied or timed-out GPS can retry',async()=>{
+ const off=page(false);try{Object.defineProperty(off.w.navigator,'geolocation',{value:{getCurrentPosition:ok=>ok({coords:{latitude:25,longitude:121,accuracy:10},timestamp:Date.now()})}});await off.w.BookingReceipts.openAccessible();await tick();assert.equal(off.cameras(),1);}finally{off.w.close();}
  const f=page(true);try{
   await f.w.BookingReceipts.openAccessible();assert.equal(f.cameras(),0);assert.equal(f.w.document.getElementById('bookingReceiptFile').disabled,true);
   assert.match(f.w.document.getElementById('bookingReceiptMessage').textContent,/不支援定位/);
@@ -81,7 +81,7 @@ test('OFF opens without GPS; ON blocks unsupported/denied/timeout GPS and retrie
 test('late GPS after cancellation cannot reopen camera or snapshot UI',async()=>{
  const f=page(true);try{
   let resolve;
-  Object.defineProperty(f.w.navigator,'geolocation',{value:{getCurrentPosition:ok=>resolve=ok}});
+  Object.defineProperty(f.w.navigator,'geolocation',{value:{getCurrentPosition:ok=>{resolve=ok;}}});
   const opening=f.w.BookingReceipts.openAccessible();await tick();
   f.w.document.getElementById('bookingReceiptCancel').click();
   resolve({coords:{latitude:25,longitude:121,accuracy:10},timestamp:Date.now()});await opening;
