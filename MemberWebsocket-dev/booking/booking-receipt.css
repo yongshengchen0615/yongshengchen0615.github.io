@@ -181,6 +181,9 @@ body.booking-receipt-modal-open{overflow:hidden;}
   line-height:1.5;
 }
 #snapshotTicketChoices{display:grid;gap:10px;margin-bottom:14px;min-width:0}
+#snapshotTicketChoices .snapshot-ticket-option{display:grid;gap:6px;min-width:0}
+#snapshotTicketChoices .snapshot-ticket-claim-button{justify-self:start;max-width:100%;font-size:14px}
+
 #snapshotTicketChoices .snapshot-ticket-choice{
   display:grid;
   grid-template-columns:24px minmax(0,1fr);
