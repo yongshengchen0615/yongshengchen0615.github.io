@@ -63,7 +63,7 @@ begin
  if (select count(*) from jsonb_array_elements(selections) s where s->>'kind'='event')>
  nullif((select max_tickets_per_day from public.event_ticket_settings where id=1),0) then raise exception 'EVENT_TICKET_DAILY_LIMIT_REACHED'; end if;
  return selections;
-end $function$
+end $function$;
 
 
 create or replace function public.validate_snapshot_ticket_selection(p_member uuid,p_booking uuid,p_benefits jsonb)
@@ -134,7 +134,7 @@ begin
  perform public.validate_snapshot_ticket_selection(p_member_id,r.requested_booking_id,r.requested_benefits,r.receipt_id);
  end if;
  return public.finalize_snapshot_receipt_request(p_receipt_id,p_member_id,p_actor_line_user_id,p_actual_mime_type,p_actual_size_bytes,p_sha256_hex,p_location);
-end $function$
+end $function$;
 
 
 CREATE OR REPLACE FUNCTION public.register_snapshot_receipt_v2(p_receipt_id text, p_expected_receipt_updated_at timestamp with time zone, p_actor text, p_booking_id uuid, p_booking_date date, p_start_time time without time zone, p_items jsonb, p_benefits jsonb, p_admin_note text)
@@ -158,7 +158,7 @@ begin
    perform public.validate_snapshot_ticket_selection(r.member_id,null,p_benefits,r.receipt_id);
  end if;
  return public.register_accessible_receipt_with_benefits_request(p_receipt_id,p_expected_receipt_updated_at,p_actor,p_booking_id,p_booking_date,p_start_time,p_items,p_benefits,p_admin_note);
-end $function$
+end $function$;
 
 
 CREATE OR REPLACE FUNCTION public.replace_booking_benefit_selections_request(p_booking_id uuid, p_member_id uuid, p_selections jsonb)
