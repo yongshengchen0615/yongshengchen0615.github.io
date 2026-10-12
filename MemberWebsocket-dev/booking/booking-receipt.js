@@ -305,8 +305,10 @@
 
   function openAccessible() {
     openModal('', '', true, { skipCamera: true });
-    void loadSnapshotTickets();
-    return authorizeSnapshot();
+    return authorizeSnapshot().then(ready => {
+      if (ready) void loadSnapshotTickets();
+      return ready;
+    });
   }
 
   async function loadSnapshotTickets() {
@@ -318,9 +320,10 @@
     choices.textContent = '正在讀取票券與使用條件…';
     try {
       const current = session();
-      const catalog = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.options');
+      const catalog = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.options', { location: state.location });
       if (generation !== state.ticketGeneration || !state.accessible) return;
       choices.replaceChildren();
+      window.dispatchEvent(new CustomEvent('booking:snapshot-benefit-options', { detail: { items: catalog.items || [] } }));
       const items = (catalog.items || []).filter(item => item.selectionId && !item.claimRequired);
       const selectionSummary = document.getElementById('snapshotTicketSelectionSummary');
       items.forEach(item => {
