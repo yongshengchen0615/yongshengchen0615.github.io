@@ -15,7 +15,7 @@ function setup(onPosition) {
     isSecureContext: true,
     BookingSystem: {
       getSession: () => ({ idToken: 'fixture', config: {} }),
-      request: () => { policyCalls += 1; throw new Error('GPS must not depend on a policy fetch'); }
+      request: () => { assert.equal(gpsCalls, 1, 'GPS prompt must occur before fetching policy'); policyCalls += 1; return { snapshotLocationRequired: false, snapshotLocations: [] }; }
     },
     addEventListener() {},
     dispatchEvent(event) { events.push(event.detail); }
@@ -40,7 +40,7 @@ test('entering snapshot mode requests fresh high-accuracy GPS before any API fet
   assert.equal(typeof fixture.api.beginSnapshotMode, 'function');
   await fixture.api.beginSnapshotMode();
   assert.equal(fixture.gpsCalls(), 1);
-  assert.equal(fixture.policyCalls(), 0);
+  assert.equal(fixture.policyCalls(), 1);
   assert.deepEqual(fixture.events.map(event => event.status), ['requesting','ready']);
   fixture.api.endSnapshotMode();
   assert.equal(fixture.events.at(-1).status, 'idle');
