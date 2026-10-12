@@ -2009,7 +2009,10 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
 async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string; issuedAtMs?: number }, action: string, body: Json): Promise<Json> {
   if (/^(?:admin|user\.(?:member|points|event|calendar|booking))\.session\.claim$/.test(action)) {
     if (action.startsWith("admin.")) {
+      // Admin workspaces may coexist on multiple devices. Do not claim or
+      // replace the member's single-login session for the same LINE identity.
       await authorizeAdmin(supabase, identity);
+      return { state:"concurrent" };
     } else {
       // A disabled account must not displace its previously connected browser.
       // Missing member rows are legitimate before first-time onboarding.
@@ -2049,6 +2052,9 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     return { state:String(result.data) };
   }
   if (/^(?:admin|user\.(?:member|points|event|calendar|booking))\.session\.logout$/.test(action)) {
+    // The admin LIFF logout is local to that workspace. It must not revoke
+    // a member session or another administrator's login.
+    if (action === "admin.session.logout") return { revoked:false };
     const result = await supabase.rpc("member_login_logout",{
       p_line_user_id:identity.lineUserId,p_token_hash:await sha256(asText(body.idToken,10000)),
     });
