@@ -144,6 +144,7 @@ function settingsClient(row: any, storeService?: any): Json {
     bookingNotice: String(row?.booking_notice || ""),
     reminderEnabled: row?.reminder_enabled === true,
     snapshotLocationRequired: row?.snapshot_location_required === true,
+    snapshotLocations: Array.isArray(row?.snapshot_locations) ? row.snapshot_locations : [],
     ticketBookingRequired: row?.ticket_booking_required !== false,
     reminderTime: String(row?.reminder_time || "18:00:00").slice(0, 5),
     updatedAt: row?.updated_at || null,
@@ -235,8 +236,21 @@ async function settingsSave(supabase: SupabaseClient, identity: Identity, body: 
   if (bookingNotice.length > 2000) throw new ApiError(400, "INVALID_BOOKING_NOTICE", "預約說明不可超過 2,000 字。" );
   if (body.snapshotLocationRequired !== undefined && typeof body.snapshotLocationRequired !== "boolean") throw new ApiError(400, "INVALID_SNAPSHOT_LOCATION_POLICY", "請選擇是否要求快照定位。");
   if (body.ticketBookingRequired !== undefined && typeof body.ticketBookingRequired !== "boolean") throw new ApiError(400, "INVALID_TICKET_BOOKING_POLICY", "請選擇使用票券是否需要預約。");
+  const snapshotLocations = body.snapshotLocations;
+  if (!Array.isArray(snapshotLocations) || snapshotLocations.length > 20 || snapshotLocations.some((location: any) =>
+    !location || typeof location !== "object" || typeof location.name !== "string"
+    || !location.name.trim() || location.name.trim().length > 100
+    || typeof location.latitude !== "number" || !Number.isFinite(location.latitude) || Math.abs(location.latitude) > 90
+    || typeof location.longitude !== "number" || !Number.isFinite(location.longitude) || Math.abs(location.longitude) > 180
+    || !Number.isInteger(location.radiusMeters) || location.radiusMeters < 50 || location.radiusMeters > 2000)) {
+    throw new ApiError(400, "SNAPSHOT_LOCATION_CONFIG_INVALID", "快照地點名稱、座標或半徑設定不正確。");
+  }
+  if (body.snapshotLocationRequired === true && snapshotLocations.length === 0) {
+    throw new ApiError(400, "SNAPSHOT_LOCATION_NOT_CONFIGURED", "請先設定至少一個允許快照的地點。");
+  }
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
-  const result = await supabase.rpc("save_booking_shared_settings_v6", {
+  const result = await supabase.rpc("save_booking_shared_settings_v7", {
+    p_snapshot_locations: snapshotLocations,
     p_ticket_booking_required: body.ticketBookingRequired ?? null,
     p_snapshot_location_required: body.snapshotLocationRequired ?? null,
     p_work_start_time: `${workStartTime}:00`,

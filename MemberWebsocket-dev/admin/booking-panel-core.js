@@ -159,7 +159,7 @@
               </section>
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminSnapshotHeading">
                 <div class="booking-admin-settings-block-heading"><h4 id="bookingAdminSnapshotHeading">快照模式</h4></div>
-                <label class="booking-admin-toggle"><input id="bookingAdminSnapshotLocationRequired" type="checkbox"><span><strong>快照前必須取得定位</strong><small>僅快照模式適用；不限定服務距離，也不儲存精確座標。一般預約不受影響。</small></span></label>
+                <label class="booking-admin-toggle"><input id="bookingAdminSnapshotLocationRequired" type="checkbox"><span><strong>快照前必須取得定位</strong><small>啟用後，會員拍攝及送出快照前必須位於下方任一指定地點的範圍內；請先新增至少一個地點。一般預約與票券的獨立定位規則不受影響。</small></span></label><div id="bookingAdminSnapshotLocationControls" class="coupon-location-controls hidden"><div class="coupon-map-search"><label for="bookingAdminSnapshotAddressSearch">地址搜尋</label><div><input id="bookingAdminSnapshotAddressSearch" type="search" maxlength="240" autocomplete="street-address" placeholder="輸入地址或地標，例如：台南火車站"><button id="bookingAdminSnapshotAddressSearchButton" type="button" class="button button-outline">搜尋地址</button><button id="bookingAdminSnapshotUseCurrentLocationButton" type="button" class="button button-outline">使用目前 GPS 選點</button></div><div id="bookingAdminSnapshotAddressResults" class="coupon-map-results" aria-live="polite"></div></div><div id="bookingAdminSnapshotLocationMap" class="coupon-location-map" role="region" aria-label="使用地點地圖，點選可選擇候選位置"></div><p id="bookingAdminSnapshotMapStatus" class="field-help" aria-live="polite">先用地址搜尋、目前 GPS 或地圖點選位置；找不到精確地址時會自動顯示附近／近似候選，再確認地點與半徑範圍後新增。</p><section id="bookingAdminSnapshotLocationDraft" class="coupon-location-draft hidden" aria-label="待確認使用地點"><div class="coupon-location-draft-heading"><div><strong>待確認位置</strong><small>地圖圓圈即快照半徑範圍，可拖曳地圖標記微調位置。</small></div><span>尚未加入</span></div><div class="coupon-location-draft-fields"><label>地點名稱<input id="bookingAdminSnapshotLocationDraftName" type="text" maxlength="100" placeholder="例如：台南門市"></label><label>快照半徑（公尺）<input id="bookingAdminSnapshotLocationDraftRadius" type="number" min="50" max="2000" step="10" value="100"></label></div><div class="coupon-location-draft-actions"><button id="clearBookingAdminSnapshotLocationDraftButton" class="button button-outline" type="button">取消選點</button><button id="addBookingAdminSnapshotLocationButton" class="button button-dark" type="button">＋ 新增地點</button></div></section><div class="coupon-location-heading"><strong>允許快照地點</strong><span id="bookingAdminSnapshotLocationCount">0 / 20 個使用地點</span></div><div id="bookingAdminSnapshotLocationRows" class="coupon-location-rows"></div><p class="field-help">符合任一地點的快照半徑即可使用。座標只在背景保存供快照判斷，不在管理介面顯示。地圖與地址搜尋資料由 OpenStreetMap 提供。</p></div>
               </section>
 
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminReminderHeading">
@@ -260,6 +260,7 @@
     els.bookingTab.addEventListener('click', activateBookingPanel);
     PRIMARY_TAB_IDS.forEach((id) => document.getElementById(id)?.addEventListener('click', deactivateBookingPanel));
     els.bookingAdminSettingsForm.addEventListener('submit', saveSettings);
+    window.TicketLocationEditors?.snapshot?.init();
     ['bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval'].forEach((id) => els[id].addEventListener('input', renderHoursPreview));
     els.bookingAdminNewTypeButton.addEventListener('click', () => openTypeModal(null));
     els.bookingAdminTechniciansSubtab.addEventListener('click', () => setSubtab('technicians'));
@@ -642,6 +643,7 @@
     els.bookingAdminNotice.value = String(settings.bookingNotice || '');
     els.bookingAdminReminderEnabled.checked = settings.reminderEnabled === true;
     els.bookingAdminSnapshotLocationRequired.checked = settings.snapshotLocationRequired === true;
+    window.TicketLocationEditors?.snapshot?.set(Array.isArray(settings.snapshotLocations) ? settings.snapshotLocations : []);
     els.bookingAdminTicketBookingRequired.checked = settings.ticketBookingRequired !== false;
     els.bookingAdminReminderTime.value = String(settings.reminderTime || '18:00');
     renderHoursPreview();
@@ -744,6 +746,8 @@
     if (bookingNotice.length > 2000) return showMessage(els.bookingAdminSettingsMessage, '預約說明不可超過 2,000 字。', 'error');
     const reminderTime = els.bookingAdminReminderTime.value;
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(reminderTime)) return showMessage(els.bookingAdminSettingsMessage, '請設定有效的前一天提醒時間。', 'error');
+    const snapshotLocations = window.TicketLocationEditors?.snapshot?.get() || [];
+    if (els.bookingAdminSnapshotLocationRequired.checked && !snapshotLocations.length) return showMessage(els.bookingAdminSettingsMessage, '請先新增至少一個快照允許地點，才能啟用定位限制。', 'error');
     state.busy = true; clearMessage(els.bookingAdminSettingsMessage);
     try {
       const result = await manageRequest('admin.booking.settings.save', {
@@ -756,6 +760,7 @@
         bookingNotice,
         reminderEnabled: els.bookingAdminReminderEnabled.checked,
         snapshotLocationRequired: els.bookingAdminSnapshotLocationRequired.checked,
+        snapshotLocations,
         ticketBookingRequired: els.bookingAdminTicketBookingRequired.checked,
         reminderTime,
         expectedUpdatedAt: state.booking.settings?.updatedAt || '',

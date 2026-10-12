@@ -53,7 +53,7 @@ test.beforeAll(async()=>{
           return json(res,{receiptId:'QA-RECEIPT',status:'awaiting_review',alreadyApplied:state.finalize.length>1});
         }
         if(action==='user.booking.receipt.options')return json(res,{ticketBookingRequired:url.searchParams.get('mode')==='tickets-required',items:[{kind:'event',selectionId:'QA-TICKET',title:'QA held ticket',selectable:true,eligibleBookings:[]},{kind:'event',selectionId:'QA-EXPIRED',title:'Expired',selectable:false,disabledReason:'票券已過期'}]});
-        if(action==='user.booking.receipt.list')return json(res,{snapshotLocationRequired:url.searchParams.get('mode')==='location-required',bookings:[],submissions:[]});
+        if(action==='user.booking.receipt.list')return json(res,{snapshotLocationRequired:url.searchParams.get('mode')==='location-required',snapshotLocations:[{name:'QA 指定門市',latitude:25.033964,longitude:121.564468,radiusMeters:100}],bookings:[],submissions:[]});
         if(action==='user.event.bootstrap')return json(res,{profile:{displayName:'QA',tierKey:'general'},usedTickets:[],usedTicketCount:0,offers:[{
           ticket:{eventTicketId:'QA-GEO',title:'GPS QA',ticketType:'coupon',description:'GPS receipt QA',usageMethod:'Once',usageInstructions:'Once',requiresLocation:true,redemptionLocations:[{name:'QA 指定門市',latitude:25.033964,longitude:121.564468,radiusMeters:100}],allowedTierKeys:['general'],prizes:[]},
           claim:{claimId:'QA-CLAIM',status:'claimed',ticketTitle:'GPS QA',ticketDescription:'GPS receipt QA',ticketType:'coupon'},eligibleBookings:[{bookingId:'00000000-0000-4000-8000-000000000001',bookingDate:'2099-01-01',startTime:'10:00',title:'GPS booking'}],canUse:true,availability:'open',tierEligible:true

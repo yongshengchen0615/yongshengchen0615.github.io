@@ -717,10 +717,29 @@
     searchResultsId: 'ticketAddressResults',
   });
 
+  const snapshotEditor = createEditor({
+    checkboxId: 'bookingAdminSnapshotLocationRequired',
+    controlsId: 'bookingAdminSnapshotLocationControls',
+    rowsId: 'bookingAdminSnapshotLocationRows',
+    countId: 'bookingAdminSnapshotLocationCount',
+    statusId: 'bookingAdminSnapshotMapStatus',
+    mapId: 'bookingAdminSnapshotLocationMap',
+    draftPanelId: 'bookingAdminSnapshotLocationDraft',
+    draftNameId: 'bookingAdminSnapshotLocationDraftName',
+    draftRadiusId: 'bookingAdminSnapshotLocationDraftRadius',
+    addButtonId: 'addBookingAdminSnapshotLocationButton',
+    clearDraftButtonId: 'clearBookingAdminSnapshotLocationDraftButton',
+    currentButtonId: 'bookingAdminSnapshotUseCurrentLocationButton',
+    searchInputId: 'bookingAdminSnapshotAddressSearch',
+    searchButtonId: 'bookingAdminSnapshotAddressSearchButton',
+    searchResultsId: 'bookingAdminSnapshotAddressResults',
+  });
+
   window.TicketLocationEditors = {
     event: eventEditor,
     template: templateEditor,
-    init() { eventEditor.init(); templateEditor.init(); },
+    snapshot: snapshotEditor,
+    init() { eventEditor.init(); templateEditor.init(); snapshotEditor.init(); },
   };
   window.CouponLocationEditor = eventEditor;
 })();
