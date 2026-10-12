@@ -89,7 +89,10 @@ export async function verifyLineIdTokenContract(args: {
   // connection. Once a browser has claimed a session, ONLY its registered token
   // fingerprints may authorize requests. Older deployments' unclaimed sessions
   // remain compatible until the first successful claim for that LINE identity.
-  if (!allowLoginClaim) {
+  // Admin authentication is scoped to the server-verified admin LINE channel
+  // and an active admin row. Member single-login grants must not invalidate
+  // separately authenticated management workspaces.
+  if (!allowLoginClaim && !canBypassUserRestrictions) {
     const sessionResult = await supabase.from("member_login_sessions")
       .select("line_user_id").eq("line_user_id", sub).maybeSingle();
     if (sessionResult.error) {
