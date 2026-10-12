@@ -5,6 +5,21 @@
   let enabled = false;
   let memberId = '';
   window.BookingAccessibility = Object.freeze({ getPreferenceKey: () => memberId ? keyPrefix + memberId : '' });
+  function renderLocationState({ status = 'idle', message = '' } = {}) {
+    const statusLabel = el('bookingSnapshotLocationStatus');
+    const retry = el('bookingSnapshotLocationRetry');
+    const upload = el('bookingAccessibleUpload');
+    if (upload) upload.disabled = enabled && status !== 'ready';
+    if (retry) retry.classList.toggle('hidden', status !== 'error');
+    if (!statusLabel) return;
+    statusLabel.textContent = status === 'ready'
+      ? 'GPS 已定位，可以拍攝快照收據。送出時會再次確認定位有效性。'
+      : status === 'requesting' ? '正在取得 GPS 定位，請允許裝置提供位置…'
+      : status === 'error' ? (message || '定位失敗，請按「重新定位」。')
+      : '切換到快照模式後將請求 GPS 定位。';
+    statusLabel.classList.toggle('error', status === 'error');
+  }
+
   function setMode(value, persist = false) {
     enabled = Boolean(value);
     document.body.classList.toggle('booking-accessible-mode', enabled);
@@ -20,7 +35,16 @@
       try { localStorage.setItem(keyPrefix + memberId, enabled ? 'accessible' : 'general'); }
       catch { if (el('bookingModePreference')) el('bookingModePreference').textContent = '此裝置無法儲存偏好；重新開啟時會使用一般模式。'; }
     }
-    if (enabled) { renderTickets(window.BookingBenefits?.getItems?.() || []); void window.BookingReceipts?.refresh?.(); }
+    if (enabled) {
+      renderLocationState({ status: 'requesting' });
+      // Browser permission must be requested as part of the mode-toggle gesture.
+      void window.BookingReceipts?.beginSnapshotMode?.().catch(() => {});
+      renderTickets(window.BookingBenefits?.getItems?.() || []);
+      void window.BookingReceipts?.refresh?.();
+    } else {
+      window.BookingReceipts?.endSnapshotMode?.();
+      renderLocationState();
+    }
   }
   function renderTickets(items) {
     const host = el('bookingAccessibleTickets');
@@ -71,6 +95,14 @@
   }
   window.addEventListener('DOMContentLoaded', () => {
     el('bookingAccessibleToggle')?.addEventListener('click', () => setMode(!enabled, true));
+    el('bookingSnapshotLocationRetry')?.addEventListener('click', () => {
+      if (!enabled) return;
+      renderLocationState({ status: 'requesting' });
+      void window.BookingReceipts?.beginSnapshotMode?.().catch(() => {});
+    });
+    window.addEventListener('booking:snapshot-location-state', event => {
+      if (enabled) renderLocationState(event.detail);
+    });
     el('bookingAccessibleUpload')?.addEventListener('click', () => window.BookingReceipts?.openAccessible?.());
     el('bookingAccessibleRefresh')?.addEventListener('click', () => {
       el('bookingAccessibleStatus').textContent = '正在更新登記狀態…';
