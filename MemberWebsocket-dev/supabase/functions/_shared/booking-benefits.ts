@@ -192,7 +192,6 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
           reservedForBooking: Boolean(reservationBookingId),
           reservedForCurrentBooking,
-          requiresLocation: locationRestricted,
           selectable: hasTicket && hasEnoughPoints && !reservedForOtherBooking && !locationRestricted, selectionId: offer.ticketId,
           conditionLabel: `${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel} · ` : '預約項目限制：不限 · '}本卡可用 ${pointBalance} 點${otherBookingReserved > 0 ? ` · 其他預約已保留 ${otherBookingReserved} 點` : ''} · 此票券需 ${pointCost} 點 · ${pointTicketMaxPerRedemption === 0 ? '單次預約使用張數不限' : `單次預約最多使用 ${pointTicketMaxPerRedemption} 張`}`,
           disabledReason: !hasTicket
@@ -218,7 +217,6 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           allowedTierKeys: offer.allowedTierKeys, fixedTicketTemplateId: offer.fixedTicketTemplateId,
           subtitle: visibility.locked ? visibility.lockReason : offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
           statusLabel: visibility.locked ? '需升級' : offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
-          requiresLocation: offer.requiresLocation === true,
           selectable: visibility.tierEligible && !offer.requiresLocation,
           locked:visibility.locked,
           selectionId: offer.claimId || '',
