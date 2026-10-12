@@ -55,7 +55,7 @@ test('chat send occurs only after finalized receipt and skips idempotent replays
   assert.match(receiptSource, /booking:accessible-receipt-submitted[\s\S]*?chatResult/);
   assert.match(accessibleSource, /chatResult\?\.sent === true/);
   assert.match(accessibleSource, /chatResult\?\.reason === 'not_in_line_chat'/);
-  assert.match(accessibleSource, /lastChatFeedback\.receiptId === String\(latest\.receiptId \|\| ''\)/);
-  assert.match(pageSource, /booking-receipt\.js\?v=snapshot-line-chat-20261012-1/);
-  assert.match(pageSource, /booking-accessible\.js\?v=snapshot-line-chat-20261012-1/);
+  assert.match(accessibleSource, /lastChatFeedback\?\.receiptId === String\(latest\.receiptId \|\| ''\)/);
+  assert.match(pageSource, /booking-receipt\.js\?v=[^" ]*snapshot-line-chat-20261012-1/);
+  assert.match(pageSource, /booking-accessible\.js\?v=[^" ]*snapshot-line-chat-20261012-1/);
 });
