@@ -619,8 +619,17 @@ async function accessibleBenefitCatalog(supabase:SupabaseClient,member:any,curre
       ? {...item,selectable:false,disabledReason:"會員尚未領取此活動票券；管理員不可代替會員領取。"}
       : item);
   const snapshotItems=await snapshotGeoTicketPreview(supabase,String(member.id),items,location);
+  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  const dayStart=new Date(today+"T00:00:00+08:00");
+  const dayEnd=new Date(dayStart.getTime()+86400000);
+  const used=await supabase.from("event_ticket_claims")
+    .select("id",{count:"exact",head:true})
+    .eq("member_id",String(member.id)).eq("status","used")
+    .gte("used_at",dayStart.toISOString()).lt("used_at",dayEnd.toISOString());
+  if(used.error) throw dbError(used.error);
   return {
     asOf:raw?.asOf||new Date().toISOString(),
+    usedTodayCount:Math.max(0,Number(used.count||0)),
     eventTicketMaxPerDay:selectionLimit(raw?.eventTicketMaxPerDay),
     pointTicketMaxPerRedemption:selectionLimit(raw?.pointTicketMaxPerRedemption),
     items:snapshotItems,

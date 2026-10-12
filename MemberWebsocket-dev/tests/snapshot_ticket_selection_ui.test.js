@@ -87,3 +87,19 @@ test('snapshot overview shows both claimable event tickets and owned tickets wit
   assert.match(css, /\.booking-accessible-tickets \.snapshot-overview-ticket/);
   assert.match(css, /@media \(max-width: 600px\)/);
 });
+
+test('snapshot respects member point-card aggregate point budget and admin ticket caps', () => {
+  const source = read('booking/booking-receipt.js');
+  const api = read('supabase/functions/booking-receipt-api/index.ts');
+  assert.match(source,/catalog\.pointTicketMaxPerRedemption/);
+  assert.match(source,/catalog\.eventTicketMaxPerDay/);
+  assert.match(source,/catalog\.usedTodayCount/);
+  assert.match(source,/spent \+ needed > available/);
+  assert.match(source,/selectedPoints >= pointLimit/);
+  assert.match(source,/usedEventsToday \+ selectedEvents >= eventLimit/);
+  assert.match(source,/input\.disabled = fixedBlocked \|\| Boolean\(reason\)/);
+  assert.match(source,/pointLimit === 0 \? '不限張數'/);
+  assert.match(source,/resetTicketRequest\(\)/);
+  assert.match(api,/usedTodayCount:Math\.max\(0,Number\(used\.count\|\|0\)\)/);
+  assert.match(api,/\.eq\("member_id",String\(member\.id\)\)\.eq\("status","used"\)/);
+});

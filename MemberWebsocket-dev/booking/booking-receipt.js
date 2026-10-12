@@ -356,6 +356,17 @@
         (item.kind === 'points' || item.kind === 'event')
         && (item.selectionId || (item.kind === 'event' && item.claimRequired === true)));
       const selectionSummary = document.getElementById('snapshotTicketSelectionSummary');
+      // Match the member point-card redemption screen: total quantity and per-card
+      // available points are shared across all selected tickets, not per checkbox.
+      const normalizeLimit = value => {
+        const parsed = Number(value);
+        return Number.isInteger(parsed) && parsed >= 0 && parsed <= 50 ? parsed : 1;
+      };
+      const pointLimit = normalizeLimit(catalog.pointTicketMaxPerRedemption);
+      const eventLimit = normalizeLimit(catalog.eventTicketMaxPerDay);
+      const usedEventsToday = Math.max(0, Number(catalog.usedTodayCount) || 0);
+      const itemByKey = new Map(items.filter(item => item.selectionId)
+        .map(item => [String(item.kind) + ':' + String(item.selectionId), item]));
       items.forEach(item => {
         const blocked = item.selectable !== true || item.claimRequired === true;
         const option = document.createElement('div');
@@ -414,6 +425,9 @@
             : String(item.disabledReason || '目前不可登記使用');
           copy.append(reason);
         }
+        const dynamicReason = document.createElement('span');
+        dynamicReason.className = 'snapshot-ticket-disabled-reason hidden';
+        copy.append(dynamicReason);
         const indicator = document.createElement('span');
         indicator.className = 'snapshot-ticket-choice-status';
         indicator.textContent = blocked
@@ -462,21 +476,95 @@
         }
         choices.append(option);
         check.addEventListener('change', () => {
-          label.classList.toggle('is-selected', check.checked);
-          option.classList.toggle('is-selected', check.checked);
-          indicator.textContent = check.checked ? '已選擇' : '點選使用';
           resetTicketRequest();
           renderBookings();
         });
       });
       if (!items.length) choices.textContent = '目前沒有可登記或可領取的票券，可以只送出收據。';
       function renderBookings() {
-        const chosen = choices.querySelectorAll('[data-snapshot-id]:checked').length;
+        const checked = [...choices.querySelectorAll('[data-snapshot-id]:checked')];
+        const selectedPoints = checked.filter(input => input.dataset.snapshotKind === 'points').length;
+        const selectedEvents = checked.filter(input => input.dataset.snapshotKind === 'event').length;
+        const spendByCard = new Map();
+        const balanceByCard = new Map();
+        for (const input of checked) {
+          if (input.dataset.snapshotKind !== 'points') continue;
+          const ticket = itemByKey.get('points:' + input.dataset.snapshotId);
+          if (!ticket) continue;
+          const cardKey = String(ticket.cardId || ticket.cardTitle || ticket.selectionId);
+          spendByCard.set(cardKey, (spendByCard.get(cardKey) || 0) + Math.max(0, Number(ticket.pointCost) || 0));
+          balanceByCard.set(cardKey, { title: String(ticket.cardTitle || '集點卡'), balance: Math.max(0, Number(ticket.pointBalance) || 0) });
+        }
+        for (const input of choices.querySelectorAll('[data-snapshot-id]')) {
+          const ticket = itemByKey.get(String(input.dataset.snapshotKind) + ':' + String(input.dataset.snapshotId));
+          if (!ticket) continue;
+          const selected = input.checked;
+          const fixedBlocked = ticket.selectable !== true || ticket.claimRequired === true;
+          let reason = '';
+          if (!selected && !fixedBlocked) {
+            if (ticket.kind === 'points') {
+              const cardKey = String(ticket.cardId || ticket.cardTitle || ticket.selectionId);
+              const available = Math.max(0, Number(ticket.pointBalance) || 0);
+              const spent = spendByCard.get(cardKey) || 0;
+              const needed = Math.max(0, Number(ticket.pointCost) || 0);
+              if (pointLimit > 0 && selectedPoints >= pointLimit) {
+                reason = '已達管理端設定的單次上限 ' + pointLimit + ' 張，請先取消其他票券。';
+              } else if (spent + needed > available) {
+                reason = '點數不足：剩餘可用 ' + Math.max(0, available - spent) + ' 點，此票券需要 ' + needed + ' 點。';
+              }
+            } else if (ticket.kind === 'event' && eventLimit > 0 &&
+                       usedEventsToday + selectedEvents >= eventLimit) {
+              reason = '已達管理端設定的每日上限 ' + eventLimit + ' 張（今日已用 ' + usedEventsToday + ' 張）。';
+            }
+          }
+          input.disabled = fixedBlocked || Boolean(reason);
+          const label = input.closest('.snapshot-ticket-choice');
+          const option = input.closest('.snapshot-ticket-option');
+          label?.classList.toggle('is-selected', selected);
+          option?.classList.toggle('is-selected', selected);
+          option?.classList.toggle('is-unavailable', input.disabled);
+          label?.classList.toggle('is-unavailable', input.disabled);
+          const status = label?.querySelector('.snapshot-ticket-choice-status');
+          if (status) status.textContent = selected ? '已選擇' : fixedBlocked ? '不可使用' : reason ? '不可再選' : '點選使用';
+          // The last reason belongs to the dynamic quantity/budget guard.
+          const messages = label?.querySelectorAll('.snapshot-ticket-disabled-reason') || [];
+          const dynamic = messages[messages.length - 1];
+          if (dynamic) { dynamic.textContent = reason; dynamic.classList.toggle('hidden', !reason); }
+        }
         if (selectionSummary) {
-          selectionSummary.classList.toggle('has-selection', chosen > 0);
-          selectionSummary.textContent = chosen
-            ? '本次已選擇 ' + chosen + ' 張票券；送出後由管理員審核，不會立即核銷，也不需要事先預約。'
-            : '尚未選擇票券；可只送出收據，無需事先預約。';
+          selectionSummary.classList.toggle('has-selection', checked.length > 0);
+          const budgets = [...spendByCard.entries()].map(([id, amount]) => {
+            const card = balanceByCard.get(id);
+            return card.title + '預計扣 ' + amount + ' 點（可用 ' + card.balance + ' 點）';
+          });
+          const limits = '集點卡單次 ' + (pointLimit === 0 ? '不限張數' : '最多 ' + pointLimit + ' 張') +
+            '；活動票券今日' + (eventLimit === 0 ? '不限張數' : '剩餘 ' + Math.max(0, eventLimit - usedEventsToday) + ' 張');
+          selectionSummary.textContent = checked.length
+            ? '本次已選擇 ' + checked.length + ' 張票券；' + (budgets.length ? '預計扣點：' + budgets.join('、') + '。' : '') +
+              limits + '。送出後由管理員審核，不會立即核銷，也不需要事先預約。'
+            : '尚未選擇票券；可只送出收據，無需事先預約。' + limits + '。';
+        }
+      }
+      // A reloaded catalog may lower the limit while prior choices remain checked.
+      // Do not silently keep an over-budget, over-limit selection.
+      for (const checkbox of [...choices.querySelectorAll('[data-snapshot-id]:checked')]) {
+        const picked = [...choices.querySelectorAll('[data-snapshot-id]:checked')];
+        const pointPicks = picked.filter(input => input.dataset.snapshotKind === 'points');
+        const eventPicks = picked.filter(input => input.dataset.snapshotKind === 'event');
+        const pointSum = new Map();
+        for (const input of pointPicks) {
+          const ticket = itemByKey.get('points:' + input.dataset.snapshotId);
+          const key = String(ticket?.cardId || ticket?.cardTitle || ticket?.selectionId);
+          pointSum.set(key, (pointSum.get(key) || 0) + Math.max(0, Number(ticket?.pointCost) || 0));
+        }
+        const item = itemByKey.get(String(checkbox.dataset.snapshotKind) + ':' + checkbox.dataset.snapshotId);
+        const cardKey = String(item?.cardId || item?.cardTitle || item?.selectionId);
+        const overBudget = checkbox.dataset.snapshotKind === 'points' &&
+          (pointSum.get(cardKey) || 0) > Math.max(0, Number(item?.pointBalance) || 0);
+        if (overBudget || (pointLimit > 0 && pointPicks.length > pointLimit) ||
+            (eventLimit > 0 && usedEventsToday + eventPicks.length > eventLimit)) {
+          checkbox.checked = false;
+          resetTicketRequest();
         }
       }
       renderBookings();
