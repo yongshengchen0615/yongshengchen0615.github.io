@@ -1273,6 +1273,7 @@
       relogin:'重新登入',
       logout:'主動登出',
       pagehide:'離開頁面',
+      hidden:'LINE 頁面轉入背景或關閉',
       bfcache:'頁面暫存離開',
     };
     return labels[String(reason || '').toLowerCase()] || (event === 'offline' ? '離線' : '上線');

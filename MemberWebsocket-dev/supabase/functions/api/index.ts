@@ -2070,7 +2070,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     const sessionId = requireText(body.sessionId,"上線紀錄識別",80);
     if (!/^[A-Za-z0-9_-]{16,80}$/.test(sessionId)) throw new ApiError(400,"INVALID_PRESENCE_SESSION","上線紀錄識別格式不正確。");
     const reason = asText(body.reason,30) || (presence.event === "online" ? "signin" : presence.event === "heartbeat" ? "heartbeat" : "pagehide");
-    if (!["signin","logout","pagehide","bfcache","resume","relogin","heartbeat"].includes(reason)) {
+    if (!["signin","logout","pagehide","hidden","bfcache","resume","relogin","heartbeat"].includes(reason)) {
       throw new ApiError(400,"INVALID_PRESENCE_REASON","上下線紀錄原因不合法。");
     }
 
