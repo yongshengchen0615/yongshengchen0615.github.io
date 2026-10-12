@@ -537,6 +537,7 @@ async function bookingWrite(s: any, identity: any, token: string): Promise<QaCas
       action: "user.booking.cancel",
       clientType: "member",
       bookingId,
+      expectedUpdatedAt: updatedBooking.updatedAt,
     });
     if (!cancel.ok) throw functionError(cancel, "QA 預約取消申請失敗。");
     const cancelledBooking: any = (cancel.data as any).booking || {};
@@ -1327,6 +1328,7 @@ async function prepareUsageState(s: any, identity: any, token: string, surface: 
               action: "user.booking.cancel",
               clientType: "member",
               bookingId,
+              expectedUpdatedAt: booking.updatedAt,
             });
             if (cancelled.ok) {
               createdStates.push({ bookingId, state: "cancel_requested" });

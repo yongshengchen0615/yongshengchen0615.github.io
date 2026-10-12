@@ -39,7 +39,7 @@
       'memberName', 'memberProfileName', 'memberCode', 'memberTier', 'workHoursBadge',
       'bookingForm', 'servicePicker', 'serviceEmpty', 'selectedServiceList', 'selectedServiceEmpty', 'selectionSummary',
       'bookingDate', 'slotHint', 'slotGrid', 'memberNote', 'formMessage', 'submitBookingButton',
-      'bookingList', 'bookingEmpty', 'bookingConfirmModal', 'closeBookingConfirmButton', 'cancelBookingConfirmButton',
+      'bookingList', 'bookingEmpty', 'bookingHistoryMessage', 'bookingConfirmModal', 'closeBookingConfirmButton', 'cancelBookingConfirmButton',
       'bookingConfirmSummary', 'bookingConfirmMessage', 'confirmBookingButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
 
@@ -660,6 +660,10 @@
       startTime,
       memberNote: String(els.memberNote.value || ''),
       benefits: window.BookingBenefits?.selectionPayload?.() || [],
+      // Extensions add participants, technicians, recipient and contact fields
+      // to the actual write. They must also identify an unchanged retry.
+      context: window.BookingGroupUI?.writeContext?.(items)
+        || window.BookingContactUI?.writeContext?.() || {},
     });
   }
 
@@ -1091,17 +1095,29 @@
   }
 
   async function cancelBooking(booking, button) {
+    if (button.disabled || state.submitting) return;
     if (!window.confirm(`確定取消 ${bookingDisplayTitle(booking)} ${booking.startAt?.slice(0, 10) || booking.bookingDate} ${booking.startTime}–${booking.endAt?.slice(0, 10) || booking.bookingDate} ${booking.endTime} 的預約嗎？`)) return;
     button.disabled = true;
+    const originalLabel = button.textContent;
+    button.textContent = '送出取消申請中…';
+    button.setAttribute('aria-busy', 'true');
     try {
-      const result = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.cancel', { bookingId: booking.bookingId });
+      const result = await window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.cancel', {
+        bookingId: booking.bookingId, expectedUpdatedAt: booking.updatedAt,
+      });
       state.data.bookings = (state.data.bookings || []).map((item) => item.bookingId === result.booking.bookingId ? result.booking : item);
       renderBookings();
-      showFormMessage('已送出取消申請，等待管理端確認；確認前原預約時段仍會保留。', 'success');
+      showHistoryMessage('已送出取消申請，等待管理端確認；確認前原預約時段仍會保留。', 'success');
       if (selectedItems().length && els.bookingDate.value === booking.bookingDate) await loadSlots();
     } catch (error) {
-      button.disabled = false;
-      showFormMessage(error?.message || '目前無法取消預約。', 'error');
+      if (['BOOKING_CONFLICT', 'API_RESPONSE_UNCERTAIN', 'API_TIMEOUT'].includes(error?.code)) await refresh(false);
+      showHistoryMessage(error?.message || '目前無法取消預約。', 'error');
+    } finally {
+      if (button.isConnected) {
+        button.disabled = false;
+        button.textContent = originalLabel;
+        button.removeAttribute('aria-busy');
+      }
     }
   }
 
@@ -1113,6 +1129,12 @@
   function showFormMessage(message, type) {
     els.formMessage.textContent = message;
     els.formMessage.className = `form-message ${type || ''}`;
+  }
+
+  function showHistoryMessage(message, type) {
+    const element = els.bookingHistoryMessage || els.formMessage;
+    element.textContent = message;
+    element.className = `form-message ${type || ''}`;
   }
 
   function clearFormMessage() {

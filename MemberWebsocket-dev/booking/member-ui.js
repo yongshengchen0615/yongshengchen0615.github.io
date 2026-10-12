@@ -56,6 +56,7 @@
   }
 
   async function cancellationRequest(config, idToken, action, payload = {}) {
+    const isWrite = action === 'member.request';
     const endpoint = `${String(config?.supabaseUrl || '').replace(/\/$/, '')}/functions/v1/booking-cancellation-api`;
     if (!endpoint.startsWith('https://')) throw clientError('API_CONFIG_MISSING', '取消申請服務尚未設定。');
     const controller = new AbortController();
@@ -74,12 +75,14 @@
           : { ...payload, action, clientType: 'member', idToken }),
       });
       const data = await response.json().catch(() => null);
+      if (!data && isWrite) throw clientError('API_RESPONSE_UNCERTAIN', '無法確認取消申請是否已送達，請更新預約紀錄確認。');
       if (!response.ok || data?.ok !== true) {
         throw clientError(String(data?.error?.code || 'API_ERROR'), String(data?.error?.message || '取消申請服務拒絕此操作。'));
       }
       return data.data || {};
     } catch (error) {
       if (error?.code) throw error;
+      if (isWrite) throw clientError('API_RESPONSE_UNCERTAIN', '無法確認取消申請是否已送達，請更新預約紀錄確認。');
       if (error?.name === 'AbortError') throw clientError('API_TIMEOUT', '取消申請服務回應逾時，請更新後確認申請狀態。');
       throw clientError('NETWORK_ERROR', '目前無法連線取消申請服務。');
     } finally {
@@ -295,7 +298,9 @@
         return await enrichBootstrapWithCancellationState(config, idToken, bookingData);
       }
       if (clientType === 'member' && action === 'user.booking.cancel') {
-        const cancellation = await cancellationRequest(config, idToken, 'member.request', { bookingId: payload?.bookingId });
+        const cancellation = await cancellationRequest(config, idToken, 'member.request', {
+          bookingId: payload?.bookingId, expectedUpdatedAt: payload?.expectedUpdatedAt,
+        });
         const fresh = await originalRequest(config, clientType, idToken, 'user.booking.bootstrap');
         const booking = (fresh?.bookings || []).find((item) => item.bookingId === payload?.bookingId);
         if (!booking) throw clientError('BOOKING_NOT_FOUND', '取消申請已送出，但目前無法重新載入這筆預約。');

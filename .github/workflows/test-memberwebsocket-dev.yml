@@ -62,6 +62,7 @@ jobs:
             MemberWebsocket-dev/tests/integration/admin_startup.cjs \
             MemberWebsocket-dev/tests/integration/admin_terms.cjs \
             MemberWebsocket-dev/tests/integration/booking_startup.cjs \
+            MemberWebsocket-dev/tests/integration/booking_operation_integrity.cjs \
             MemberWebsocket-dev/tests/integration/booking_benefits.cjs \
             MemberWebsocket-dev/tests/integration/shared_event_ticket.cjs \
             MemberWebsocket-dev/tests/integration/booking_copy.cjs \
