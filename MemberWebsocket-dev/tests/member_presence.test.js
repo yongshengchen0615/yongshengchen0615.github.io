@@ -34,7 +34,7 @@ test('presence events remain authenticated server-side and append only minimal a
   assert.match(api, /detail:\{ sessionId,surface:presence\.surface,reason \}/);
   assert.doesNotMatch(api, /detail:\{[^}]*idToken/s);
   assert.doesNotMatch(api, /detail:\{[^}]*testSessionToken/s);
-  assert.match(api, /\["signin","logout","pagehide","bfcache","resume","relogin","heartbeat"\]/);
+  assert.match(api, /\["signin","logout","pagehide","hidden","bfcache","resume","relogin","heartbeat"\]/);
 });
 
 test('online and offline presence changes notify admin while heartbeat avoids realtime fanout', () => {
@@ -82,4 +82,25 @@ test('presence session IDs use browser cryptographic randomness', () => {
   assert.doesNotMatch(shared, /Math\.random\(\)/);
   assert.match(booking, /crypto\.randomUUID/);
   assert.match(booking, /crypto\.getRandomValues/);
+});
+
+test('LINE WebView hidden/page close sends an offline beacon and visible resume starts a fresh session', () => {
+  for (const client of [shared, booking]) {
+    assert.match(client, /document\.addEventListener\('visibilitychange'/);
+    assert.match(client, /if \(document\.visibilityState !== 'visible'\) \{/);
+    assert.match(client, /stopPresence\('hidden'/);
+    assert.match(client, /if \(context\.closed\) \{/);
+    assert.match(client, /presenceContext = null;\s+void startPresence\(/);
+    assert.match(client, /navigator\.sendBeacon\(endpoint, beacon(?:Body)?\)/);
+    assert.match(client, /text\/plain;charset=UTF-8/);
+    assert.match(client, /keepalive: true/);
+  }
+  assert.match(fs.readFileSync(path.join(root, 'admin', 'app.js'), 'utf8'), /hidden:'LINE 頁面轉入背景或關閉'/);
+});
+
+test('exit beacon leaves tokens in authenticated POST body, never a query string', () => {
+  assert.match(shared, /idToken: currentPresenceIdToken\(context\)/);
+  assert.match(booking, /idToken: currentPresenceIdToken\(context\)/);
+  assert.doesNotMatch(shared, /endpoint\s*\+\s*['"].*idToken/);
+  assert.doesNotMatch(booking, /endpoint\s*\+\s*['"].*idToken/);
 });
