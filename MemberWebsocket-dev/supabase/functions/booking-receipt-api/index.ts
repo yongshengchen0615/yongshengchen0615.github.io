@@ -116,7 +116,10 @@ function dbError(error:unknown):ApiError{
     ["INVALID_BOOKING_SLOT",400,"INVALID_BOOKING_SLOT","請填寫有效的服務日期與開始時間。"],
     ["INVALID_BOOKING_BENEFITS",400,"INVALID_BOOKING_BENEFITS","預約票券資料格式不正確。"],
     ["BOOKING_BENEFIT_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一張票券目前不可使用，請重新整理後再審核。"],
-    ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券需要定位核銷，無法在快照補登流程使用。"],
+    ["BOOKING_BENEFIT_LOCATION_REQUIRED",409,"BOOKING_BENEFIT_LOCATION_REQUIRED","其中一張票券未通過快照 GPS 地點驗證，請回到指定地點重新定位。"],
+    ["LOCATION_OUT_OF_RANGE",409,"LOCATION_OUT_OF_RANGE","您目前不在票券可使用地點範圍，請抵達指定地點後重新定位。"],
+    ["LOCATION_INVALID",409,"LOCATION_INVALID","GPS 精度不足或定位已過期，請重新定位。"],
+    ["LOCATION_REQUIRED",409,"LOCATION_REQUIRED","此票券需要有效 GPS 定位，請重新定位。"],
     ["BOOKING_BENEFIT_SERVICE_REQUIRED",409,"BOOKING_BENEFIT_SERVICE_REQUIRED","其中一張票券不符合本次實際服務項目，請重新核對票券。"],
     ["POINT_TICKET_INSUFFICIENT_POINTS",409,"POINT_TICKET_INSUFFICIENT_POINTS","會員目前可用點數不足，請取消部分集點卡票券。"],
     ["EVENT_TICKET_DAILY_LIMIT_REACHED",409,"EVENT_TICKET_DAILY_LIMIT_REACHED","會員今日活動票券使用張數已達上限。"],
@@ -538,7 +541,65 @@ function normalizeAccessibleBenefits(value: unknown): Array<{kind:"points"|"even
   });
 }
 
-async function accessibleBenefitCatalog(supabase:SupabaseClient,member:any,currentBookingId=""):Promise<Json>{
+
+// Only snapshot mode uses this preview. Actual authorization is repeated inside
+// prepare_snapshot_receipt_v2 and later checked against server-stored proof.
+async function snapshotGeoTicketPreview(
+  supabase:SupabaseClient,memberId:string,items:any[],location:unknown,
+):Promise<any[]>{
+  const restricted=items.filter(item=>item?.requiresLocation===true && item?.selectionId && !item?.claimRequired);
+  if(!restricted.length) return items;
+  const raw=location && typeof location==="object" ? location as Json : {};
+  const latitude=Number(raw.latitude),longitude=Number(raw.longitude),accuracy=Number(raw.accuracy),timestamp=Number(raw.timestamp);
+  const valid=Number.isFinite(latitude)&&Math.abs(latitude)<=90&&Number.isFinite(longitude)&&Math.abs(longitude)<=180
+    &&Number.isFinite(accuracy)&&accuracy>0&&accuracy<=100&&Number.isFinite(timestamp)
+    &&timestamp>=Date.now()-120000&&timestamp<=Date.now()+30000;
+  if(!valid) return items.map(item=>item?.requiresLocation===true
+    ? {...item,selectable:false,disabledReason:"請先在快照模式完成 GPS 定位，再登記此票券。"}:item);
+  const fix={latitude,longitude,accuracy,observedAt:new Date(timestamp).toISOString()};
+  const pointIds=restricted.filter(item=>item.kind==="points").map(item=>String(item.selectionId));
+  const claimIds=restricted.filter(item=>item.kind==="event").map(item=>String(item.selectionId));
+  const [points,claims]=await Promise.all([
+    pointIds.length?supabase.from("point_tickets").select("ticket_id,redemption_locations")
+      .eq("member_id",memberId).in("ticket_id",pointIds):Promise.resolve({data:[],error:null}),
+    claimIds.length?supabase.from("event_ticket_claims").select("claim_id,event_ticket_id")
+      .eq("member_id",memberId).in("claim_id",claimIds):Promise.resolve({data:[],error:null}),
+  ]);
+  if(points.error||claims.error) throw dbError(points.error||claims.error);
+  const sourceIds=[...new Set((claims.data||[]).map((claim:any)=>String(claim.event_ticket_id)))];
+  const sources=sourceIds.length
+    ? await supabase.from("event_tickets").select("id,redemption_locations").in("id",sourceIds)
+    : {data:[],error:null};
+  if(sources.error) throw dbError(sources.error);
+  const pointsById=new Map((points.data||[]).map((row:any)=>[String(row.ticket_id),row.redemption_locations]));
+  const eventById=new Map((sources.data||[]).map((row:any)=>[String(row.id),row.redemption_locations]));
+  const claimLocations=new Map((claims.data||[]).map((row:any)=>[String(row.claim_id),eventById.get(String(row.event_ticket_id))]));
+  const checked=await Promise.all(restricted.map(async item=>{
+    const allowed=item.kind==="points"?pointsById.get(String(item.selectionId)):claimLocations.get(String(item.selectionId));
+    if(!Array.isArray(allowed)||!allowed.length) return {key:item.kind+":"+item.selectionId,allowed:false,reason:"管理端尚未設定有效的票券可使用地點。"};
+    const result=await supabase.rpc("verify_ticket_redemption_locations",{p_locations:allowed,p_location:fix});
+    if(result.error){
+      const failure=String(result.error.message||"");
+      if(/LOCATION_OUT_OF_RANGE|LOCATION_INVALID|LOCATION_REQUIRED/.test(failure))
+        return {key:item.kind+":"+item.selectionId,allowed:false,reason:"目前不在管理端設定的可使用地點範圍；請抵達指定地點後重新定位。"};
+      throw dbError(result.error);
+    }
+    return {key:item.kind+":"+item.selectionId,allowed:true,reason:""};
+  }));
+  const results=new Map(checked.map(x=>[x.key,x]));
+  return items.map(item=>{
+    if(item?.requiresLocation!==true) return item;
+    const checked=results.get(item.kind+":"+item.selectionId);
+    const canUse=checked?.allowed===true &&
+      (item.kind==="points"
+        ? Number(item.pointCost)>0&&Number(item.pointBalance)>=Number(item.pointCost)&&item.reservedForBooking!==true
+        : item.locked!==true&&item.claimRequired!==true&&!!item.selectionId);
+    return {...item,selectable:canUse,
+      disabledReason:canUse?"":checked?.reason||"此票券目前無法在快照模式登記。"};
+  });
+}
+
+async function accessibleBenefitCatalog(supabase:SupabaseClient,member:any,currentBookingId="",location:unknown=null):Promise<Json>{
   const tierResult=await supabase.rpc("current_tier_key",{p_member_id:member.id});
   if(tierResult.error) throw dbError(tierResult.error);
   const raw=await loadBookingBenefits(
@@ -553,11 +614,12 @@ async function accessibleBenefitCatalog(supabase:SupabaseClient,member:any,curre
     .map((item:any)=>item?.kind==="event"&&item?.claimRequired===true
       ? {...item,selectable:false,disabledReason:"會員尚未領取此活動票券；管理員不可代替會員領取。"}
       : item);
+  const snapshotItems=await snapshotGeoTicketPreview(supabase,String(member.id),items,location);
   return {
     asOf:raw?.asOf||new Date().toISOString(),
     eventTicketMaxPerDay:selectionLimit(raw?.eventTicketMaxPerDay),
     pointTicketMaxPerRedemption:selectionLimit(raw?.pointTicketMaxPerRedemption),
-    items,
+    items:snapshotItems,
   };
 }
 
@@ -611,6 +673,7 @@ async function validateAccessibleBenefits(
     p_member:receipt.data.member_id,
     p_booking:null,
     p_benefits:requested,
+    p_receipt_id:receiptId,
   });
   if(canonical.error) throw dbError(canonical.error);
 
@@ -675,12 +738,12 @@ async function validateAccessibleBenefits(
 // catalog hides older issues of the same reward or truncates its display list.
 // This is an admin-only read path; the approval RPC remains the final authority.
 async function snapshotRequestedBenefitOptions(
-  supabase:SupabaseClient, memberId:string, rawBenefits:unknown,
+  supabase:SupabaseClient, memberId:string, rawBenefits:unknown, receiptId:string,
 ):Promise<any[]>{
   const requested=normalizeAccessibleBenefits(rawBenefits);
   return await Promise.all(requested.map(async selection=>{
     const eligible=await supabase.rpc("validate_snapshot_ticket_selection",{
-      p_member:memberId,p_booking:null,p_benefits:[selection],
+      p_member:memberId,p_booking:null,p_benefits:[selection],p_receipt_id:receiptId,
     });
     // Expected business-rule failures make a ticket visibly unavailable; a
     // database/service failure must surface as an error rather than disguising it.
@@ -697,7 +760,7 @@ async function snapshotRequestedBenefitOptions(
       kind:selection.kind,selectionId:selection.id,
       selectable,claimRequired:false,
       disabledReason:selectable?"":failure.includes("BOOKING_BENEFIT_LOCATION_REQUIRED")
-        ? "此票券限定在指定地點使用，無法透過快照補登核銷；請在票券頁完成定位驗證。"
+        ? "此票券在送出快照時未通過指定地點 GPS 驗證，無法補登。"
         : "票券已失效、額度不足或已被其他預約選用，請重新核對。",
     };
     if(selection.kind==="points"){
@@ -785,7 +848,7 @@ async function registrationOptions(supabase:SupabaseClient,body:Json):Promise<Js
     currentBooking&&String(currentBooking.status)==="confirmed"?requestedBookingId:"",
   );
   const heldOptions=receipt.data.status==="awaiting_review"
-    ? await snapshotRequestedBenefitOptions(supabase,receipt.data.member_id,receipt.data.requested_benefits)
+    ? await snapshotRequestedBenefitOptions(supabase,receipt.data.member_id,receipt.data.requested_benefits,asText(body.receiptId,80))
     : [];
   // Exact receipt-held tickets override stale/latest promotional preview rows.
   // This also restores earlier issued ticket IDs missing from the catalog.
@@ -853,7 +916,7 @@ Deno.serve(async(request:Request)=>{
       const member=await requireMember(supabase,identity);
       if(action==="user.booking.receipt.list") data=await memberList(supabase,member);
       else if(action==="user.booking.receipt.options") {
-        const catalog=await accessibleBenefitCatalog(supabase,member);
+        const catalog=await accessibleBenefitCatalog(supabase,member,"",body.location??null);
         // Snapshot receipts register member-held tickets without an advance reservation.
         // Normal ticket redemption keeps the global ticket_booking_required policy.
         data={...catalog,ticketBookingRequired:false};
