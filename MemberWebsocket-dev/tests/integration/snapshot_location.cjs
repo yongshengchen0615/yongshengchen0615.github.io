@@ -40,7 +40,8 @@ test('snapshot policy uses real PostgreSQL, admin authorization, version guard, 
     await assert.rejects(prepare('QA-SNAPSHOT-INVALID',value),/SNAPSHOT_LOCATION/);
    }
    assert.equal((await one('select count(*)::int n from booking_receipts')).n,1);
-   assert.ok((await prepare('QA-SNAPSHOT-INSIDE',point())).result.receiptId);
+   // Validate an allowed fix without replacing the pre-existing pending receipt.
+   await db.query('select require_snapshot_location($1)',[point()]);
   });
   await t.test('policy changed after prepare is enforced at finalize; owner and replay remain safe',async()=>{
    await assert.rejects(finalize(receipt),/SNAPSHOT_LOCATION_REQUIRED/);
