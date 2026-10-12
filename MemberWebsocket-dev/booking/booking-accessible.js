@@ -4,6 +4,14 @@
   const el = id => document.getElementById(id);
   let enabled = false;
   let memberId = '';
+  let lastChatFeedback = null;
+  function snapshotChatFeedback(result) {
+    if (result?.alreadyApplied === true) return '此快照先前已送出，不會重複傳送 LINE 訊息。';
+    if (result?.chatResult?.sent === true) return '已由你的 LINE 將「快照確認」傳送到官方帳號聊天。';
+    if (result?.chatResult?.reason === 'not_in_line_chat')
+      return '目前不是從 LINE 官方帳號聊天內開啟，未自動傳送聊天訊息；可回到官方帳號聊天告知管理員。';
+    return 'LINE 聊天訊息未成功傳送，請回到官方帳號聊天告知管理員；快照送審不受影響。';
+  }
   window.BookingAccessibility = Object.freeze({ getPreferenceKey: () => memberId ? keyPrefix + memberId : '' });
   function renderLocationState({ status = 'idle', message = '' } = {}) {
     const statusLabel = el('bookingSnapshotLocationStatus');
@@ -81,6 +89,9 @@
         catch(error) {status.textContent=error?.message||'無法撤回，請重新整理後確認狀態。';}
       });
       status.append(cancel);
+      if (lastChatFeedback?.receiptId === String(latest.receiptId || '')) {
+        status.append(document.createTextNode(' ' + lastChatFeedback.message));
+      }
     } else if (latest.cancelled) {
       status.textContent = '已撤回收據與票券登記，未執行核銷。';
     } else if (latest.dismissed) {
@@ -127,8 +138,13 @@
   window.addEventListener('booking:receipt-load-error', () => {
     if (el('bookingAccessibleStatus')) el('bookingAccessibleStatus').textContent = '暫時無法更新收據狀態，請按「更新登記狀態與票券」重試。';
   });
-  window.addEventListener('booking:accessible-receipt-submitted', () => {
-    el('bookingAccessibleStatus').textContent = '收據已送出，等待管理員登記。';
+  window.addEventListener('booking:accessible-receipt-submitted', event => {
+    const result = event.detail || {};
+    const message = snapshotChatFeedback(result);
+    lastChatFeedback = { receiptId: String(result.receiptId || ''), message };
+    if (el('bookingAccessibleStatus')) {
+      el('bookingAccessibleStatus').textContent = '收據已送出，等待管理員登記。' + ' ' + message;
+    }
   });
   window.addEventListener('booking:view-shown', () => { if (enabled) void window.BookingReceipts?.refresh?.(); });
 })();
