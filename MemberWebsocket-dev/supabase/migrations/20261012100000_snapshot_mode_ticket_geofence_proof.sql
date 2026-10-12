@@ -323,7 +323,7 @@ begin
       where booking_benefit_selections.status='cancelled';
   end loop;
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.complete_booking_with_benefits_request(p_booking_id uuid, p_expected_updated_at timestamp with time zone, p_actor text, p_admin_note text DEFAULT ''::text)
@@ -538,7 +538,7 @@ begin
   return coalesce(v_settlement, '{}'::jsonb)
     || jsonb_build_object('redemptions', v_redemptions);
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.redeem_event_tickets_with_location(p_line_user_id text, p_claim_ids text[], p_request_id text, p_location jsonb DEFAULT NULL::jsonb)
@@ -727,7 +727,7 @@ begin
 
   return v_existing;
 end;
-$function$
+$function$;
 
 
 revoke all on function public.validate_snapshot_ticket_selection(uuid,uuid,jsonb,text) from public,anon,authenticated;
