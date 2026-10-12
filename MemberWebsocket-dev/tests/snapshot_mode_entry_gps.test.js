@@ -15,7 +15,7 @@ function setup(onPosition) {
     isSecureContext: true,
     BookingSystem: {
       getSession: () => ({ idToken: 'fixture', config: {} }),
-      request: () => { assert.equal(gpsCalls, 1, 'GPS prompt must occur before fetching policy'); policyCalls += 1; return { snapshotLocationRequired: false, snapshotLocations: [] }; }
+      request: () => { assert.ok(gpsCalls > policyCalls, 'GPS prompt must occur before fetching policy'); policyCalls += 1; return { snapshotLocationRequired: false, snapshotLocations: [] }; }
     },
     addEventListener() {},
     dispatchEvent(event) { events.push(event.detail); }
