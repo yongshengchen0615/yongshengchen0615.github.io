@@ -212,6 +212,9 @@
     if (!current) throw new Error('登入狀態已失效，請重新整理。');
     const policy = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.list');
     if (policy.snapshotLocationRequired !== true) return null;
+    const locations = Array.isArray(policy.snapshotLocations) ? policy.snapshotLocations : [];
+    if (!locations.length) throw new Error('管理端尚未設定快照可使用地點，請聯絡管理員。');
+    const allowed = locations.map(item => String(item.name || '').trim()).filter(Boolean).join('、');
     if (!navigator.geolocation?.getCurrentPosition) throw new Error('此裝置不支援定位；快照前須取得定位，請使用支援的裝置。');
     return await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(position => {
       const point = { latitude: position.coords.latitude, longitude: position.coords.longitude,
@@ -219,6 +222,20 @@
       if (!Object.values(point).every(Number.isFinite) || Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180 || point.accuracy < 0
         || point.timestamp < Date.now() - 120000 || point.timestamp > Date.now() + 30000) {
         reject(new Error('定位已失效或格式不正確，請重新定位。')); return;
+      }
+      const radius = 6371000;
+      const toRadians = degrees => degrees * Math.PI / 180;
+      const near = locations.some(location => {
+        const lat = Number(location.latitude), lon = Number(location.longitude), meters = Number(location.radiusMeters);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(meters)) return false;
+        const dLat = toRadians(point.latitude - lat), dLon = toRadians(point.longitude - lon);
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat)) * Math.cos(toRadians(point.latitude)) * Math.sin(dLon / 2) ** 2;
+        const distance = 2 * radius * Math.asin(Math.sqrt(Math.min(1, a)));
+        return distance <= meters && point.accuracy <= meters;
+      });
+      if (!near) {
+        reject(new Error(`目前不在快照指定地點「${allowed || '管理端設定的地點'}」範圍內，請抵達後重新定位。`));
+        return;
       }
       resolve(point);
     }, error => reject(new Error(error?.code === 1 ? '定位權限未開啟，請允許定位後按「重新定位」。'
