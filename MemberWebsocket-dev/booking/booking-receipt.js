@@ -641,6 +641,27 @@
     if (result.error) throw result.error;
   }
 
+  function snapshotConfirmationChatText(receiptId, ticketCount) {
+    return [
+      '【快照確認】',
+      '狀態：收據已送出，等待管理員審核',
+      receiptId ? `快照編號：${receiptId}` : '',
+      `登記票券：${ticketCount} 張（待審核，尚未核銷）`,
+      '管理員核對服務後才會登記服務時間、點數及票券核銷。',
+    ].filter(Boolean).join('\n');
+  }
+
+  async function sendSnapshotConfirmationChatMessage(receiptId, ticketCount) {
+    try {
+      const sender = window.BookingSystem?.sendMemberChatMessage;
+      if (typeof sender !== 'function') return { sent: false, reason: 'send_messages_unavailable' };
+      return await sender(snapshotConfirmationChatText(receiptId, ticketCount));
+    } catch (_) {
+      // A LINE chat failure must never turn a committed receipt into an upload error.
+      return { sent: false, reason: 'send_failed' };
+    }
+  }
+
   async function submitReceipt() {
     if (state.busy || !state.selectedFile || (!state.selectedBookingId && !state.accessible)) return;
     if (state.accessible && state.ticketsLoading) { setMessage('票券仍在讀取中，請稍候。', true); return; }
@@ -701,9 +722,20 @@
         }
       );
 
+      // Database finalization is the commit point. Replays must not send the
+      // same chat confirmation again, and LINE errors never undo a snapshot.
       submitted = true;
+      let chatResult = null;
+      if (state.accessible && finalized.alreadyApplied !== true) {
+        setMessage('快照已送出，正在同步 LINE 官方帳號聊天…');
+        chatResult = await sendSnapshotConfirmationChatMessage(
+          String(finalized.receiptId || prepared.receiptId || ''), selectedBenefits.length
+        );
+      }
       setMessage(finalized.alreadyApplied ? '此收據已送出，正在等待管理端確認。' : '收據已安全送出，請等待管理端核對後完成預約。');
-      if (state.accessible) window.dispatchEvent(new CustomEvent('booking:accessible-receipt-submitted', { detail: finalized }));
+      if (state.accessible) window.dispatchEvent(new CustomEvent('booking:accessible-receipt-submitted', {
+        detail: { ...finalized, receiptId: String(finalized.receiptId || prepared.receiptId || ''), chatResult },
+      }));
       state.receiptsByBooking.set(state.selectedBookingId, {
         receiptId: String(finalized.receiptId || prepared.receiptId || ''),
         status: String(finalized.status || 'awaiting_review'),
