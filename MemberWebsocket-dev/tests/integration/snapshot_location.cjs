@@ -10,6 +10,7 @@ test('snapshot policy uses real PostgreSQL, admin authorization, version guard, 
  try{
   await db.exec('select maintenance.ensure_required_system_baseline();');
   await db.exec(read('supabase/migrations/20261010021829_snapshot_location_policy.sql'));
+  await db.exec(read('supabase/migrations/20261012095000_snapshot_configurable_geofence.sql'));
   const one=async(q,args=[]) => (await db.query(q,args)).rows[0];
   const member=(await one("insert into members(line_user_id,member_code,status,membership_status,is_test_account) values('test:snapshot','QA-SNAPSHOT','active','active',true) returning id")).id;
   await db.exec("insert into admins(line_user_id,role,status) values('test:admin','admin','active');");
@@ -31,10 +32,15 @@ test('snapshot policy uses real PostgreSQL, admin authorization, version guard, 
    assert.equal((await save(null)).required,true,'Old client saves preserve the existing policy');
   });
   await t.test('ON rejects missing/stale/invalid GPS before creating any snapshot',async()=>{
+   await assert.rejects(prepare('QA-LOCATION-NOT-CONFIGURED',point()),/SNAPSHOT_LOCATION_NOT_CONFIGURED/);
+   await db.exec(`update booking_settings set snapshot_locations='[{"name":"QA 指定店","latitude":25.03,"longitude":121.56,"radiusMeters":100}]'::jsonb where id=1`);
+   await assert.rejects(prepare('QA-SNAPSHOT-OUTSIDE',{...point(),latitude:26}),/SNAPSHOT_LOCATION_OUT_OF_RANGE/);
+   await assert.rejects(prepare('QA-SNAPSHOT-INACCURATE',{...point(),accuracy:300}),/SNAPSHOT_LOCATION_INVALID|SNAPSHOT_LOCATION_OUT_OF_RANGE/);
    for(const value of [null,{},false,{...point(),latitude:91},{...point(),longitude:-181},{...point(),accuracy:-1},{...point(),timestamp:Date.now()-180000},{...point(),timestamp:Date.now()+60000},{...point(),latitude:'25'}]){
     await assert.rejects(prepare('QA-SNAPSHOT-INVALID',value),/SNAPSHOT_LOCATION/);
    }
    assert.equal((await one('select count(*)::int n from booking_receipts')).n,1);
+   await db.query('select require_snapshot_location($1)',[point()]);
   });
   await t.test('policy changed after prepare is enforced at finalize; owner and replay remain safe',async()=>{
    await assert.rejects(finalize(receipt),/SNAPSHOT_LOCATION_REQUIRED/);
@@ -60,7 +66,7 @@ test('snapshot policy uses real PostgreSQL, admin authorization, version guard, 
 function page(required){
  const dom=new JSDOM('<main class="app-shell"></main>',{url:'https://example.test/booking/',runScripts:'outside-only',pretendToBeVisual:true});
  const w=dom.window,calls=[];let cameras=0;
- w.BookingSystem={getSession:()=>({config:{},idToken:'fixture'}),request:async(...args)=>{calls.push(args);return {snapshotLocationRequired:required,bookings:[],submissions:[]};}};
+ w.BookingSystem={getSession:()=>({config:{},idToken:'fixture'}),request:async(...args)=>{calls.push(args);return {snapshotLocationRequired:required,snapshotLocations:required?[{name:'QA 指定店',latitude:25,longitude:121,radiusMeters:100}]:[],bookings:[],submissions:[]};}};
  Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:async()=>{cameras++;throw new Error('mock camera');}}});
  w.eval(read('booking/booking-receipt.js'));
  return {w,dom,calls,cameras:()=>cameras};
