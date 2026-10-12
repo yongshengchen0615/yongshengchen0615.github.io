@@ -98,7 +98,7 @@ test('historically removed point reward does not invalidate a still-valid issued
 test('admin review options restore exact originally submitted ticket IDs from canonical SQL checks', async () => {
   const api = source;
   assert.match(api, /heldOptions=receipt\.data\.status==="awaiting_review"/);
-  assert.match(api, /snapshotRequestedBenefitOptions\(supabase,receipt\.data\.member_id,receipt\.data\.requested_benefits\)/);
+  assert.match(api, /snapshotRequestedBenefitOptions\\(supabase,receipt\\.data\\.member_id,receipt\\.data\\.requested_benefits,/);
   assert.match(api, /heldKeys\.has\(/);
   assert.match(api, /\.\.\.heldOptions/);
 
@@ -137,7 +137,7 @@ test('admin review options restore exact originally submitted ticket IDs from ca
   });
   vm.runInContext(code,context);
   const result = await context.snapshotRequestedBenefitOptions(
-    supabase,memberId,[{kind:'points',id:'OLD-TICKET'}],
+    supabase,memberId,[{kind:'points',id:'OLD-TICKET'}],'BR-RECEIPT',
   );
   assert.equal(result[0].selectionId,'OLD-TICKET');
   assert.equal(result[0].selectable,true);
@@ -167,7 +167,7 @@ test('admin snapshot option keeps truly invalid issued tickets disabled', async 
       return q;
     },
   };
-  const items = await ctx.snapshotRequestedBenefitOptions(db,'member',[{kind:'points',id:'expired'}]);
+  const items = await ctx.snapshotRequestedBenefitOptions(db,'member',[{kind:'points',id:'expired'}],'BR-INVALID');
   assert.equal(items.length,1);
   assert.equal(items[0].selectable,false);
   assert.match(items[0].disabledReason,/票券已失效/);
