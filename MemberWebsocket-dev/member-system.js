@@ -141,7 +141,9 @@
     } else {
       idToken = await lineSignIn(config, surface);
     }
-    if (idToken && !(window.TestModeClient?.getSessionToken?.())) {
+    // Admin sessions are verified per request using the admin LINE channel
+    // and server-side role; member single-device claims apply only to users.
+    if (idToken && surface !== 'admin' && !(window.TestModeClient?.getSessionToken?.())) {
       await claimBrowserSession(config, surface, idToken);
     }
     sessions.set(surface, Object.freeze({ config, idToken: String(idToken || '') }));
@@ -820,11 +822,11 @@
   async function logout() {
     try {
       const active = [...sessions.entries()].find(([_, value]) => value && value.idToken);
-      if (active) {
+      if (active && active[0] !== 'admin') {
         const [surface, value] = active;
         try {
           await sendRequest(value.config, surface, value.idToken,
-            surface === 'admin' ? 'admin.session.logout' : 'user.' + surface + '.session.logout', {});
+            'user.' + surface + '.session.logout', {});
         } catch (_) {}
       }
       try { await withTimeout(stopPresence('logout', true), 1200, '上下線紀錄逾時。'); } catch (_) {}
