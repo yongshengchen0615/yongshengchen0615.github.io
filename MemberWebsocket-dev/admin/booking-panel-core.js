@@ -204,6 +204,7 @@
             </button>
           </nav>
           <section id="bookingAdminStandardQueueView" class="booking-admin-queue-view" role="tabpanel" aria-labelledby="bookingAdminStandardMode">
+            <div id="bookingAdminQueueMessage" class="form-message hidden" role="status" aria-live="polite" aria-atomic="true"></div>
             <div class="booking-admin-queue-toolbar">
               <div><strong>一般預約</strong><small>依預約狀態篩選需要處理的會員預約。</small></div>
               <div class="booking-admin-filter" role="group" aria-label="一般預約狀態篩選">
@@ -252,7 +253,7 @@
       'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminReminderEnabled','bookingAdminSnapshotLocationRequired','bookingAdminTicketBookingRequired','bookingAdminReminderTime','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminAccessiblePendingCount','bookingAdminConfirmedCount',
       'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminStandardMode','bookingAdminAccessibleMode','bookingAdminStandardModeCount','bookingAdminAccessibleModeCount','bookingAdminStandardQueueView','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
-      'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
+      'bookingAdminQueueMessage','bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
     ].forEach((id) => { els[id] = document.getElementById(id); });
   }
 
@@ -576,7 +577,8 @@
       setSyncStatus(showSuccess ? '預約資料已更新' : `已同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`);
     } catch (error) {
       setSyncStatus(error?.message || '預約資料同步失敗', true);
-      showMessage(els.bookingAdminServiceMessage, error?.message || '預約資料同步失敗', 'error');
+      showMessage(state.subtab === 'queue' ? els.bookingAdminQueueMessage : els.bookingAdminServiceMessage, error?.message || '預約資料同步失敗', 'error');
+      return false;
     } finally {
       state.loading = false;
       if (state.refreshQueued) {
@@ -922,18 +924,46 @@
   async function runModalAction(fn) {
     if (state.busy) return;
     state.busy = true;
+    const unlock = lockOperationControls(els.bookingPanel, els.bookingAdminCrudModal);
     const message = els.bookingAdminCrudModalBody.querySelector('[data-modal-message]');
     try { await fn(); els.bookingAdminCrudModal.classList.add('hidden'); state.selected.clear(); await refreshAll(true); }
-    catch (error) { showMessage(message, error?.message || '操作失敗。', 'error'); }
-    finally { state.busy = false; }
+    catch (error) {
+      if (['API_RESPONSE_UNCERTAIN', 'BOOKING_CONFLICT', 'CONFLICT'].includes(error?.code)) await refreshAll(false);
+      showMessage(message, error?.message || '操作失敗。', 'error');
+    }
+    finally { state.busy = false; unlock(); }
   }
 
   async function runPageAction(messageElement, fn) {
     if (state.busy) return;
     state.busy = true; clearMessage(messageElement);
-    try { await fn(); state.selected.clear(); await refreshAll(true); }
-    catch (error) { showMessage(messageElement, error?.message || '操作失敗。', 'error'); }
-    finally { state.busy = false; }
+    const unlock = lockOperationControls(els.bookingPanel, els.bookingAdminCrudModal);
+    showMessage(messageElement, '正在處理，請稍候…', '');
+    try {
+      await fn(); state.selected.clear();
+      const synced = await refreshAll(true);
+      showMessage(messageElement, synced ? '操作已完成，預約資料已更新。' : '操作已完成，但資料同步失敗；請更新資料後再操作。', synced ? 'success' : 'error');
+    }
+    catch (error) {
+      if (['API_RESPONSE_UNCERTAIN', 'BOOKING_CONFLICT', 'CONFLICT'].includes(error?.code)) await refreshAll(false);
+      showMessage(messageElement, error?.message || '操作失敗。', 'error');
+    }
+    finally { state.busy = false; unlock(); }
+  }
+
+  function lockOperationControls(...roots) {
+    const controls = new Map();
+    roots.filter(Boolean).forEach((root) => {
+      root.setAttribute('aria-busy', 'true');
+      root.querySelectorAll('button, input, select, textarea').forEach((control) => {
+        if (!controls.has(control)) controls.set(control, control.disabled);
+        control.disabled = true;
+      });
+    });
+    return () => {
+      roots.filter(Boolean).forEach((root) => root.removeAttribute('aria-busy'));
+      controls.forEach((disabled, control) => { if (control.isConnected) control.disabled = disabled; });
+    };
   }
 
   function bookingVisibleItems(booking) { return Array.isArray(booking?.items) ? booking.items.filter((item) => item.serviceId !== STORE_SERVICE_ID) : []; }
@@ -1730,11 +1760,13 @@
   }
 
   async function updateBookingStatus(booking, status, adminNote) {
+    if (state.busy) return;
     if (status === 'completed') {
       openCompletionPreview(booking, adminNote);
       return;
     }
-    await runPageAction(els.bookingAdminServiceMessage, async () => {
+    if (['rejected', 'cancelled'].includes(status) && !window.confirm(`確定${status === 'rejected' ? '不通過' : '取消'}「${booking.memberDisplayName || '會員'}」${booking.bookingDate} ${booking.startTime} 的預約？`)) return;
+    await runPageAction(els.bookingAdminQueueMessage, async () => {
       return bookingRequest('admin.booking.status.update', { bookingId: booking.bookingId, expectedUpdatedAt: booking.updatedAt, status, adminNote }, true);
     });
   }

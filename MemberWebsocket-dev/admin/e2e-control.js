@@ -8403,7 +8403,7 @@
         String(booking.memberId) === String(attacker.memberId)
         && String(booking.bookingId) !== String(target.bookingId)
       );
-    const cancellation = await attackRequest('user.booking.cancel', { bookingId: target.bookingId });
+    const cancellation = await attackRequest('user.booking.cancel', { bookingId: target.bookingId, expectedUpdatedAt: target.updatedAt });
     adminBookingBootstrapLastData = null;
     const after = await adminBookingBootstrapSnapshot();
     const readback = (after.bookings || []).find((booking) => String(booking.bookingId) === String(target.bookingId));

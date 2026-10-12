@@ -724,11 +724,12 @@ async function userUpdate(supabase: SupabaseClient, identity: Identity, member: 
 async function userCancel(supabase: SupabaseClient, identity: Identity, member: any, body: Json): Promise<Json> {
   const bookingId = requireUuid(body.bookingId, "預約");
   const expectedUpdatedAt = asText(body.expectedUpdatedAt, 80);
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) throw new ApiError(400, "INVALID_INPUT", "缺少預約版本，請更新預約紀錄後再取消。");
   const result = await supabase.rpc("request_booking_cancellation", {
     p_booking_id: bookingId,
     p_member_id: member.id,
     p_actor: identity.lineUserId,
-    p_expected_updated_at: expectedUpdatedAt || null,
+    p_expected_updated_at: expectedUpdatedAt,
   });
   if (result.error) throw mapDatabaseError(result.error);
 

@@ -3,7 +3,7 @@
   "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "7bd6ae1468f3d5ef631aa993a0ecf1a0a6ef2f5688471d23946bb9d753593455",
+    "admin/index.html": "d3c97210a737c7fe7a893c33e492199dbd3a64d9c2efa0767f86f98b8609837c",
     "admin/app.js": "ad0aaa454dd6d6a6a92a16fb5ce12a42fca25c25a7de0cf537455dc7681a2e6d",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
@@ -15,8 +15,8 @@
     "admin/pointcard-redemption-limit.js": "a391a001602667e48e63ee5cb7353ac44596f4a39de36ac03b0084b88f0e2d2f",
     "admin/event-ticket-redemption-limit.js": "6391ce8e930503aae1291ce767da938204219f1b63f285b7425c19b1095de7d0",
     "admin/integration-hub.js": "696f38801b5e8755e706c3e0153aa023a1d47f01a3f68456dd8e5a7fec868b33",
-    "admin/booking-panel.js": "d73184a3fa3aa18d6fde280c7807749a7677f93d7c0873daefa636b65b3edb43",
-    "admin/booking-panel-core.js": "45279679c4a048b185b88d175968fc0c94da526574ceff57ba61daa7e6f9fb84",
+    "admin/booking-panel.js": "9d7f05bcb64ba7380219cab94e9994e77b6f625a71f82ec3a2d63a65355a9713",
+    "admin/booking-panel-core.js": "4d5c93f3f2da7dd76f92e915983a11a9cf9a689d1e4b682b8b447a1c984a3090",
     "admin/booking-resources.js": "421534c24977f3e9756a150990dd7accb109fc7074a4986840ad22282ecb8542",
     "admin/booking-always-open.js": "9cb236902a7f3f36cf3fe4c3f13fbbac622f000c72d36ec34f7d4dde08e6e54a",
     "admin/booking-cancellation-sync.js": "a8367bb6565d054af976ec1ffdf950874a4e8f14a3917d2e036bc1744016db19",
@@ -349,7 +349,7 @@
     {
       "id": "booking.35",
       "module": "booking",
-      "name": "確認、不通過、取消、完成與結算視窗",
+      "name": "確認、不通過、取消、完成與結算視窗、目前分頁操作回饋與送出中鎖定",
       "cases": [
         "BOOKING_STATUS_confirmed",
         "BOOKING_STATUS_rejected",

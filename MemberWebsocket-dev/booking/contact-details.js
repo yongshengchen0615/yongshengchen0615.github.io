@@ -104,6 +104,7 @@
   }
 
   async function postJson(endpoint, config, body, label) {
+    const isWrite = body.action === 'user.booking.create' || body.action === 'user.booking.update';
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -118,13 +119,14 @@
       });
       let data;
       try { data = await response.json(); }
-      catch { throw clientError('API_INVALID_RESPONSE', `${label}回傳格式不正確。`); }
+      catch { throw clientError(isWrite ? 'API_RESPONSE_UNCERTAIN' : 'API_INVALID_RESPONSE', isWrite ? '無法確認預約是否已送達，請先更新預約紀錄確認。' : `${label}回傳格式不正確。`); }
       if (!response.ok || data?.ok !== true) {
         const apiError = data?.error || {};
         throw clientError(String(apiError.code || 'API_ERROR'), String(apiError.message || `${label}暫時無法完成操作。`), apiError.details || null);
       }
       return data.data || {};
     } catch (error) {
+      if (isWrite && (error?.name === 'AbortError' || !error?.code)) throw clientError('API_RESPONSE_UNCERTAIN', '無法確認預約是否已送達，請先更新預約紀錄確認。');
       if (error?.name === 'AbortError') throw clientError('API_TIMEOUT', `${label}回應逾時，請稍後再試。`);
       throw error;
     } finally {
@@ -239,4 +241,5 @@
   function clientError(code, message, details = null) { const error = new Error(message); error.code = code; error.details = details; return error; }
 
   void originalMemberProfile;
+  window.BookingContactUI = Object.freeze({ writeContext: () => getContactPayload(false) });
 })();

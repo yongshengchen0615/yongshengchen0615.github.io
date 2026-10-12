@@ -10,6 +10,7 @@
   const DEFAULT_STORE_SERVICE_MINUTES = 10;
   const state = {
     config: null,
+    bootstrapInitialized: false,
     idToken: '',
     maxPartySize: 1,
     partySize: 1,
@@ -53,7 +54,12 @@
       state.services = Array.isArray(base.services) ? base.services.filter((item) => item.serviceId !== STORE_SERVICE_ID) : [];
       state.serviceTypeRewards = Array.isArray(base.settings?.serviceTypeRewards) ? base.settings.serviceTypeRewards : [];
       state.bookingGroups = new Map(Object.entries(group.bookingGroups || {}));
-      ensureParticipantCount(true);
+      // A realtime refresh must preserve the user's draft and technician choice.
+      // Only initialize the first assignment on the first bootstrap.
+      state.partySize = clamp(state.partySize, 1, state.maxPartySize);
+      state.participantTechnicians = state.participantTechnicians.map((id) => id && !technicianById(id) ? '' : id);
+      ensureParticipantCount(!state.bootstrapInitialized);
+      state.bootstrapInitialized = true;
       base.settings = {
         ...(base.settings || {}),
         maxPartySize: state.maxPartySize,
@@ -1025,6 +1031,11 @@
     renderConfirmation,
     renderBookingHistoryCard,
     renderControls: renderGroupControls,
+    writeContext: (items) => ({
+      participants: buildParticipants(items),
+      ...contactPayload(),
+      serviceRecipientMemberCode: state.editingBookingId ? '' : String(window.MemberFriends?.selected?.() || ''),
+    }),
   });
 
   function syncBenefitServiceContext() {

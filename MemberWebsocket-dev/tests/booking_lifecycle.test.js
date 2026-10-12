@@ -130,7 +130,7 @@ test('legacy member cancel action creates a cancellation request instead of canc
     cancellation_reviewed_at: null,
   };
   const client = db(future);
-  const result = await context.userCancel(client, identity, { id }, { bookingId: id });
+  const result = await context.userCancel(client, identity, { id }, { bookingId: id, expectedUpdatedAt: version });
   assert.equal(result.booking.status, 'cancel_requested');
   assert.equal(result.booking.baseStatus, 'confirmed');
   assert.equal(client.writes.length, 0, 'cancellation request must not mutate booking status directly');
@@ -138,6 +138,35 @@ test('legacy member cancel action creates a cancellation request instead of canc
   assert.equal(client.rpcs[0].args.p_booking_id, id);
   assert.equal(client.rpcs[0].args.p_member_id, id);
   assert.equal(client.rpcs[0].args.p_actor, identity.lineUserId);
+  assert.equal(client.rpcs[0].args.p_expected_updated_at, version);
+});
+
+test('cancellation rejects missing and malformed versions before invoking a mutation', async () => {
+  for (const expectedUpdatedAt of [undefined, '', 'not-a-date']) {
+    const client = db(booking);
+    await assert.rejects(context.userCancel(client, identity, { id }, { bookingId: id, expectedUpdatedAt }), { code: 'INVALID_INPUT' });
+    assert.equal(client.rpcs.length, 0);
+    assert.equal(client.writes.length, 0);
+  }
+});
+
+test('standalone cancellation endpoint requires a version and sends ownership and version to the transaction', async () => {
+  const cancellationSource = fs.readFileSync(require('node:path').join(__dirname, '../supabase/functions/booking-cancellation-api/index.ts'), 'utf8').replace(/^import .*\n/gm, '');
+  const cancellation = vm.createContext({ Deno: { serve() {}, env: { get() { return ''; } } }, Date, Set, Map, Intl, console });
+  vm.runInContext(stripTypeScriptTypes(cancellationSource), cancellation);
+  for (const expectedUpdatedAt of [undefined, '', 'invalid']) {
+    const client = db(booking);
+    await assert.rejects(cancellation.memberRequest(client, identity, { id }, { bookingId: id, expectedUpdatedAt }), { code: 'INVALID_INPUT' });
+    assert.equal(client.rpcs.length, 0);
+  }
+  const client = db(booking);
+  await cancellation.memberRequest(client, identity, { id }, { bookingId: id, expectedUpdatedAt: version });
+  assert.equal(client.rpcs[0].args.p_member_id, id);
+  assert.equal(client.rpcs[0].args.p_actor, identity.lineUserId);
+  assert.equal(client.rpcs[0].args.p_expected_updated_at, version);
+  client.rpc = () => Promise.resolve({ data: null, error: { message: 'BOOKING_CONFLICT' } });
+  await assert.rejects(cancellation.memberRequest(client, identity, { id }, { bookingId: id, expectedUpdatedAt: version }), { code: 'BOOKING_CONFLICT' });
+  assert.equal(client.writes.length, 0);
 });
 
 test('member cannot reach admin status action', async () => {
