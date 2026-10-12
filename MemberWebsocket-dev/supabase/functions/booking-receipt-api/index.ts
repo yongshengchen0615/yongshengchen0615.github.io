@@ -696,7 +696,9 @@ async function snapshotRequestedBenefitOptions(
     const base={
       kind:selection.kind,selectionId:selection.id,
       selectable,claimRequired:false,
-      disabledReason:selectable?"":"票券已失效、額度不足或已被其他預約選用，請重新核對。",
+      disabledReason:selectable?"":failure.includes("BOOKING_BENEFIT_LOCATION_REQUIRED")
+        ? "此票券限定在指定地點使用，無法透過快照補登核銷；請在票券頁完成定位驗證。"
+        : "票券已失效、額度不足或已被其他預約選用，請重新核對。",
     };
     if(selection.kind==="points"){
       const issued=await supabase.from("point_tickets")
