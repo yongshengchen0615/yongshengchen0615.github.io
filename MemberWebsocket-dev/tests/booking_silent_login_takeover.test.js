@@ -25,7 +25,7 @@ function bookingHarness() {
   const navigator = { onLine: true, sendBeacon: () => true };
   const document = {
     visibilityState: 'visible',
-    addEventListener(name, cb) { documentListeners[name] = cb; },
+    addEventListener(name, cb) { (documentListeners[name] ||= []).push(cb); },
     removeEventListener() {},
     querySelectorAll: () => []
   };
@@ -38,7 +38,7 @@ function bookingHarness() {
     },
     setTimeout: () => 1, clearTimeout() {},
     setInterval: () => 2, clearInterval() {},
-    addEventListener(name, cb) { windowListeners[name] = cb; },
+    addEventListener(name, cb) { (windowListeners[name] ||= []).push(cb); },
     removeEventListener() {}, dispatchEvent() {},
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
     alert(message) { calls.push(['alert', message]); },
@@ -79,7 +79,7 @@ function bookingHarness() {
     rotateLineToken: () => { signedToken = 'not-yet-granted-refreshed-token'; },
     goBackground: () => {
       document.visibilityState = 'hidden';
-      documentListeners.visibilitychange?.();
+      (documentListeners.visibilitychange || []).forEach(cb => cb());
     },
     goForeground: () => {
       document.visibilityState = 'visible';
