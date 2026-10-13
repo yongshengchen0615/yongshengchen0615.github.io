@@ -11,7 +11,7 @@ const config = {
   supabaseUrl: 'https://fixture.supabase.co',
   supabaseFunctionUrl: 'https://fixture.supabase.co/functions/v1/api',
   supabasePublishableKey: 'fixture-publishable',
-  bookingLiffId: 'booking-fixture'
+  bookingLiffId: 'booking-fixture', adminLiffId:'admin-fixture'
 };
 
 function bookingHarness() {
