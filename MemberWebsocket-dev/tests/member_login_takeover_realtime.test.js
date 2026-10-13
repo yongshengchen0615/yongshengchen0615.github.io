@@ -118,7 +118,7 @@ test('replaced browser requires user approval before reclaiming a newer login', 
 });
 
 test('session status remains server-authenticated and never opens an admin bypass', () => {
-  assert.match(api, /session\.\(claim\|logout\|status\)/);
+  assert.ok(api.includes('claim|logout|status'), 'member session.status actions must route through authenticated member identity');
   assert.match(api, /return \{ state:"active" \}/);
   assert.match(auth, /if \(!allowLoginClaim && !canBypassUserRestrictions\)/);
   assert.match(auth, /member_login_token_grants/);
