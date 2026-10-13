@@ -61,7 +61,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
     (pointBalancesResult.data || []).map((row: any) => [String(row.point_card_id || ''), Math.max(0, Number(row.stamps || 0))])
   );
   const reservationBookingByTicket = new Map(
-    (pendingPointSelections.data || []).map((row: any) => [String(row.benefit_ref || ''), String(row.booking_id || '')])
+    (pendingPointSelections.data || []).filter((row: any) => row.benefit_kind === 'points').map((row: any) => [String(row.benefit_ref || ''), String(row.booking_id || '')])
   );
   const reservedPointsByCard = new Map<string, number>();
   const currentBookingReservedPointsByCard = new Map<string, number>();

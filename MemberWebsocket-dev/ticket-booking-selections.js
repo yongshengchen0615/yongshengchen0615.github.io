@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  let settings, bookings = [], editor = null, busy = false, sequence = 0, dirty = false, attempt = null, draft = null;
+  let settings, bookings = [], editor = null, busy = false, sequence = 0, dirty = false, attempt = null, draft = null, stale = false;
   const $ = id => document.getElementById(id);
   const node = (tag, value, className = '') => { const n = document.createElement(tag); n.textContent = value; n.className = className; return n; };
   const newId = () => 'BSEL-' + crypto.randomUUID();
@@ -45,6 +45,7 @@
     if (editor && !busy) {
       const current = bookings.find(b => b.bookingId === editor.booking.bookingId);
       if (!current || !current.editable || current.updatedAt !== editor.booking.updatedAt) {
+        stale = true;
         $('bookingSelectionSave').disabled = true;
         message('預約或票券已更新，請按「重新載入」取得最新狀態再調整。', true);
       }
@@ -56,7 +57,9 @@
     const current = ++sequence; busy = true; message('正在載入可選票券…');
     try {
       const data = await request('detail', { bookingId }); if (current !== sequence) return;
-      editor = data; draft = null; dirty = false; attempt = null; drawEditor(); message('');
+      editor = data; draft = null; dirty = false; attempt = null; stale = false;
+      bookings = bookings.map(b => b.bookingId === bookingId ? data.booking : b);
+      drawEditor(); message('');
     } catch (e) { message(e.message || '票券載入失敗，請重試。', true); }
     finally { busy = false; if (editor) validate(); }
   }
@@ -109,6 +112,7 @@
       budget.spent += Number(item.pointCost || 0); budgets.set(item.cardId, budget);
     }
     if ([...budgets.values()].some(b => b.spent > b.balance)) reason = '可用點數不足，請減少預選票券。';
+    if (stale) reason = '預約或票券已更新，請按「重新載入」取得最新狀態再調整。';
     $('bookingSelectionSave').disabled = busy || !editor.booking.editable || Boolean(reason);
     if (reason) message(reason, true); else if (dirty) message('尚未儲存；儲存後才會同步到管理端。');
     return !reason;
@@ -116,6 +120,7 @@
   async function save() {
     if (!editor || busy || !validate()) return;
     const benefits = chosen(); draft = benefits;
+    let saveError = '';
     attempt ||= {bookingId:editor.booking.bookingId,expectedUpdatedAt:editor.booking.updatedAt,benefits,requestId:newId()};
     busy = true; $('bookingSelectionSave').disabled = true; message('正在儲存…');
     $('bookingSelectionEditor').querySelectorAll('input,button').forEach(n => n.disabled = true);
@@ -124,12 +129,14 @@
       $('bookingSelectionEditor').hidden = true;
       await settings.refresh(); message('預選票券已儲存並同步。點數會在最終結算時扣除。');
     } catch (e) {
-      message(e.message || '無法確認儲存結果；重新送出會沿用同一識別碼，請勿另開重複操作。', true);
+      saveError = e.message || '無法確認儲存結果；重新送出會沿用同一識別碼，請勿另開重複操作。';
+      if (e.code === 'BOOKING_CONFLICT' || e.code === 'BOOKING_NOT_EDITABLE') stale = true;
       if (e.code) attempt = null;
     } finally {
       busy = false;
       render(bookings, settings);
       if (editor) { drawEditor(); if (!bookings.some(b => b.bookingId===editor.booking.bookingId && b.updatedAt===editor.booking.updatedAt)) $('bookingSelectionSave').disabled=true; }
+      if (saveError && !stale) message(saveError, true);
     }
   }
   window.TicketBookingSelections = Object.freeze({ render, label });
