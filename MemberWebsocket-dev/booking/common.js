@@ -18,6 +18,7 @@
   let publicNoticeClient = null;
   let publicNoticeSequence = 0;
   let presenceContext = null;
+  let authenticatedSession = null;
   let presenceHooksBound = false;
   let presenceHeartbeatTimer = null;
   let isTerminatingAccess = false;
@@ -54,7 +55,8 @@
     }
     const idToken = window.liff.getIDToken();
     if (!idToken) throw clientError('LIFF_ID_TOKEN_MISSING', '無法取得 LINE 登入憑證，請重新登入。');
-    if (!(window.TestModeClient?.getSessionToken?.())) await claimBrowserSession(config, clientType, idToken);
+    if (!(window.TestModeClient?.getSessionToken?.()) && !isAdmin) await claimBrowserSession(config, clientType, idToken);
+    if (!isAdmin) authenticatedSession = { config, idToken: String(idToken) };
     if (!isAdmin) await startPresence(config, clientType, idToken);
     return idToken;
   }
@@ -63,8 +65,8 @@
   const LOGIN_REGISTERED_KEY = 'member-login-registered-v1';
 
   async function claimBrowserSession(config, clientType, idToken) {
+    if (clientType === 'admin') return;
     let key;
-    let prior;
     try {
       key = window.localStorage.getItem(LOGIN_BROWSER_KEY);
       if (!key) {
@@ -72,20 +74,14 @@
         window.localStorage.setItem(LOGIN_BROWSER_KEY, key);
       }
       if (!/^[a-f0-9-]{72}$/.test(key)) throw new Error('invalid browser key');
-      prior = window.localStorage.getItem(LOGIN_REGISTERED_KEY);
     } catch (_) {
       throw clientError('AUTH_STORAGE_UNAVAILABLE', '無法安全保存登入連線，請允許本網站使用瀏覽器儲存空間。');
     }
-    if (prior === 'replaced' && clientType !== 'admin') {
-      const approved = typeof window.confirm === 'function' && window.confirm(
-        '此帳號已在其他裝置登入。是否在目前裝置重新登入，並強制登出另一裝置？'
-      );
-      if (!approved) throw clientError('LOGIN_TAKEOVER_CANCELLED', '已取消重新登入，其他裝置將維持登入。');
-    }
-    const mode = !prior || prior === 'replaced' ? 'login' : 'resume';
-    const action = clientType === 'admin' ? 'admin.session.claim' : 'user.' + clientType + '.session.claim';
-    await postJson(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api', config,
-      { action, clientType, idToken, browserKey: key, mode }, '登入連線', { write: true });
+    // New authenticated LIFF entry always claims a new login, silently.
+    // An outdated LINE token cannot take over: the database rejects stale iat.
+    await postJson(String(config.supabaseUrl).replace(/\\/$/, '') + '/functions/v1/api', config,
+      { action:'user.' + clientType + '.session.claim', clientType, idToken, browserKey:key, mode:'login' },
+      '登入連線', { write:true });
     window.localStorage.setItem(LOGIN_REGISTERED_KEY, '1');
   }
 
@@ -118,11 +114,7 @@
   }
 
   function currentPresenceIdToken(context) {
-    try {
-      if (context && context.idToken && window.liff && window.liff.isLoggedIn() && typeof window.liff.getIDToken === 'function') {
-        return window.liff.getIDToken() || context.idToken;
-      }
-    } catch (_) {}
+    // Use the token that was granted at login, not an unclaimed LIFF refresh.
     return String(context && context.idToken || '');
   }
 
@@ -591,6 +583,7 @@
   function terminateAccessSession(code, message) {
     if (isTerminatingAccess) return;
     isTerminatingAccess = true;
+    authenticatedSession = null;
     if (typeof window.CustomEvent === 'function' && typeof window.dispatchEvent === 'function') window.dispatchEvent(new window.CustomEvent('member:access-ended', { detail: { code } }));
     document.querySelectorAll?.('[role=dialog], #memberView, #pointsView, #eventView, #calendarView, #bookingView, #adminView').forEach(node => node.classList.add('hidden'));
     if (['SESSION_REPLACED', 'SESSION_REVOKED', 'MEMBER_REMOVED'].includes(code)) {
@@ -630,6 +623,7 @@
   async function logout() {
     try {
       const session = getSession();
+      authenticatedSession = null;
       if (session?.idToken) {
         try {
           await postJson(String(session.config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api',
@@ -683,8 +677,10 @@
   }
 
   function getSession() {
-    if (!presenceContext || presenceContext.closed) return null;
-    return { config: presenceContext.config, idToken: currentPresenceIdToken(presenceContext) };
+    // Presence can be closed while LINE is backgrounded; auth remains bound to
+    // the claimed token until server revocation, even without a presence row.
+    if (!authenticatedSession || isTerminatingAccess) return null;
+    return { config: authenticatedSession.config, idToken: authenticatedSession.idToken };
   }
 
   window.BookingSystem = { loadConfig, signIn, startPresence, claimBrowserSession, getSession, request, memberProfile, bookingBenefits, claimEventTicket, sendMemberChatMessage, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
