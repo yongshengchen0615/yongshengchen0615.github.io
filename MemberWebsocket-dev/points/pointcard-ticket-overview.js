@@ -513,7 +513,7 @@
         checkbox.type = 'checkbox';
         checkbox.className = 'ticket-overview-check';
         checkbox.dataset.ticketSelect = offer.ticketId;
-        checkbox.checked = isSelected || offer.reservedForBooking;
+        checkbox.checked = isSelected || offer.reservedForBooking || Boolean(offer.pendingSnapshot);
         checkbox.disabled = state.busy || !selectable || !offer.ticketId;
         checkbox.setAttribute('aria-label', `${offer.ticketTitle}，${statusText}`);
         const selectText = document.createElement('span');
