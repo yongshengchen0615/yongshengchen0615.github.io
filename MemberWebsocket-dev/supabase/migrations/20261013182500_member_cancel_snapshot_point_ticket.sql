@@ -79,7 +79,7 @@ begin
   );
   insert into public.realtime_events(scope,event_type)
     values ('points','user.pointcard.snapshot-ticket.cancel'),
-           ('booking','user.pointcard.snapshot-ticket.cancel'),
+           ('member','user.pointcard.snapshot-ticket.cancel'),
            ('admin','user.pointcard.snapshot-ticket.cancel');
 
   return jsonb_build_object('receiptId',p_receipt_id,'ticketId',p_ticket_id,
