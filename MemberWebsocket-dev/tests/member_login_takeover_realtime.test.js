@@ -129,6 +129,6 @@ test('session status remains server-authenticated and never opens an admin bypas
   assert.match(booking, /user\.booking\.session\.status/);
   assert.match(booking, /targetScope !== 'admin'/);
   assert.match(member, /member\.login\.replaced'\) verifyCurrentLogin\(\)/);
-  assert.doesNotMatch(member, /window\\.confirm\\(/);
+  assert.doesNotMatch(member, /window\.confirm\(/);
   assert.match(member, /const mode = 'login'/);
 });
