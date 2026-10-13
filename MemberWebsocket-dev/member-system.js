@@ -687,10 +687,19 @@
       });
     };
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') schedule(0, { reason: 'visibility' });
+      if (document.visibilityState === 'visible') {
+        verifyCurrentLogin();
+        schedule(0, { reason: 'visibility' });
+      }
     };
-    const onPageShow = (event) => schedule(0, { reason: event && event.persisted ? 'bfcache' : 'pageshow' });
-    const onOnline = () => schedule(0, { reason: 'online' });
+    const onPageShow = (event) => {
+      verifyCurrentLogin();
+      schedule(0, { reason: event && event.persisted ? 'bfcache' : 'pageshow' });
+    };
+    const onOnline = () => {
+      verifyCurrentLogin();
+      schedule(0, { reason: 'online' });
+    };
     // Safety net for lost Realtime messages or a disconnected mobile WebSocket.
     // It refreshes only while the application is visible; background LIFF tabs do
     // not poll. The normal Realtime path still invalidates immediately.
@@ -725,8 +734,10 @@
           schedule(0, { reason: 'realtime-disconnected' });
           return;
         }
-        if (subscribedOnce) schedule(0, { reason: 'reconnect' });
-        else subscribedOnce = true;
+        if (subscribedOnce) {
+          verifyCurrentLogin();
+          schedule(0, { reason: 'reconnect' });
+        } else subscribedOnce = true;
       });
 
     const unsubscribe = () => {
