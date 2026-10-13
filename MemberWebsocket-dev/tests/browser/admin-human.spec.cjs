@@ -458,5 +458,5 @@ test('AUDIT_QUERY — filter, detail, cursor, empty state and authorization erro
  expect(calls(info.fixture,'admin.audit.query').at(-1).payload.memberCode).toBe('QA-MEMBER');
  await click(p,'auditNext');await expect(p.locator('#operationAuditStatus')).toContainText('沒有紀錄');expect(calls(info.fixture,'admin.audit.query').at(-1).payload.cursor.id).toBe('booking:1');
  info.fixture.fault={action:'admin.audit.query',code:'ADMIN_REQUIRED',message:'您沒有查詢權限'};await click(p,'auditSearch');await expect(p.locator('#operationAuditStatus')).toContainText('您沒有查詢權限');await expect(p.locator('#operationAuditList')).toHaveText('');
- await click(p,'membersTab');await expect(p.locator('#operationAuditPanel')).toBeHidden();
+ await click(p,'membersTab');await expect(p.locator('#operationAuditPanel')).toBeHidden();await expect(p.locator('#operationAuditTab')).toHaveAttribute('aria-selected','false');
 });

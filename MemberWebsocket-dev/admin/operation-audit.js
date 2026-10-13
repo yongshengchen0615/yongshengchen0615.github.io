@@ -18,7 +18,10 @@
       [...view.children].filter(n => n.classList.contains('panel')).forEach(n => n.classList.toggle('hidden', n!==panel));
       if (!filters) void query(false);
     });
-    nav.addEventListener('click', e => { if (e.target.closest('.surface-tab')?.id !== tab.id) panel.classList.add('hidden'); });
+    nav.addEventListener('click', e => {
+      const other = e.target.closest('.surface-tab');
+      if (other && other.id !== tab.id) { panel.classList.add('hidden'); tab.setAttribute('aria-selected','false'); }
+    });
     $('operationAuditForm').addEventListener('submit', e => { e.preventDefault(); void query(false); });
     $('auditNext').addEventListener('click', () => void query(true));
   }

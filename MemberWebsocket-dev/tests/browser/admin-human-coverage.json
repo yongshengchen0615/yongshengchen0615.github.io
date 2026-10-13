@@ -23,7 +23,7 @@
     "admin/booking-receipt-admin.js": "b5873c2753c0f2f9c267d0d13583405c2205cc70c0f2103f5899f741a74cf920",
     "admin/booking-accessible-admin.js": "5947f0328b3b27ff891760f72615024899a96b77467f7601842056f908ce5526",
     "admin/ticket-visibility.js": "8d4c78f03a198b94fe5cf7eb305c7e2b9bfb67a07d367c73050349fab45802c2",
-    "admin/operation-audit.js": "b78f7b0a58ae5b95dba6eeaab4dc11129b6d78588d32b90943cb1d598194fb8b"
+    "admin/operation-audit.js": "163217db1ad579cb92fbf17e690033db330a680a54189304db068da444d65a59"
   },
   "features": [
     {
