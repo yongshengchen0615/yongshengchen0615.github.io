@@ -79,7 +79,7 @@
     }
     // New authenticated LIFF entry always claims a new login, silently.
     // An outdated LINE token cannot take over: the database rejects stale iat.
-    await postJson(String(config.supabaseUrl).replace(/\\/$/, '') + '/functions/v1/api', config,
+    await postJson(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api', config,
       { action:'user.' + clientType + '.session.claim', clientType, idToken, browserKey:key, mode:'login' },
       '登入連線', { write:true });
     window.localStorage.setItem(LOGIN_REGISTERED_KEY, '1');
@@ -459,7 +459,7 @@
       const session = getSession();
       if (!session?.idToken) return;
       loginCheckPending = true;
-      void postJson(String(config.supabaseUrl).replace(/\\/$/, '') + '/functions/v1/api',
+      void postJson(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api',
         config, { action:'user.booking.session.status',clientType:'booking',idToken:session.idToken },
         '登入狀態', { write:false }).catch(() => {}).finally(() => {
         loginCheckPending = false;
