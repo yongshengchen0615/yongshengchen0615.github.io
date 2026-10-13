@@ -35,9 +35,11 @@ function harness(responses = []) {
   };
   const exported = vm.runInNewContext(
     'let memberPresencePollPending = false; let memberPresencePollQueued = false;' +
+    'let memberPresencePageVersion = 0;' +
     'const memberPresenceObservations = new Map();' +
     functions +
-    '({ refreshMemberPresence, mergeNewerPresenceObservations, memberPresenceObservations })',
+    '({ refreshMemberPresence, mergeNewerPresenceObservations, memberPresenceObservations, ' +
+    'markMemberPageApplied() { memberPresencePageVersion++; } })',
     ctx
   );
   return { ...exported, state, calls, get renders() { return renders; } };
@@ -77,6 +79,26 @@ test('presence refresh requested while another is pending is replayed, not lost'
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(ctx.state.members[0].isOnline, false);
   assert.equal(ctx.renders, 2);
+});
+
+test('older in-flight presence responses cannot roll back a freshly applied member list', async () => {
+  const first = deferred();
+  const second = deferred();
+  const ctx = harness([first.promise, second.promise]);
+  const older = ctx.refreshMemberPresence();
+  // A newer bootstrap has returned online=true while the old poll is in flight.
+  ctx.state.members[0].isOnline = true;
+  ctx.markMemberPageApplied();
+  const newest = ctx.refreshMemberPresence(); // queued behind the old poll
+  first.resolve({ members: [{ lineUserId: 'line-1', isOnline: false,
+    lastSeenAt: '', onlineSurfaces: [] }] });
+  await older;
+  await newest;
+  assert.equal(ctx.state.members[0].isOnline, true, 'old poll must be discarded');
+  second.resolve({ members: [{ lineUserId: 'line-1', isOnline: true,
+    lastSeenAt: '2026-10-13T00:00:00Z', onlineSurfaces: ['points'] }] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(ctx.state.members[0].isOnline, true);
 });
 
 test('missing or malformed response must not mark an online member offline', async () => {
