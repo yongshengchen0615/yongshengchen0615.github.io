@@ -7,7 +7,7 @@
   let lastChatFeedback = null;
   function snapshotChatFeedback(result) {
     if (result?.alreadyApplied === true) return '此快照先前已送出，不會重複傳送 LINE 訊息。';
-    if (result?.chatResult?.sent === true) return '已由你的 LINE 將「快照確認」傳送到官方帳號聊天。';
+    if (result?.chatResult?.sent === true) return '已由你的 LINE 將「快照送審通知」傳送到官方帳號聊天（尚未核准）。';
     if (result?.chatResult?.reason === 'not_in_line_chat')
       return '目前不是從 LINE 官方帳號聊天內開啟，未自動傳送聊天訊息；可回到官方帳號聊天告知管理員。';
     return 'LINE 聊天訊息未成功傳送，請回到官方帳號聊天告知管理員；快照送審不受影響。';
@@ -138,7 +138,12 @@
       const minutes = Number(settlement?.service_minutes || 0);
       const rewards = Array.isArray(settlement?.reward_details) ? settlement.reward_details : [];
       const points = rewards.reduce((sum, reward) => sum + Math.max(0,Number(reward.points || 0)),0);
-      status.textContent = `管理員已登記完成${settlement ? `：累積服務 ${minutes} 分鐘，獲得 ${points} 點。` : '，點數與服務時間已依規則記錄。'}`;
+      const services = (Array.isArray(latest.services) ? latest.services : [])
+        .filter(item => Number(item?.minutes) > 0 && Number(item?.quantity) > 0)
+        .map(item => `${String(item.title || '服務項目')} ${Number(item.minutes)} 分鐘 × ${Number(item.quantity)} 次`);
+      status.textContent = settlement
+        ? `管理員已完成快照審核。${services.length ? `本次實際服務：${services.join('、')}。` : ''}會員累計服務時間：${minutes} 分鐘；本次獲得 ${points} 點。`
+        : '管理員已完成快照審核，正在同步會員服務時間及點數結算資訊。';
     }
   }
   window.addEventListener('DOMContentLoaded', () => {
