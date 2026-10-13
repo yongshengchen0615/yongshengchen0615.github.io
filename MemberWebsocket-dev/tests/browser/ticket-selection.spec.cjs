@@ -1,8 +1,8 @@
 const {test,expect}=require('playwright/test'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'../..');let server,base;
 test.beforeAll(async()=>{server=http.createServer((req,res)=>{
- if(req.url.startsWith('/fixture')) {res.setHeader('Content-Type','text/html');res.end('<!doctype html><html lang="zh-Hant"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/ticket-booking-selections.css"><main id="pointsView"></main><script src="/ticket-booking-selections.js"></script></html>');return;}
- const p=path.join(root,new URL(req.url,'http://qa').pathname);if(!p.startsWith(root)||!fs.existsSync(p)){res.writeHead(404).end();return;}res.setHeader('Content-Type',p.endsWith('.css')?'text/css':'text/javascript');res.end(fs.readFileSync(p));
+ if(req.url.startsWith('/fixture')) {res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/ticket-booking-selections.css"><main id="pointsView"></main><script src="/ticket-booking-selections.js"></script></html>');return;}
+ const p=path.join(root,new URL(req.url,'http://qa').pathname);if(!p.startsWith(root)||!fs.existsSync(p)){res.writeHead(404).end();return;}res.setHeader('Content-Type',p.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8');res.end(fs.readFileSync(p));
 });await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;});
 test.afterAll(async()=>server.close());
 async function setup(page){await page.goto(base+'/fixture');await page.evaluate(()=>{

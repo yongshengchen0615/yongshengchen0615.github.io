@@ -124,6 +124,9 @@ jobs:
       - name: Check E2E refresh and purged-history recovery first
         run: npm test -- e2e-refresh.spec.cjs
         working-directory: MemberWebsocket-dev/tests/browser
+      - name: Fail fast on ticket selections and shared layouts
+        run: npm test -- ticket-selection.spec.cjs ui-layout.spec.cjs
+        working-directory: MemberWebsocket-dev/tests/browser
       - name: Fail fast on mobile member pass and GPS permission retry
         run: |
           npm test -- member-p2.spec.cjs --grep "membership pass actions stay grouped"
