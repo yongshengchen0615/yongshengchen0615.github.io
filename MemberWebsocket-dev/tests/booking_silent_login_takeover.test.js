@@ -83,7 +83,7 @@ function bookingHarness() {
     },
     goForeground: () => {
       document.visibilityState = 'visible';
-      documentListeners.visibilitychange?.();
+      (documentListeners.visibilitychange || []).forEach(cb => cb());
     },
     emitTakeover: () => realtimeEvent({ new:{ scope:'all', event_type:'member.login.replaced' } })
   };
