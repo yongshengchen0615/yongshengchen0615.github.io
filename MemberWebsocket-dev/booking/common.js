@@ -449,6 +449,22 @@
     let lastResyncAt = 0;
     let subscribedOnce = false;
     let realtimeTimer = null;
+    let loginCheckTimer = null;
+    let loginCheckPending = false;
+    const validateCurrentLogin = () => {
+      if (disposed || targetScope === 'admin' || isTerminatingAccess || loginCheckPending) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      // Test accounts have an independent revocation lifecycle.
+      if (window.TestModeClient?.getSessionToken?.()) return;
+      const session = getSession();
+      if (!session?.idToken) return;
+      loginCheckPending = true;
+      void postJson(String(config.supabaseUrl).replace(/\\/$/, '') + '/functions/v1/api',
+        config, { action:'user.booking.session.status',clientType:'booking',idToken:session.idToken },
+        '登入狀態', { write:false }).catch(() => {}).finally(() => {
+        loginCheckPending = false;
+      });
+    };
 
     const backgroundResyncAllowed = () => {
       try {
@@ -508,10 +524,25 @@
     };
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') schedule(0);
+      if (document.visibilityState === 'visible') {
+        validateCurrentLogin();
+        schedule(0);
+      }
     };
-    const onPageShow = () => schedule(0);
-    const onOnline = () => schedule(0);
+    const onPageShow = () => {
+      validateCurrentLogin();
+      schedule(0);
+    };
+    const onOnline = () => {
+      validateCurrentLogin();
+      schedule(0);
+    };
+    // LINE WebViews may suspend and miss Realtime messages in the background.
+    if (typeof window.setInterval === 'function') {
+      loginCheckTimer = window.setInterval(() => {
+        if (!disposed && document.visibilityState !== 'hidden') validateCurrentLogin();
+      }, 30000);
+    }
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pageshow', onPageShow);
@@ -531,13 +562,8 @@
             const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
             const scope = String(row.scope || '');
             const eventType = String(row.event_type || '');
-            if (targetScope !== 'admin' && (scope === 'all' || scope === targetScope) && eventType === 'member.login.replaced' && !isTerminatingAccess) {
-              const session = getSession();
-              if (session?.idToken) {
-                void postJson(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api',
-                  config, { action:'user.booking.session.status',clientType:'booking',idToken:session.idToken },
-                  '登入狀態', {write:false}).catch(() => {});
-              }
+            if (targetScope !== 'admin' && (scope === 'all' || scope === targetScope) && eventType === 'member.login.replaced') {
+              validateCurrentLogin();
             } else if (scope === 'all' || scope === targetScope) schedule();
             if (typeof onBenefitsUpdate === 'function' && ['all', 'member', 'points', 'event', 'calendar'].includes(scope)) {
               onBenefitsUpdate({ scope, eventType });
@@ -545,6 +571,7 @@
           })
           .subscribe((status) => {
             if (status !== 'SUBSCRIBED') return;
+            validateCurrentLogin();
             if (subscribedOnce) {
               schedule(0);
               if (typeof onBenefitsUpdate === 'function') onBenefitsUpdate({ scope: 'reconnect', eventType: 'realtime.reconnected' });
@@ -562,6 +589,7 @@
       window.removeEventListener('pageshow', onPageShow);
       window.removeEventListener('online', onOnline);
       clearScheduledResync();
+      if (loginCheckTimer !== null) window.clearInterval(loginCheckTimer);
       const channel = realtimeChannel;
       realtimeChannel = null;
       try { if (channel && realtimeClient) Promise.resolve(realtimeClient.removeChannel(channel)).catch(() => {}); } catch (_) {}
