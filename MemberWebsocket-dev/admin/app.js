@@ -19,6 +19,8 @@
   let stopAdminRealtime = null;
   let memberPresencePollTimer = null;
   let memberPresencePollPending = false;
+  let memberPresencePollQueued = false;
+  const memberPresenceObservations = new Map();
   let adminRefreshPromise = null;
   let adminRefreshQueued = false;
   let adminRefreshBusy = false;
@@ -41,6 +43,13 @@
     ].forEach((id) => { els[id] = document.getElementById(id); });
     window.TicketLocationEditors.init();
     bindEvents();
+    // Browser timers can be throttled while the admin tab is hidden.
+    // Reconcile immediately when the dashboard is visible again.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && state.idToken) {
+        void refreshMemberPresence().catch(() => {});
+      }
+    });
     installSettingsCopy();
     window.addEventListener('pagehide', (event) => {
       // Hide private views before Back/Forward Cache snapshots them. A persisted
@@ -466,29 +475,67 @@
     }
   }
 
+  function mergeNewerPresenceObservations(members, requestStartedAt) {
+    return members.map((member) => {
+      const observation = memberPresenceObservations.get(String(member.lineUserId || ''));
+      // A completed presence request is authoritative only if it started
+      // AFTER the member-list/bootstrap request whose result is being applied.
+      if (!observation || observation.requestStartedAt <= requestStartedAt) return member;
+      return {
+        ...member,
+        isOnline: observation.isOnline,
+        lastSeenAt: observation.lastSeenAt,
+        onlineSurfaces: [...observation.onlineSurfaces],
+      };
+    });
+  }
+
   async function refreshMemberPresence() {
-    if (memberPresencePollPending || !state.config || !state.idToken || !state.members.length) return;
+    if (!state.config || !state.idToken || !state.members.length) return;
+    if (memberPresencePollPending) {
+      memberPresencePollQueued = true;
+      return;
+    }
     memberPresencePollPending = true;
+    const requestStartedAt = Date.now();
+    const requestedKind = state.memberKind;
+    const lineUserIds = state.members.map((member) => String(member.lineUserId || '')).filter(Boolean);
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.members.presence.list', {
-        lineUserIds: state.members.map((member) => String(member.lineUserId || '')).filter(Boolean),
+        lineUserIds,
       });
-      const rows = Array.isArray(result && result.members) ? result.members : [];
-      const byId = new Map(rows.map((row) => [String(row.lineUserId || ''), row]));
+      // A malformed response is not evidence that every member went offline.
+      if (!result || !Array.isArray(result.members)) throw new Error('會員上線狀態回應不完整。');
+      const byId = new Map(result.members.map((row) => [String(row.lineUserId || ''), row]));
+      for (const id of lineUserIds) {
+        const presence = byId.get(id);
+        if (!presence) continue; // Do not treat missing rows as offline.
+        memberPresenceObservations.set(id, {
+          requestStartedAt,
+          isOnline: Boolean(presence.isOnline),
+          lastSeenAt: String(presence.lastSeenAt || ''),
+          onlineSurfaces: Array.isArray(presence.onlineSurfaces) ? presence.onlineSurfaces.map(String) : [],
+        });
+      }
+      if (requestedKind !== state.memberKind) return;
       let changed = false;
       state.members = state.members.map((member) => {
-        const presence = byId.get(String(member.lineUserId || ''));
-        const nextOnline = Boolean(presence && presence.isOnline);
-        const nextLastSeen = String(presence && presence.lastSeenAt || '');
-        const nextSurfaces = Array.isArray(presence && presence.onlineSurfaces) ? presence.onlineSurfaces.map(String) : [];
-        const previousSurfaces = Array.isArray(member.onlineSurfaces) ? member.onlineSurfaces.map(String) : [];
-        if (Boolean(member.isOnline) !== nextOnline || String(member.lastSeenAt || '') !== nextLastSeen
-          || previousSurfaces.join('|') !== nextSurfaces.join('|')) changed = true;
-        return { ...member,isOnline:nextOnline,lastSeenAt:nextLastSeen,onlineSurfaces:nextSurfaces };
+        const observation = memberPresenceObservations.get(String(member.lineUserId || ''));
+        if (!observation || observation.requestStartedAt < requestStartedAt) return member;
+        const previousSurfaces = Array.isArray(member.onlineSurfaces) ? member.onlineSurfaces : [];
+        if (Boolean(member.isOnline) !== observation.isOnline
+          || String(member.lastSeenAt || '') !== observation.lastSeenAt
+          || previousSurfaces.join('|') !== observation.onlineSurfaces.join('|')) changed = true;
+        return { ...member, isOnline: observation.isOnline, lastSeenAt: observation.lastSeenAt,
+          onlineSurfaces: [...observation.onlineSurfaces] };
       });
       if (changed) renderMembers();
     } finally {
       memberPresencePollPending = false;
+      if (memberPresencePollQueued) {
+        memberPresencePollQueued = false;
+        void refreshMemberPresence().catch(() => {});
+      }
     }
   }
 
@@ -505,9 +552,10 @@
       try {
         do {
           adminRefreshQueued = false;
+          const requestStartedAt = Date.now();
           const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.bootstrap', {});
           assertCompleteAdminBootstrap(result);
-          applyAdminBootstrap(result);
+          applyAdminBootstrap(result, requestStartedAt);
           if (!window.MemberAdminSession.isReady()) window.MemberAdminSession.establish(state.config, state.idToken);
           els.syncStatus.textContent = `已完整同步 · ${new Date().toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit' })}`;
           els.syncStatus.classList.remove('error');
@@ -538,9 +586,9 @@
     }
   }
 
-  function applyAdminBootstrap(result) {
+  function applyAdminBootstrap(result, requestStartedAt) {
     if (state.memberKind === 'real') {
-      state.members = result.members;
+      state.members = mergeNewerPresenceObservations(result.members, requestStartedAt);
       applyMemberPage(result.memberPage, state.memberPage);
     }
     state.tierSettings = result.tierSettings;
@@ -751,14 +799,16 @@
   }
   async function loadMembersPage(page, query) {
     const requestVersion = ++state.memberRequestVersion;
+    const requestStartedAt = Date.now();
     els.memberPrevPageButton.disabled = true;
     els.memberNextPageButton.disabled = true;
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.members.list', memberPagePayload(page, query));
       if (requestVersion !== state.memberRequestVersion) return;
-      state.members = Array.isArray(result.members) ? result.members : [];
+      state.members = mergeNewerPresenceObservations(Array.isArray(result.members) ? result.members : [], requestStartedAt);
       applyMemberPage(result.memberPage, state.memberPage);
       renderMembers();
+      void refreshMemberPresence().catch(() => {});
     } catch (error) {
       if (requestVersion === state.memberRequestVersion) renderMemberPagination();
       throw error;
