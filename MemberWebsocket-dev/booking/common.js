@@ -64,7 +64,7 @@
 
   async function claimBrowserSession(config, clientType, idToken) {
     let key;
-    let mode;
+    let prior;
     try {
       key = window.localStorage.getItem(LOGIN_BROWSER_KEY);
       if (!key) {
@@ -72,17 +72,17 @@
         window.localStorage.setItem(LOGIN_BROWSER_KEY, key);
       }
       if (!/^[a-f0-9-]{72}$/.test(key)) throw new Error('invalid browser key');
-      const prior = window.localStorage.getItem(LOGIN_REGISTERED_KEY);
-      if (prior === 'replaced') {
-        const approved = typeof window.confirm === 'function' && window.confirm(
-          '此帳號已在其他裝置登入。是否在目前裝置重新登入，並強制登出另一裝置？'
-        );
-        if (!approved) throw clientError('LOGIN_TAKEOVER_CANCELLED', '已取消重新登入，其他裝置將維持登入。');
-      }
-      mode = !prior || prior === 'replaced' ? 'login' : 'resume';
+      prior = window.localStorage.getItem(LOGIN_REGISTERED_KEY);
     } catch (_) {
-      throw clientError('AUTH_STORAGE_UNAVAILABLE', '無法安全保存登入連線，請允許此網站使用瀏覽器儲存空間。');
+      throw clientError('AUTH_STORAGE_UNAVAILABLE', '無法安全保存登入連線，請允許本網站使用瀏覽器儲存空間。');
     }
+    if (prior === 'replaced' && clientType !== 'admin') {
+      const approved = typeof window.confirm === 'function' && window.confirm(
+        '此帳號已在其他裝置登入。是否在目前裝置重新登入，並強制登出另一裝置？'
+      );
+      if (!approved) throw clientError('LOGIN_TAKEOVER_CANCELLED', '已取消重新登入，其他裝置將維持登入。');
+    }
+    const mode = !prior || prior === 'replaced' ? 'login' : 'resume';
     const action = clientType === 'admin' ? 'admin.session.claim' : 'user.' + clientType + '.session.claim';
     await postJson(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api', config,
       { action, clientType, idToken, browserKey: key, mode }, '登入連線', { write: true });
@@ -539,7 +539,7 @@
             const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
             const scope = String(row.scope || '');
             const eventType = String(row.event_type || '');
-            if ((scope === 'all' || scope === targetScope) && eventType === 'member.login.replaced' && !isTerminatingAccess) {
+            if (targetScope !== 'admin' && (scope === 'all' || scope === targetScope) && eventType === 'member.login.replaced' && !isTerminatingAccess) {
               const session = getSession();
               if (session?.idToken) {
                 void postJson(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api',
