@@ -64,7 +64,7 @@ function harness(server, local = new Map(), options = {}) {
   const fetch = async (_url, opts) => {
     const body = JSON.parse(opts.body);
     calls.push(['request', body.action, body.mode]);
-    const result = server(body);
+    const result = await server(body);
     return { ok: result.ok !== false, status: result.ok === false ? 401 : 200,
       text: async () => JSON.stringify(result.ok === false
         ? { ok: false, status: 401, error: { code: result.code || 'SESSION_REPLACED', message: '已被其他裝置登入取代。' } }
@@ -119,6 +119,30 @@ test('a previously registered browser makes a fresh server-verified login claim 
   const next = harness(() => ({data:{ state:'replaced' }}), local, { token:'other-device-new-token' });
   await next.window.MemberSystem.signIn(config,'points');
   assert.ok(next.calls.some(x => x[1] === 'user.points.session.claim' && x[2] === 'login'));
+});
+
+test('concurrent realtime takeover notification is not lost during a pending status check', async () => {
+  let finishFirstCheck;
+  let checks = 0;
+  const server = body => {
+    if (body.action === 'user.member.session.status') {
+      checks++;
+      if (checks === 1) return new Promise(resolve => { finishFirstCheck = resolve; });
+      return { ok:false, code:'SESSION_REPLACED' };
+    }
+    return { data:{ state:'claimed' } };
+  };
+  const previous = harness(server, new Map(), { token:'claimed-token' });
+  await previous.window.MemberSystem.signIn(config,'member');
+  previous.window.MemberSystem.subscribeRealtime(config,'member', () => {});
+  previous.emit('member.login.replaced');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(checks, 1, 'first check must be pending');
+  previous.emit('member.login.replaced');
+  finishFirstCheck({ data:{ state:'active' } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(checks, 2, 'queued invalidation must trigger a second status check');
+  assert.ok(previous.calls.some(x => x[0] === 'liff.closeWindow'));
 });
 
 test('session status remains server-authenticated and never opens an admin bypass', () => {
