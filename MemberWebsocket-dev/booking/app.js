@@ -601,7 +601,7 @@
     const serviceLine = document.createElement('p');
     serviceLine.textContent = `預約項目：${items.map((item) => `${item.service.title}（${item.service.durationMinutes}分鐘）`).join('、')}`;
     const duration = document.createElement('p');
-    duration.textContent = `個別總時間：${totalDurationMinutes()} 分鐘（含店內服務 ${storeServiceMinutes()} 分鐘）`;
+    duration.textContent = `預約佔用時間：${totalDurationMinutes()} 分鐘（含店內服務 ${storeServiceMinutes()} 分鐘）`;
     const amount = document.createElement('p');
     amount.textContent = `個別金額：${formatMoney(totalAmount())}`;
     card.append(title, serviceLine, duration, amount);
@@ -952,7 +952,7 @@
       totals.className = 'member-booking-format-totals';
       const scheduledMinutes = Math.max(0, Number(booking.totalDurationMinutes || 0));
       totals.append(
-        summaryRow('總服務時間', `${scheduledMinutes} 分鐘`),
+        summaryRow('預約佔用時間（含店內服務）', `${scheduledMinutes} 分鐘`),
         summaryRow('總金額', formatMoney(booking.totalAmount)),
       );
       item.appendChild(totals);
