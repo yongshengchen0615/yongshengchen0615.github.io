@@ -67,11 +67,13 @@ test('shared member client records sign in, logout, page leave and BFCache resum
 });
 
 test('booking fresh login path cannot bypass presence tracking', () => {
-  assert.match(booking, /window\.BookingSystem = \{ loadConfig, signIn, startPresence,/);
+  assert.match(booking, /window\.BookingSystem = \{ loadConfig, signIn, completeSignIn, startPresence,/);
+  assert.match(booking, /if \(clientType === 'booking'\) await startPresence\(config, clientType, token\)/);
   assert.match(booking, /user\.booking\.presence\.' \+ event/);
   assert.match(booking, /keepalive: true/);
   assert.match(booking, /stopPresence\('logout'\)/);
-  assert.match(bookingFresh, /window\.BookingSystem\.startPresence\(config, 'booking', idToken\)/);
+  assert.match(bookingFresh, /window\.BookingSystem\.completeSignIn\(config, 'booking', idToken\)/);
+  assert.match(booking, /authenticatedSession = \{ config, idToken: token \}/);
   assert.match(booking, /PRESENCE_HEARTBEAT_MS = 30_000/);
   assert.match(booking, /sendPresence\(context, 'heartbeat', 'heartbeat'\)/);
 });
