@@ -796,21 +796,21 @@
     if (result.error) throw result.error;
   }
 
-  function snapshotConfirmationChatText(receiptId, ticketCount) {
+  function snapshotSubmissionChatText(receiptId, ticketCount) {
     return [
-      '【快照確認】',
+      '【快照送審通知】',
       '狀態：收據已送出，等待管理員審核',
       receiptId ? `快照編號：${receiptId}` : '',
       `登記票券：${ticketCount} 張（待審核，尚未核銷）`,
-      '管理員核對服務後才會登記服務時間、點數及票券核銷。',
+      '這是送審通知，不代表已核准；個別服務分鐘、會員累計時間、點數與票券結果以管理員審核後的紀錄為準。',
     ].filter(Boolean).join('\n');
   }
 
-  async function sendSnapshotConfirmationChatMessage(receiptId, ticketCount) {
+  async function sendSnapshotSubmissionChatMessage(receiptId, ticketCount) {
     try {
       const sender = window.BookingSystem?.sendMemberChatMessage;
       if (typeof sender !== 'function') return { sent: false, reason: 'send_messages_unavailable' };
-      return await sender(snapshotConfirmationChatText(receiptId, ticketCount));
+      return await sender(snapshotSubmissionChatText(receiptId, ticketCount));
     } catch (_) {
       // A LINE chat failure must never turn a committed receipt into an upload error.
       return { sent: false, reason: 'send_failed' };
@@ -883,7 +883,7 @@
       let chatResult = null;
       if (state.accessible && finalized.alreadyApplied !== true) {
         setMessage('快照已送出，正在同步 LINE 官方帳號聊天…');
-        chatResult = await sendSnapshotConfirmationChatMessage(
+        chatResult = await sendSnapshotSubmissionChatMessage(
           String(finalized.receiptId || prepared.receiptId || ''), selectedBenefits.length
         );
       }
