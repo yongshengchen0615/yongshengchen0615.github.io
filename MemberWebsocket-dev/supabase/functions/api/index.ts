@@ -204,7 +204,7 @@ function presenceActionInfo(action: string): { clientType: ClientType; surface: 
 }
 
 function clientTypeForAction(action: string): ClientType {
-  const memberSession = /^user\.(member|points|event|calendar|booking)\.session\.(claim|logout)$/.exec(action);
+  const memberSession = /^user\.(member|points|event|calendar|booking)\.session\.(claim|logout|status)$/.exec(action);
   if (memberSession) return memberSession[1] as ClientType;
   if (action === "admin.session.claim" || action === "admin.session.logout") return "admin";
   const presence = presenceActionInfo(action);
@@ -2007,6 +2007,11 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
 }
 
 async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string; issuedAtMs?: number }, action: string, body: Json): Promise<Json> {
+  // Revalidate a verified member token after login-takeover broadcasts.
+  // The shared auth contract checks current token grants before this handler.
+  if (/^user\.(member|points|event|calendar|booking)\.session\.status$/.test(action)) {
+    return { state:"active" };
+  }
   if (/^(?:admin|user\.(?:member|points|event|calendar|booking))\.session\.claim$/.test(action)) {
     if (action.startsWith("admin.")) {
       // Admin workspaces may coexist on multiple devices. Do not claim or
