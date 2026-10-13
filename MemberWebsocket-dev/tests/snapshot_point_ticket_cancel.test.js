@@ -40,7 +40,9 @@ test('pointcard UI can remove pending snapshot ticket, but not redeemed ticket',
   assert.match(points, /baseCanUse: Boolean\(ticketId\) && !reservedForBooking && !pendingSnapshot/);
   assert.match(points, /checkbox\.checked = isSelected \|\| offer\.reservedForBooking \|\| Boolean\(offer\.pendingSnapshot\)/);
   assert.match(points, /cancelSnapshot\.textContent = '取消快照票券'/);
-  assert.match(points, /if \(offer\.pendingSnapshot && !offer\.reservedForBooking\)/);
+  assert.match(points, /if \(offer\.pendingSnapshot\)/);
+  assert.doesNotMatch(points, /if \(offer\.pendingSnapshot && !offer\.reservedForBooking\)/);
+  assert.match(points, /reservedForBooking && pendingSnapshot\) statusText = '已預約使用・快照待審核'/);
   assert.match(points, /'user\.pointcard\.snapshot-ticket\.cancel'/);
   assert.match(points, /await state\.refreshData\(\)/);
   assert.match(read('points/index.html'), /pointcard-ticket-overview\.js\?v=[^"]*snapshot-cancel-20261013-1/);

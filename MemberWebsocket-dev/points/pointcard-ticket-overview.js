@@ -266,7 +266,8 @@
         const expired = Boolean(card.expired);
         const active = String(card.status || 'active') === 'active';
         let statusText = '可勾選使用';
-        if (reservedForBooking) statusText = '已預約使用';
+        if (reservedForBooking && pendingSnapshot) statusText = '已預約使用・快照待審核';
+        else if (reservedForBooking) statusText = '已預約使用';
         else if (pendingSnapshot) statusText = '快照待審核';
         else if (expired) statusText = '集點卡已超過使用期限';
         else if (!active) statusText = '集點卡目前未開放使用';
@@ -517,7 +518,9 @@
         checkbox.disabled = state.busy || !selectable || !offer.ticketId;
         checkbox.setAttribute('aria-label', `${offer.ticketTitle}，${statusText}`);
         const selectText = document.createElement('span');
-        selectText.textContent = offer.reservedForBooking ? '已預約使用' : offer.pendingSnapshot ? '快照待審核' : isSelected ? '已選' : '選擇';
+        selectText.textContent = offer.reservedForBooking && offer.pendingSnapshot
+          ? '預約與快照待審核'
+          : offer.reservedForBooking ? '已預約使用' : offer.pendingSnapshot ? '快照待審核' : isSelected ? '已選' : '選擇';
         selectWrap.append(checkbox, selectText);
         footer.append(status, selectWrap);
 
@@ -551,7 +554,7 @@
           });
           item.append(cancelReservation);
         }
-        if (offer.pendingSnapshot && !offer.reservedForBooking) {
+        if (offer.pendingSnapshot) {
           const cancelSnapshot = document.createElement('button');
           cancelSnapshot.type = 'button';
           cancelSnapshot.className = 'ticket-reservation-cancel';
