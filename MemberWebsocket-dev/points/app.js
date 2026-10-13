@@ -130,6 +130,7 @@
       if (requestVersion !== state.loadVersion) return;
 
       window.PointCardTicketOverview.renderSnapshot(result);
+      window.TicketBookingSelections?.render(result.bookingSelections, {surface:'points',config:state.config,idToken:state.idToken,refresh:()=>loadCards(false)});
       renderCards();
 
       if (showBusy) setInlineStatus('集點卡已更新。');

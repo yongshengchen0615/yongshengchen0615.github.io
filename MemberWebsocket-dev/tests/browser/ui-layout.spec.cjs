@@ -47,7 +47,7 @@ for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`shar
   if(surface==='member'){
    await page.locator('#openMemberFriends').click();await expect(page.locator('#memberFriendsModal')).toBeVisible();await fits(page.locator('#memberFriendsModal .member-referral-dialog'));await expect(page.locator('#friendsPanel')).toBeVisible();await expect(page.locator('#friendShareUrl')).toHaveCount(0);
    await page.locator('#closeMemberFriends').click();await page.locator('#openMemberReferral').click();await expect(page.locator('#memberReferralModal')).toBeVisible();await expect(page.locator('#memberReferralOwnCode')).toContainText('MEMBER-00001');
-   await page.locator('#copyMemberInviteCode').click();await expect(page.locator('#memberReferralStatus')).toContainText('已複製');await capture(page.locator('#memberReferralModal .member-referral-dialog'),info,`friends-${width}-${theme}`);await page.keyboard.press('Escape');expect(await page.locator('.app-shell').evaluate(e=>e.inert)).toBe(false);
+   await expect(page.locator('#memberReferralShare')).toHaveCount(0);await expect(page.locator('#scanMemberReferralQr')).toBeVisible();await capture(page.locator('#memberReferralModal .member-referral-dialog'),info,`friends-${width}-${theme}`);await page.keyboard.press('Escape');expect(await page.locator('.app-shell').evaluate(e=>e.inert)).toBe(false);
   }
   if(surface==='points'||surface==='booking'){
    const card=page.locator(surface==='booking'?'#bookingBenefitsList .ui-ticket':'#pointsView .ui-ticket').first();await expect(card).toBeVisible();await fits(card);await expect(card.locator('.is-source')).toContainText(item.cardTitle);await expect(card.locator('.is-cost')).toContainText('5 點');

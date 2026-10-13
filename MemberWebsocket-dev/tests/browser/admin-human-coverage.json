@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "scope": "Six admin workspaces, public UI workflows; test-control workspace excluded",
+  "scope": "Seven admin workspaces, including operation audit; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "7bd6ae1468f3d5ef631aa993a0ecf1a0a6ef2f5688471d23946bb9d753593455",
+    "admin/index.html": "88a02fd0552e14439aa1ad21a3cbcf197e384091f6f1311d55b94a8dee15ef28",
     "admin/app.js": "ad0aaa454dd6d6a6a92a16fb5ce12a42fca25c25a7de0cf537455dc7681a2e6d",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
@@ -22,7 +22,8 @@
     "admin/booking-cancellation-sync.js": "a8367bb6565d054af976ec1ffdf950874a4e8f14a3917d2e036bc1744016db19",
     "admin/booking-receipt-admin.js": "b5873c2753c0f2f9c267d0d13583405c2205cc70c0f2103f5899f741a74cf920",
     "admin/booking-accessible-admin.js": "5947f0328b3b27ff891760f72615024899a96b77467f7601842056f908ce5526",
-    "admin/ticket-visibility.js": "8d4c78f03a198b94fe5cf7eb305c7e2b9bfb67a07d367c73050349fab45802c2"
+    "admin/ticket-visibility.js": "8d4c78f03a198b94fe5cf7eb305c7e2b9bfb67a07d367c73050349fab45802c2",
+    "admin/operation-audit.js": "b78f7b0a58ae5b95dba6eeaab4dc11129b6d78588d32b90943cb1d598194fb8b"
   },
   "features": [
     {
@@ -538,6 +539,14 @@
       "cases": [
         "BOOKING_CANCELLATION_COPY_390",
         "BOOKING_CANCELLATION_COPY_1280"
+      ]
+    },
+    {
+      "id": "operation-audit-query",
+      "module": "integration",
+      "name": "操作稽核篩選、分頁、詳情與權限",
+      "cases": [
+        "AUDIT_QUERY"
       ]
     }
   ]

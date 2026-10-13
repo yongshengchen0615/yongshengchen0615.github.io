@@ -23,9 +23,8 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
       .eq('id', 1)
       .maybeSingle(),
     db.from('booking_benefit_selections')
-      .select('booking_id,benefit_ref')
+      .select('booking_id,benefit_kind,benefit_ref')
       .eq('member_id', String(member.id))
-      .eq('benefit_kind', 'points')
       .eq('status', 'pending'),
   ]);
   if (calendar.error) throw calendar.error;
@@ -40,7 +39,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
   // offer above, so expired/full/used tickets cannot reappear as activities.
   const pointCardIds = [...new Set(points.map((offer) => String(offer.pointCardId || '')).filter(Boolean))];
   const pendingPointTicketIds = [...new Set(
-    (pendingPointSelections.data || []).map((row: any) => String(row.benefit_ref || '')).filter(Boolean)
+    (pendingPointSelections.data || []).filter((row: any) => row.benefit_kind === 'points').map((row: any) => String(row.benefit_ref || '')).filter(Boolean)
   )];
   const [pointBalancesResult, reservationTicketsResult] = await Promise.all([
     pointCardIds.length
@@ -206,6 +205,8 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
         };
       }),
       ...visibleEvents.map((offer) => {
+        const reserved = (pendingPointSelections.data || []).find((row: any) => row.benefit_kind === 'event' && row.benefit_ref === offer.claimId);
+        const reservedForOtherBooking = Boolean(reserved && reserved.booking_id !== currentBookingId);
         const visibility=tierVisibility(offer.allowedTierKeys,tier,visibilityPolicy);
         const requiredServiceIds = Array.isArray(offer.requiredServiceIds) ? offer.requiredServiceIds : [];
         const requiredServiceMatchMode = offer.requiredServiceMatchMode === 'all' ? 'all' : 'any';
@@ -218,13 +219,13 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           subtitle: visibility.locked ? visibility.lockReason : offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
           statusLabel: visibility.locked ? '需升級' : offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
           requiresLocation: offer.requiresLocation === true,
-          selectable: visibility.tierEligible,
+          selectable: visibility.tierEligible && !reservedForOtherBooking,
           locked:visibility.locked,
           selectionId: offer.claimId || '',
           claimRequired: visibility.tierEligible && !offer.claimed,
           requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
           conditionLabel: `${eventTicketMaxPerDay === 0 ? '每日使用張數不限' : `每日最多使用 ${eventTicketMaxPerDay} 張`} · ${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel}` : '預約項目限制：不限'}${offer.requiresLocation === true ? ' · 現場單獨使用需 GPS 定位' : ''}`,
-          disabledReason: visibility.locked ? visibility.lockReason : '',
+          disabledReason: visibility.locked ? visibility.lockReason : reservedForOtherBooking ? '此票券已選入另一筆預約' : '',
         };
       }),
       ...activities.map((item: any) => ({

@@ -59,6 +59,7 @@
       applyOfferSnapshot(result);
       assertCompleteEventBootstrap();
       renderOffers();
+      window.TicketBookingSelections?.render(result.bookingSelections, {surface:'event',config:state.config,idToken:state.idToken,refresh:()=>loadOffers(false)});
       // A management-side change must also refresh an already-open redemption dialog.
       if (!state.processing && !els.ticketModal.classList.contains('hidden') && state.pendingEventTicketId) {
         const active = findOffer(state.pendingEventTicketId);
@@ -116,6 +117,7 @@
     const stateLabel = used ? '已使用' : reserved ? '已預約使用' : !eligible ? '需升級' : offer.claim ? '已領取' : offer.soldOut ? '額滿' : fixed ? '尚未取得' : availabilityLabel(offer.availability);
     const item = window.EventTicketUI.create(ticket, { history, fixed, stateLabel, stateClass: used ? 'used' : reserved ? 'reserved' : eligible ? offer.availability : 'tier-locked', usedAt: eventTicketTimestamp(offer.claim && offer.claim.usedAt) });
     const eventTicketId = eventTicketIdForOffer(offer); const action = document.createElement('div'); action.className = 'event-ticket-action'; const hint = document.createElement('small'); hint.textContent = used ? '票券已使用，使用紀錄已保留' : reserved ? '已選入預約，將於服務完成時自動核銷' : !eligible ? '目前會員等級無法領取或使用' : fixed && !offer.claim ? '符合固定發放條件時會由系統自動發放' : offer.claim ? claimLabel(offer.claim.status) : offer.soldOut ? '限量張數已領完' : offer.availability === 'scheduled' ? '活動開始後即可領取' : offer.availability === 'ended' ? '活動已結束' : '點開查看完整說明'; const button = document.createElement('button'); button.type = 'button'; button.className = `ticket-button${!history && (offer.canClaim || offer.canUse) ? ' accent' : ''}`; button.dataset.eventTicketId = eventTicketId; button.textContent = history ? '查看紀錄' : reserved ? '已預約使用' : !eligible ? '查看詳情' : offer.claim ? offer.canUse ? '查看並使用' : '查看使用條件' : offer.canClaim ? '領取票券' : '查看詳情'; button.disabled = !eventTicketId; button.addEventListener('click', () => openTicketModal(eventTicketId)); action.append(hint); if (!used || history) action.append(button);
+    for (const context of offer.bookingSelections || []) item.append(Object.assign(document.createElement('p'), {className:'booking-selection-context',textContent:window.TicketBookingSelections?.label(context) || ''}));
     item.append(action); return item;
   }
 

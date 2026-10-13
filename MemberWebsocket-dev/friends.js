@@ -72,10 +72,10 @@
     el(name === 'reward' ? 'openMemberReferral' : 'openMemberFriends')?.click();
   }
 
-  function installMemberTabs(modal, rewardShare, rewardForm) {
+  function installMemberTabs(modal, rewardForm) {
     if (el('memberFriendsModal')) return { friendsPanel: el('memberReferralFriendsTabPanel') };
     const pass = el('memberPass');
-    if (!pass || !modal || !rewardShare || !rewardForm) return null;
+    if (!pass || !modal || !rewardForm) return null;
     const friendsModal = document.createElement('div');
     friendsModal.id = 'memberFriendsModal';
     friendsModal.className = 'member-referral-modal hidden';
@@ -113,7 +113,7 @@
     });
     const rewardPanel = document.createElement('section');
     rewardPanel.id = 'memberReferralRewardTabPanel';
-    rewardShare.before(rewardPanel); rewardPanel.append(rewardShare, rewardForm);
+    rewardForm.before(rewardPanel); rewardPanel.append(rewardForm);
     return { friendsPanel: el('memberReferralFriendsTabPanel') };
   }
 
@@ -182,19 +182,9 @@
     } else {
       const modal = window.MemberReferral?.ensureUi();
       if (!modal) return;
-      const rewardShare = el('memberReferralShare');
       const rewardForm = el('memberReferralForm');
-      const tabs = installMemberTabs(modal, rewardShare, rewardForm);
+      const tabs = installMemberTabs(modal, rewardForm);
       if (!tabs) return;
-
-      const inviteSection = document.createElement('section');
-      inviteSection.id = 'friendInviteSection';
-      inviteSection.className = 'member-referral-section friend-invite-section';
-      inviteSection.innerHTML = '<strong>邀請好友</strong><small>這個連結與 QR Code 只用來建立好友關係，不會綁定或發放邀請優惠。</small>';
-      const sharing = document.createElement('div');
-      sharing.className = 'friend-sharing';
-      sharing.innerHTML = '<canvas id="friendQr" class="friend-qr" aria-label="好友邀請 QR Code" hidden></canvas><button id="showFriendQr" type="button" class="button button-refresh" aria-haspopup="dialog">顯示 QR Code</button><div class="friend-link-actions"><button id="copyFriendInviteLink" type="button" class="button button-refresh">複製好友邀請連結</button><button id="shareFriendLink" type="button" class="button button-refresh">分享好友邀請連結</button><small>好友開啟後仍需查找並確認送出邀請，不會自動成為好友。</small></div>';
-      inviteSection.append(sharing);
 
       const addForm = document.createElement('form');
       addForm.id = 'friendAddForm';
@@ -218,7 +208,7 @@
       panel.className = 'friends-panel';
       panel.innerHTML = '<div class="friends-panel-heading"><h3>我的好友</h3><button id="refreshFriends" type="button" class="button button-refresh">更新好友</button></div><p id="friendListStatus" class="friend-feedback" role="status" aria-live="polite"></p><div id="friendList"></div><div id="friendReceivedBookings"></div>';
 
-      tabs.friendsPanel.append(inviteSection, addForm, camera, message, panel);
+      tabs.friendsPanel.append(addForm, camera, message, panel);
 
       scanner = window.FriendQRScanner.create(el('friendQrVideo'), {
         onStatus: message => { if (el('friendQrScanStatus')) el('friendQrScanStatus').textContent = message; status(message); },
@@ -279,9 +269,7 @@
           button.disabled = false;
         }
       });
-      el('showFriendQr').addEventListener('click', event => window.QRDisplayDialog?.show({ title: '好友邀請 QR Code', memberCode: profile?.memberCode, value: invitationUrl, opener: event.currentTarget }));
-      el('copyFriendInviteLink').addEventListener('click', copyInvitationLink);
-      el('shareFriendLink').addEventListener('click', shareInvitationLink);
+
     }
 
     el('refreshFriends').addEventListener('click', () => void refresh());
@@ -313,24 +301,6 @@
         copied ? '好友邀請連結已複製。' : '無法複製好友邀請連結，請使用分享按鈕或讓好友掃描 QR Code。',
         copied ? 'success' : 'error'
       );
-    }
-  }
-
-  async function shareInvitationLink() {
-    const url = invitationUrl;
-    const current = generation;
-    if (!url) return;
-    if (!navigator.share) {
-      await copyInvitationLink();
-      return;
-    }
-    try {
-      await navigator.share({ title: '邀請好友', url });
-      if (current === generation) status('好友邀請連結已分享。', 'success');
-    } catch (error) {
-      if (current === generation && error?.name !== 'AbortError') {
-        status('分享暫時無法使用，請改用複製好友邀請連結或 QR Code。', 'error');
-      }
     }
   }
 
@@ -427,7 +397,7 @@
         }
 
         if (!list.children.length) {
-          list.textContent = '目前沒有好友，可用上方「加好友」查找，或分享「邀請好友」連結。';
+          list.textContent = '目前沒有好友，可用上方「加好友」輸入會員編號或掃描好友碼。';
         }
 
         const received = el('friendReceivedBookings');
@@ -499,21 +469,13 @@
     }
 
     profile = next;
+    const friendUrl = new URL('../member/', location.href);
+    friendUrl.hash = 'friend=' + encodeURIComponent(profile.memberCode || '');
+    invitationUrl = profile.memberCode ? friendUrl.href : '';
     install();
     if (!el('friendsPanel')) return;
 
     if (!booking) {
-      const url = new URL('../member/', location.href);
-      url.hash = 'friend=' + encodeURIComponent(profile.memberCode || '');
-      invitationUrl = profile.memberCode ? url.href : '';
-      for (const id of ['shareFriendLink', 'copyFriendInviteLink']) {
-        const button = el(id);
-        if (button) button.disabled = !invitationUrl;
-      }
-
-      el('friendQr').hidden = true;
-      el('showFriendQr').disabled = !invitationUrl;
-
       const hash = new URLSearchParams(location.hash.slice(1));
       const search = new URLSearchParams(location.search);
       const friendIncoming = hash.get('friend');

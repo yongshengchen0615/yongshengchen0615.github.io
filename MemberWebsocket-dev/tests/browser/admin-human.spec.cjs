@@ -450,3 +450,13 @@ for(const width of [390,1280])test('BOOKING_CANCELLATION_COPY_'+width+' — actu
  expect(calls(info.fixture,'admin.approve')).toHaveLength(0);expect(calls(info.fixture,'admin.reject')).toHaveLength(0);expect(info.fixture.bookings[0].status).toBe('confirmed');
  if(typeof p.screenshot==='function')await info.attach('cancel-copy-layout',{body:await p.screenshot({fullPage:true}),contentType:'image/png'});
 });
+
+test('AUDIT_QUERY — filter, detail, cursor, empty state and authorization errors',async({page:p},info)=>{
+ await click(p,'operationAuditTab');await expect(p.locator('#operationAuditList')).toContainText('BOOKING_BENEFITS_UPDATED');
+ await p.locator('#operationAuditList summary').click();await expect(p.locator('#operationAuditList pre')).toContainText('selectedCount');
+ await fill(p,'auditMemberCode','QA-MEMBER');await fill(p,'auditAction','BOOKING_BENEFITS_UPDATED');await select(p,'auditResult','success');await click(p,'auditSearch');
+ expect(calls(info.fixture,'admin.audit.query').at(-1).payload.memberCode).toBe('QA-MEMBER');
+ await click(p,'auditNext');await expect(p.locator('#operationAuditStatus')).toContainText('沒有紀錄');expect(calls(info.fixture,'admin.audit.query').at(-1).payload.cursor.id).toBe('booking:1');
+ info.fixture.fault={action:'admin.audit.query',code:'ADMIN_REQUIRED',message:'您沒有查詢權限'};await click(p,'auditSearch');await expect(p.locator('#operationAuditStatus')).toContainText('您沒有查詢權限');await expect(p.locator('#operationAuditList')).toBeEmpty();
+ await click(p,'membersTab');await expect(p.locator('#operationAuditPanel')).toBeHidden();
+});
