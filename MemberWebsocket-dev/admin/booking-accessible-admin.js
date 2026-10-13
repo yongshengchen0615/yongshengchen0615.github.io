@@ -263,7 +263,7 @@
       ? `${record.bookingDate} ${record.startTime || ''}`
       : '未建立完成預約';
     const stats = el('accessibleAdminRecordStats'); stats.replaceChildren();
-    appendRecordStat(stats,'服務時間',`${Number(record.serviceMinutes || 0)} 分鐘`);
+    appendRecordStat(stats,'會員累計服務時間',`${Number(record.serviceMinutes || 0)} 分鐘`);
     appendRecordStat(stats,'新增點數',`${Number(record.points || 0)} 點`);
     appendRecordStat(stats,'核銷票券',`${(record.benefits || []).length} 張`);
 
@@ -273,7 +273,7 @@
     } else (record.services || []).forEach(service => {
       const row = document.createElement('div'); row.className = 'accessible-admin-record-list-row';
       const strong = document.createElement('strong'); strong.textContent = service.title || '服務項目';
-      const small = document.createElement('small'); small.textContent = `${Number(service.minutes || 0)} 分鐘 × ${Number(service.quantity || 1)}${service.serviceType ? ` · ${service.serviceType}` : ''}`;
+      const small = document.createElement('small'); small.textContent = `${Number(service.minutes || 0)} 分鐘 × ${Number(service.quantity || 1)} 次（小計 ${Number(service.minutes || 0) * Number(service.quantity || 1)} 分鐘）${service.serviceType ? ` · ${service.serviceType}` : ''}`;
       row.append(strong,small); services.append(row);
     });
 
