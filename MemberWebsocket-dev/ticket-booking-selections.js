@@ -139,5 +139,57 @@
       if (saveError && !stale) message(saveError, true);
     }
   }
-  window.TicketBookingSelections = Object.freeze({ render, label });
+  // Release only one pending point ticket. The existing transactional member RPC
+  // checks booking ownership, status and version, and preserves unrelated selections.
+  async function cancelPointTicket(bookingId, ticketId) {
+    if (settings?.surface !== 'points') throw new Error('請從集點卡頁面操作。');
+    const id = String(bookingId || '');
+    const ref = String(ticketId || '');
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(id) || !ref || ref.length > 120)
+      throw new Error('預約或票券識別不正確，請重新整理。');
+    if (busy) return false;
+    if (dirty) throw new Error('請先儲存或關閉目前的票券調整表單。');
+    if (!window.confirm('確定取消這張集點卡票券的預約使用？\n預約本身會保留，其他預選票券不受影響，也不會扣除點數。')) return false;
+
+    busy = true;
+    message('正在取消票券預約使用…');
+    let updated = false;
+    try {
+      // Always fetch the current booking and its version, not a stale ticket-card snapshot.
+      const detail = await request('detail', { bookingId: id });
+      const booking = detail?.booking;
+      if (!booking?.editable) throw new Error(booking?.disabledReason || '此預約已不能調整票券。');
+      const selections = Array.isArray(booking.selections) ? booking.selections : [];
+      const selected = selections.some(s => s.kind === 'points' && s.id === ref && s.status === 'pending');
+      if (selected) {
+        const benefits = selections.filter(s =>
+          s.status === 'pending' && ['points', 'event'].includes(s.kind)
+          && !(s.kind === 'points' && s.id === ref)
+        ).map(s => ({ kind: s.kind, id: s.id }));
+        await request('update', {
+          bookingId: id, expectedUpdatedAt: booking.updatedAt,
+          benefits, requestId: newId()
+        });
+        updated = true;
+      }
+      if (editor?.booking?.bookingId === id) {
+        editor = null; draft = null; dirty = false; attempt = null; stale = false;
+        const form = $('bookingSelectionEditor'); if (form) form.hidden = true;
+      }
+      await settings.refresh();
+      message(selected ? '已取消這張票券的預約使用；原預約和其他票券保持不變。' : '這張票券已不在預約選用中，資料已同步。');
+      return true;
+    } catch (error) {
+      const reason = updated
+        ? '票券已取消，但頁面資料同步失敗，請重新整理確認。'
+        : String(error?.message || '取消預約使用失敗，請重新載入後重試。');
+      message(reason, true);
+      throw new Error(reason);
+    } finally {
+      busy = false;
+      if (settings && $('bookingSelectionList')) render(bookings, settings);
+    }
+  }
+
+  window.TicketBookingSelections = Object.freeze({ render, label, cancelPointTicket });
 })();
