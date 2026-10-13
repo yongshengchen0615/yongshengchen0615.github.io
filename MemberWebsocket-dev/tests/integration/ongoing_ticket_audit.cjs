@@ -88,6 +88,16 @@ test('member ticket intent and admin audit use protected PostgreSQL transactions
    assert.equal((await audit('QA:admin',null,'MISSING')).items.length,0);
    await assert.rejects(audit('QA:pending'),/ADMIN_REQUIRED/);await assert.rejects(audit('QA:member'),/ADMIN_REQUIRED/);
   });
+  await t.test('retention clears only records older than one year and preserves member rights',async()=>{
+   const balance=(await one('select stamps from point_balances where member_id=$1',[m])).stamps;
+   await q("insert into audit_logs(audit_id,actor_line_user_id,actor_role,action,target_type,target_id,result,created_at) values('QA-OLD','QA:admin','admin','AUDIT_QUERY_VIEWED','audit_query','QA-OLD','success',now()-interval '366 days')");
+   await q("insert into booking_audit_events(actor_line_user_id,actor_role,action,target_type,target_id,result,created_at) values('QA:member','member','BOOKING_BENEFITS_UPDATED','booking',$1,'success',now()-interval '366 days')",[b]);
+   assert.equal((await one('select maintenance.prune_operation_audit() n')).n,2);
+   assert.equal((await one("select count(*)::int n from audit_logs where audit_id='QA-OLD'")).n,0);
+   assert.ok((await one('select count(*)::int n from booking_audit_events')).n>0);
+   assert.equal((await one('select stamps from point_balances where member_id=$1',[m])).stamps,balance);
+   assert.equal((await one('select count(*)::int n from bookings where id=$1',[b])).n,1);
+  });
   await t.test('browser roles cannot read tables or call privileged RPCs directly',async()=>{
    for(const role of ['anon','authenticated']){await db.exec('set role '+role);await assert.rejects(update([],'BSEL-QA-DENIED01'),/permission denied/);await assert.rejects(audit(),/permission denied/);await assert.rejects(q('select * from booking_benefit_change_requests'),/permission denied/);await db.exec('reset role');}
   });
