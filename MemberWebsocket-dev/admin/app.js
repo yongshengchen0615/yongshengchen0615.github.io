@@ -20,6 +20,7 @@
   let memberPresencePollTimer = null;
   let memberPresencePollPending = false;
   let memberPresencePollQueued = false;
+  let memberPresencePageVersion = 0;
   const memberPresenceObservations = new Map();
   let adminRefreshPromise = null;
   let adminRefreshQueued = false;
@@ -499,6 +500,7 @@
     memberPresencePollPending = true;
     const requestStartedAt = Date.now();
     const requestedKind = state.memberKind;
+    const requestedPageVersion = memberPresencePageVersion;
     const lineUserIds = state.members.map((member) => String(member.lineUserId || '')).filter(Boolean);
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.members.presence.list', {
@@ -506,6 +508,9 @@
       });
       // A malformed response is not evidence that every member went offline.
       if (!result || !Array.isArray(result.members)) throw new Error('會員上線狀態回應不完整。');
+      // A member list loaded after this request is more authoritative.
+      // Never overwrite it with an older in-flight response.
+      if (requestedKind !== state.memberKind || requestedPageVersion !== memberPresencePageVersion) return;
       const byId = new Map(result.members.map((row) => [String(row.lineUserId || ''), row]));
       for (const id of lineUserIds) {
         const presence = byId.get(id);
@@ -517,7 +522,6 @@
           onlineSurfaces: Array.isArray(presence.onlineSurfaces) ? presence.onlineSurfaces.map(String) : [],
         });
       }
-      if (requestedKind !== state.memberKind) return;
       let changed = false;
       state.members = state.members.map((member) => {
         const observation = memberPresenceObservations.get(String(member.lineUserId || ''));
@@ -589,6 +593,8 @@
   function applyAdminBootstrap(result, requestStartedAt) {
     if (state.memberKind === 'real') {
       state.members = mergeNewerPresenceObservations(result.members, requestStartedAt);
+      memberPresencePageVersion++;
+      if (memberPresencePollPending) memberPresencePollQueued = true;
       applyMemberPage(result.memberPage, state.memberPage);
     }
     state.tierSettings = result.tierSettings;
@@ -806,6 +812,7 @@
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.members.list', memberPagePayload(page, query));
       if (requestVersion !== state.memberRequestVersion) return;
       state.members = mergeNewerPresenceObservations(Array.isArray(result.members) ? result.members : [], requestStartedAt);
+      memberPresencePageVersion++;
       applyMemberPage(result.memberPage, state.memberPage);
       renderMembers();
       void refreshMemberPresence().catch(() => {});
