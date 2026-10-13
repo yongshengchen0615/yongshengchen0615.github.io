@@ -3145,7 +3145,7 @@
     const buttons = Array.from(document.querySelectorAll('button')).filter((button) => !qaPanel?.contains(button) && button.id !== LAUNCHER_ID);
     const navigationIds = new Set(['retryButton','logoutButton','joinMemberButton','refreshProfileButton','refreshTicketButton']);
     const patterns = {
-      member: /^(copyMemberCodeButton|showMemberIdentityQr|openMemberFriends|showMemberReferralQr|shareMemberReferral|showFriendQr|copyFriendInviteLink|friendQrScanImage|scanMemberReferralQr|stopMemberReferralQr|uploadMemberReferralQr|refreshFriends|shareFriendLink|confirmFriendRequest|lookupFriend|scanFriendQr|uploadFriendQr|stopFriendQr|edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|copyMemberInviteCode|bindMemberReferral|renewTermsButton)/,
+      member: /^(copyMemberCodeButton|showMemberIdentityQr|openMemberFriends|friendQrScanImage|scanMemberReferralQr|stopMemberReferralQr|uploadMemberReferralQr|refreshFriends|confirmFriendRequest|lookupFriend|scanFriendQr|uploadFriendQr|stopFriendQr|edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|bindMemberReferral|renewTermsButton)/,
       points: /^(retryButton|joinMemberButton|logoutButton|pointTransferButton|pointTransferClose|pointTransferCopyOwnCode|pointTransferLookup|pointTransferSubmit|pointTransferChooseFriend|pointTransferUseFriend|pointTransferScanQr|pointTransferQrImageButton|pointTransferQrClose|pointTransferShowOwnQr|pointTransferFriendCancel)$|qr-scan-dialog-close|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)/,
       event: /^(retryButton|joinMemberButton|logoutButton|closeTicketModal|ticketModalAction|refreshTicketButton)$|ticket-button|event-history-button/,
       calendar: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|todayButton|nextMonthButton|closeCalendarDetailButton)$|calendar-day/,
@@ -3542,25 +3542,25 @@
       ));
     }
 
-    const friendCopy = document.getElementById('copyFriendInviteLink');
-    const rewardCopy = document.getElementById('copyMemberInviteCode');
+    const friendScan = document.getElementById('scanFriendQr');
+    const rewardScan = document.getElementById('scanMemberReferralQr');
     document.getElementById('closeMemberReferral')?.click();
     const closed = Boolean(!modal || await waitFor(() => modal.classList.contains('hidden'), 1000));
     const actual = {
       modal: Boolean(modal),
       validMemberCode,
-      friendCopyControl: Boolean(friendCopy),
-      rewardCopyControl: Boolean(rewardCopy),
+      friendScanControl: Boolean(friendScan),
+      rewardScanControl: Boolean(rewardScan),
       friendSelfRejected,
       rewardSelfRejected,
       closed
     };
     return Object.values(actual).every(Boolean)
-      ? pass('好友與邀請優惠已分流；好友自邀與優惠自綁皆被前端拒絕，兩種複製入口各自存在。', {
+      ? pass('好友與邀請優惠已分流；好友自邀與優惠自綁皆被前端拒絕，兩種掃描入口各自存在。', {
           modal: true,
           validMemberCode: true,
-          friendCopyControl: true,
-          rewardCopyControl: true,
+          friendScanControl: true,
+          rewardScanControl: true,
           friendSelfRejected: true,
           rewardSelfRejected: true,
           closed: true
@@ -3568,8 +3568,8 @@
       : fail('好友／邀請優惠 Browser E2E 契約至少一項不符合預期。', {
           modal: true,
           validMemberCode: true,
-          friendCopyControl: true,
-          rewardCopyControl: true,
+          friendScanControl: true,
+          rewardScanControl: true,
           friendSelfRejected: true,
           rewardSelfRejected: true,
           closed: true

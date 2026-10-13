@@ -288,6 +288,7 @@
           requiresLocation: Boolean(ticket && ticket.requiresLocation),
           redemptionLocations: Array.isArray(ticket?.redemptionLocations) ? ticket.redemptionLocations : [],
           reservedForBooking,
+          bookingSelections: Array.isArray(ticket?.bookingSelections) ? ticket.bookingSelections : [],
           eligibleBookings: Array.isArray(ticket?.eligibleBookings) ? ticket.eligibleBookings : [],
           shortage,
           baseCanUse: Boolean(ticketId) && !reservedForBooking && !expired && active && shortage === 0 && Boolean(ticket?.eligibleBookings?.length),
@@ -509,7 +510,7 @@
         checkbox.type = 'checkbox';
         checkbox.className = 'ticket-overview-check';
         checkbox.dataset.ticketSelect = offer.ticketId;
-        checkbox.checked = isSelected;
+        checkbox.checked = isSelected || offer.reservedForBooking;
         checkbox.disabled = state.busy || !selectable || !offer.ticketId;
         checkbox.setAttribute('aria-label', `${offer.ticketTitle}，${statusText}`);
         const selectText = document.createElement('span');
@@ -520,6 +521,7 @@
         item.append(type, name, description, method);
         const prizeOpportunities = createLotteryPrizeOpportunities(offer);
         if (prizeOpportunities) item.append(prizeOpportunities);
+        for (const context of offer.bookingSelections || []) item.append(Object.assign(document.createElement('p'), {className:'booking-selection-context',textContent:window.TicketBookingSelections?.label(context) || ''}));
         item.append(cost, footer);
         section.append(item);
       });

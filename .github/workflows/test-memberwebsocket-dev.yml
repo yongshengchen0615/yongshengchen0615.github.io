@@ -91,6 +91,8 @@ jobs:
             MemberWebsocket-dev/tests/integration/qa_cleanup_boundaries.cjs \
             MemberWebsocket-dev/tests/integration/member_p2_features.cjs \
             MemberWebsocket-dev/tests/integration/friends_ui.cjs \
+            MemberWebsocket-dev/tests/integration/ongoing_ticket_audit.cjs \
+            MemberWebsocket-dev/tests/integration/ticket_selection_ui.cjs \
             MemberWebsocket-dev/tests/integration/qr_modal_lifecycle.cjs \
             MemberWebsocket-dev/tests/integration/snapshot_location.cjs \
             MemberWebsocket-dev/tests/integration/snapshot_completion_controls.cjs \
@@ -121,6 +123,9 @@ jobs:
         working-directory: MemberWebsocket-dev/tests/browser
       - name: Check E2E refresh and purged-history recovery first
         run: npm test -- e2e-refresh.spec.cjs
+        working-directory: MemberWebsocket-dev/tests/browser
+      - name: Fail fast on ticket selections and shared layouts
+        run: npm test -- ticket-selection.spec.cjs ui-layout.spec.cjs
         working-directory: MemberWebsocket-dev/tests/browser
       - name: Fail fast on mobile member pass and GPS permission retry
         run: |

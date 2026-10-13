@@ -28,6 +28,7 @@ function api() {
   vm.runInContext(stripTypeScriptTypes(fs.readFileSync(path.join(__dirname,'../supabase/functions/_shared/tier-visibility.ts'),'utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')),context);
   const usage=fs.readFileSync(path.join(__dirname,'../supabase/functions/_shared/booking-ticket-usage.ts'),'utf8').replace(/^export /gm,'');
   vm.runInContext(stripTypeScriptTypes(usage),context);
+  vm.runInContext(stripTypeScriptTypes(fs.readFileSync(path.join(__dirname,'../supabase/functions/_shared/booking-selection-context.ts'),'utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')),context);
   vm.runInContext(stripTypeScriptTypes(source), context); return context;
 }
 const member = { id: 'member-A', line_user_id: 'line-A', display_name: 'Fixture', membership_status: 'active', status: 'active', is_test_account: false };
@@ -64,7 +65,7 @@ function database({ rows = {}, errorTable, hold = () => false } = {}) {
         return promise.then(resolve, reject);
       },
     };
-    for (const method of ['order', 'range', 'gte', 'gt', 'or']) q[method] = () => q;
+    for (const method of ['order', 'range', 'gte', 'gt', 'or', 'limit']) q[method] = () => q;
     return q;
   }, rpc(name, args) {
     calls.push({ table: name, args });

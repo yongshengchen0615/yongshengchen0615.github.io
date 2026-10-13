@@ -2,6 +2,7 @@ import { removeMember } from "../_shared/member-removal.ts";
 import { tierVisibility, loadVisibilityPolicy } from "../_shared/tier-visibility.ts";
 import { bookingTicketUsageError, ticketBookingId } from "../_shared/booking-ticket-usage.ts";
 import { loadBookingBenefits } from "../_shared/booking-benefits.ts";
+import { loadMemberBookingSelections, contextsForTicket } from "../_shared/booking-selection-context.ts";
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
@@ -70,6 +71,8 @@ const WRITE_ACTIONS = new Set([
   "user.event.ticket.claim",
   "user.event.ticket.redeem",
   "user.booking.event-ticket.claim",
+  "user.pointcard.booking-selections.update",
+  "user.event.booking-selections.update",
 ]);
 
 class ApiError extends Error {
@@ -126,6 +129,17 @@ function mapDatabaseError(error: unknown): ApiError {
   if (bookingError) return bookingError as ApiError;
   const message = String((error as { message?: string })?.message || "");
   const rules: Array<[string, number, string, string]> = [
+    ["BOOKING_CONFLICT",409,"BOOKING_CONFLICT","預約已被更新，請重新載入票券後再選擇。"],
+    ["BOOKING_NOT_EDITABLE",409,"BOOKING_NOT_EDITABLE","這筆預約已結算或不能修改票券，請更新資料。"],
+    ["BOOKING_BENEFIT_ALREADY_USED",409,"BOOKING_BENEFIT_ALREADY_USED","已核銷的票券不能再增減。"],
+    ["BOOKING_BENEFIT_NOT_AVAILABLE",409,"BOOKING_BENEFIT_NOT_AVAILABLE","其中一張票券已失效，請更新票券資料。"],
+    ["BOOKING_POINT_TICKET_LIMIT_EXCEEDED",409,"BOOKING_POINT_TICKET_LIMIT_EXCEEDED","超過本次集點卡票券使用上限。"],
+    ["BOOKING_EVENT_TICKET_LIMIT_EXCEEDED",409,"BOOKING_EVENT_TICKET_LIMIT_EXCEEDED","超過活動票券每日使用上限。"],
+    ["POINT_TICKET_INSUFFICIENT_POINTS",409,"POINT_TICKET_INSUFFICIENT_POINTS","可用點數不足，請減少選用票券。"],
+    ["booking_benefit_selections_one_pending_ticket_idx",409,"BOOKING_BENEFIT_RESERVED","票券已被另一筆預約選用，請更新資料。"],
+    ["INVALID_BOOKING_BENEFITS",400,"INVALID_BOOKING_BENEFITS","票券選取內容不正確，請重新選擇。"],
+    ["INVALID_AUDIT_QUERY",400,"INVALID_AUDIT_QUERY","查詢日期不可超過一年，請確認篩選條件。"],
+    ["ADMIN_REQUIRED",403,"ADMIN_REQUIRED","您沒有查詢操作稽核的權限。"],
     ["TERMS_CONSENT_REQUIRED",400,"TERMS_CONSENT_REQUIRED","請閱讀並同意會員條款。"],
     ["TERMS_VERSION_STALE",409,"TERMS_VERSION_STALE","會員條款已更新，請重新閱讀並確認。"],
     ["TERMS_UNAVAILABLE",503,"TERMS_UNAVAILABLE","目前尚無有效會員條款。"],
@@ -204,6 +218,8 @@ function presenceActionInfo(action: string): { clientType: ClientType; surface: 
 }
 
 function clientTypeForAction(action: string): ClientType {
+  if (action.startsWith("user.pointcard.booking-selections.")) return "points";
+  if (action.startsWith("user.event.booking-selections.")) return "event";
   const memberSession = /^user\.(member|points|event|calendar|booking)\.session\.(claim|logout|status)$/.exec(action);
   if (memberSession) return memberSession[1] as ClientType;
   if (action === "admin.session.claim" || action === "admin.session.logout") return "admin";
@@ -1029,10 +1045,11 @@ function pointTicketClient(row: any, cardId = "", reservedForBooking = false): J
 }
 
 async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
-  const [profile,{ cards: adminCardRows },bookingOptions] = await Promise.all([
+  const [profile,{ cards: adminCardRows },bookingOptions,bookingSelections] = await Promise.all([
     profileFor(supabase,member),
     adminCards(supabase),
     supabase.rpc("member_ticket_booking_options", { p_member_id: member.id }),
+    loadMemberBookingSelections(supabase, String(member.id)),
   ]);
   if (bookingOptions.error) throw mapDatabaseError(bookingOptions.error);
   const activeCards = adminCardRows.filter((card:any) => card.status === "active");
@@ -1078,7 +1095,7 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   for (const ticket of availableTickets) {
     const cardId = cardIdByUuid.get(ticket.point_card_id) || "";
     const list = ticketByCard.get(cardId) || [];
-    list.push({ ...pointTicketClient(ticket,cardId,reservedPointTicketIds.has(String(ticket.ticket_id || ""))), eligibleBookings: (bookingOptions.data as any)?.points?.[ticket.ticket_id] || [] });
+    list.push({ ...pointTicketClient(ticket,cardId,reservedPointTicketIds.has(String(ticket.ticket_id || ""))), bookingSelections: contextsForTicket(bookingSelections,"points",ticket.ticket_id), eligibleBookings: (bookingOptions.data as any)?.points?.[ticket.ticket_id] || [] });
     ticketByCard.set(cardId,list);
   }
 
@@ -1113,7 +1130,7 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     result: row.result || null,
     occurredAt: row.used_at || row.updated_at,
   }));
-  return { profile, cards, cardDetails, history, historyTotal: history.length };
+  return { profile, cards, cardDetails, history, historyTotal: history.length, bookingSelections };
 }
 
 function eventTicketClient(row: any, claimedCount = 0, admin = false): Json {
@@ -1183,13 +1200,14 @@ async function adminEventTickets(supabase: SupabaseClient): Promise<any[]> {
 }
 
 async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
-  const [profile,{ data: eventRows, error },allHistoryRes,pendingSelectionsRes,bookingOptions] = await Promise.all([
+  const [profile,{ data: eventRows, error },allHistoryRes,pendingSelectionsRes,bookingOptions,bookingSelections] = await Promise.all([
     profileFor(supabase,member),
     supabase.from("event_tickets").select("*").eq("status","active").is("deleted_at",null).order("created_at",{ ascending:false }),
     supabase.from("event_ticket_claims").select("*,event_tickets(*)").eq("member_id",member.id).eq("status","used").order("used_at",{ ascending:false }),
     supabase.from("booking_benefit_selections").select("benefit_ref")
       .eq("member_id",member.id).eq("benefit_kind","event").eq("status","pending"),
     supabase.rpc("member_ticket_booking_options", { p_member_id: member.id }),
+    loadMemberBookingSelections(supabase, String(member.id)),
   ]);
   if (bookingOptions.error) throw mapDatabaseError(bookingOptions.error);
   if (error) throw mapDatabaseError(error);
@@ -1238,6 +1256,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       eligibleBookings: claimRow ? (bookingOptions.data as any)?.event?.[claimRow.claim_id] || [] : [],
       usageDisabledReason: "請先有管理員已確認、尚未完成且符合票券項目條件的預約。",
       reservedForBooking,
+      bookingSelections: claimRow ? contextsForTicket(bookingSelections,"event",claimRow.claim_id) : [],
       soldOut,
       history: false,
     }];
@@ -1260,7 +1279,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     };
     return { ticket, claim: claimClient(row,eventRow.event_ticket_id || row.claim_id), availability:"used", tierEligible:true, canClaim:false, canUse:false, soldOut:false, history:true };
   });
-  return { profile, offers, usedTickets, usedTicketCount: usedTickets.length };
+  return { profile, offers, usedTickets, usedTicketCount: usedTickets.length, bookingSelections };
 }
 
 function calendarClient(row: any): Json {
@@ -2007,6 +2026,37 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
 }
 
 async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string; issuedAtMs?: number }, action: string, body: Json): Promise<Json> {
+  if (/^user\.(pointcard|event)\.booking-selections\.(detail|update)$/.test(action)) {
+    const member = await requireJoinedMember(supabase, identity);
+    const bookingId = requireText(body.bookingId,"預約識別",60);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(bookingId))
+      throw new ApiError(400,"INVALID_BOOKING_ID","預約識別格式不正確。");
+    let change = null;
+    if (action.endsWith(".update")) {
+      const version = asText(body.expectedUpdatedAt,80);
+      if (!version || !Number.isFinite(Date.parse(version))) throw new ApiError(400,"INVALID_BOOKING_VERSION","缺少有效預約版本，請重新載入。");
+      const updated = await supabase.rpc("member_update_booking_benefits_request", {
+        p_line_user_id:identity.lineUserId,p_booking_id:bookingId,
+        p_expected_updated_at:asText(body.expectedUpdatedAt,80) || null,
+        p_request_id:requireText(body.requestId,"操作識別碼",100),p_benefits:body.benefits,
+      });
+      if (updated.error) {
+        const error = mapDatabaseError(updated.error);
+        const failure = await supabase.from("booking_audit_events").insert({
+          actor_line_user_id:identity.lineUserId,actor_role:"member",action:"BOOKING_BENEFITS_UPDATE_FAILED",
+          target_type:"booking",target_id:bookingId,result:"failed",metadata:{errorCode:error.code},
+        });
+        if (failure.error) console.error("selection rejection audit unavailable",failure.error.code);
+        throw error;
+      }
+      change = updated.data;
+    }
+    const bookings = await loadMemberBookingSelections(supabase,String(member.id));
+    const booking = bookings.find(b => b.bookingId === bookingId);
+    if (!booking) throw new ApiError(409,"BOOKING_NOT_EDITABLE","預約已取消或結算，請更新票券資料。");
+    const profile = await profileFor(supabase,member);
+    return { booking, change, options:booking.editable ? await loadBookingBenefits(supabase,member,String(profile.tierKey),taipeiDate(),bookingId) : { items:[] } };
+  }
   // Revalidate a verified member token after login-takeover broadcasts.
   // The shared auth contract checks current token grants before this handler.
   if (/^user\.(member|points|event|calendar|booking)\.session\.status$/.test(action)) {
@@ -2317,6 +2367,20 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
 
   if (!action.startsWith("admin.")) throw new ApiError(404,"ACTION_NOT_FOUND","不支援的 API action。");
   const admin = await authorizeAdmin(supabase,identity);
+  if (action === "admin.audit.query") {
+    const from = asText(body.from,80), to = asText(body.to,80);
+    if (!Number.isFinite(Date.parse(from)) || !Number.isFinite(Date.parse(to)))
+      throw new ApiError(400,"INVALID_AUDIT_QUERY","請選擇有效的查詢日期。");
+    const cursor = body.cursor && typeof body.cursor === "object" ? body.cursor as Json : {};
+    const result = await supabase.rpc("admin_query_operation_audit", {
+      p_actor:identity.lineUserId,p_from:from,p_to:to,p_member_code:asText(body.memberCode,40),
+      p_action:asText(body.eventAction,80),p_result:asText(body.result,20),
+      p_before_time:asText(cursor.createdAt,80)||null,p_before_id:asText(cursor.id,100),
+      p_limit:50,p_request_id:requireText(body.requestId,"查詢識別",100),
+    });
+    if (result.error) throw mapDatabaseError(result.error);
+    return result.data;
+  }
 
   if (action === "admin.bootstrap") {
     // Share only within this authorized request; never cache member data globally.

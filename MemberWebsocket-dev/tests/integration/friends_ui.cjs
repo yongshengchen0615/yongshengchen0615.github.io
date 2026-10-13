@@ -47,7 +47,7 @@ async function page(booking=false,url='https://example.test/member/#friend=BBBB0
   return {dom,w,calls,ready,setFriends:value=>friends=value};
 }
 
-test('friends tab owns add-friend and invite-friend flows; reward UI is a separate tab',async()=>{
+test('friends tab keeps lookup and friend list; removed sharing sections do not affect reward entry',async()=>{
   const {dom,w,calls}=await page();
   try{
     assert.equal(w.document.getElementById('openMemberReferral').textContent,'邀請優惠');
@@ -58,10 +58,10 @@ test('friends tab owns add-friend and invite-friend flows; reward UI is a separa
     assert.equal(w.document.getElementById('friendLookupCode').value,'BBBB000000');
     assert.equal(w.document.getElementById('memberReferralInviteCode').value,'');
     assert.equal(w.document.getElementById('friendAddForm').closest('#memberReferralFriendsTabPanel')!==null,true);
-    assert.equal(w.document.getElementById('friendInviteSection').closest('#memberReferralFriendsTabPanel')!==null,true);
+    assert.equal(w.document.getElementById('friendInviteSection'),null);
     assert.equal(w.document.getElementById('memberReferralForm').closest('#memberReferralRewardTabPanel')!==null,true);
     assert.equal(w.document.getElementById('bindMemberReferral').disabled,true);
-    assert.ok(w.document.getElementById('memberReferralQr'));
+    assert.equal(w.document.getElementById('memberReferralQr'),null);
     assert.ok(w.document.getElementById('scanMemberReferralQr'));
     assert.ok(w.document.getElementById('uploadMemberReferralQr'));
     assert.ok(w.document.getElementById('memberReferralQrScanner'));

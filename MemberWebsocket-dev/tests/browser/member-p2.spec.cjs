@@ -39,7 +39,7 @@ for(const surface of ['booking','event'])for(const [width,theme] of [[320,'light
 test('friend link opens the friends tab; add-friend and reward remain separate',async({page},info)=>{
  await page.goto(base+'/member/#friend=BBBB000000');await expect(page.locator('#memberFriendsModal')).toBeVisible();if(await page.locator('#memberTourDismiss').isVisible())await page.locator('#memberTourDismiss').click();
  await expect(page.locator('#memberFriendsModal')).toBeVisible();await expect(page.locator('#memberReferralFriendsTabPanel')).toBeVisible();await expect(page.locator('#memberReferralRewardTabPanel')).toBeHidden();
- await expect(page.locator('#friendQr')).toBeHidden();await page.locator('#showFriendQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();expect(await page.locator('#qrDisplayPanel canvas').evaluate(c=>c.width)).toBe(256);await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await expect(page.locator('#friendLookupCode')).toHaveValue('BBBB000000');await expect(page.locator('#memberReferralInviteCode')).toHaveValue('');await expect(page.locator('#bindMemberReferral')).toBeDisabled();
+ await expect(page.locator('#friendQr')).toHaveCount(0);await expect(page.locator('#showFriendQr')).toHaveCount(0);await expect(page.locator('#friendLookupCode')).toHaveValue('BBBB000000');await expect(page.locator('#memberReferralInviteCode')).toHaveValue('');await expect(page.locator('#bindMemberReferral')).toBeDisabled();
  expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
  await page.locator('#lookupFriend').click();await expect(page.locator('#friendStatus')).toContainText('查找好友成功：陳○ · CCCC');await expect(page.locator('#confirmFriendRequest')).toBeVisible();await expect(page.locator('#bindMemberReferral')).toBeDisabled();
  await page.locator('#confirmFriendRequest').click();await expect.poll(()=>page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request').length)).toBe(1);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind').length)).toBe(0);
@@ -59,9 +59,9 @@ async function qrPng(page,url){
 
 test('friends tab groups invite-friend, add-friend and friend list without reward controls',async({page})=>{
  await openFriends(page,'friends');
- await expect(page.locator('#friendInviteSection')).toBeVisible();await expect(page.locator('#friendAddForm')).toBeVisible();await expect(page.locator('#friendsPanel')).toBeVisible();
- await expect(page.locator('#memberReferralForm')).toBeHidden();await expect(page.locator('#memberReferralShare')).toBeHidden();
- await expect(page.locator('#friendAddForm').locator('text=加好友')).toBeVisible();await expect(page.locator('#friendInviteSection').locator('text=邀請好友')).toBeVisible();
+ await expect(page.locator('#friendInviteSection')).toHaveCount(0);await expect(page.locator('#friendAddForm')).toBeVisible();await expect(page.locator('#friendsPanel')).toBeVisible();
+ await expect(page.locator('#memberReferralForm')).toBeHidden();await expect(page.locator('#memberReferralShare')).toHaveCount(0);
+ await expect(page.locator('#friendAddForm').locator('text=加好友')).toBeVisible();await expect(page.locator('#scanFriendQr')).toBeVisible();
 });
 
 test('reward tab binds referral independently and never sends a friend request',async({page})=>{
@@ -132,16 +132,13 @@ test('referral QR image prefills the reward workflow and only explicit confirm b
  await expect(page.locator('#memberReferralInviteCode')).toHaveValue('CCCC');expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind'))).toHaveLength(0);await page.locator('#bindMemberReferral').click();await expect(page.locator('#memberReferralStatus')).toContainText('邀請成功');expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.referral.bind'))).toHaveLength(1);expect(await page.evaluate(()=>p2Calls.filter(c=>c.action==='member.friend.request'))).toHaveLength(0);
 });
 
-test('member, friend and reward QR buttons display distinct payloads in closable dialogs',async({page})=>{
+test('member QR remains available while friend and reward sharing sections are removed',async({page})=>{
  await openFriends(page);await page.locator('#closeMemberFriends').click();
  const decode=()=>page.locator('#qrDisplayPanel canvas').evaluate(canvas=>{const c=canvas.getContext('2d');return FriendQRDecode(c.getImageData(0,0,canvas.width,canvas.height).data,canvas.width,canvas.height).data;});
  await page.locator('#showMemberIdentityQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();expect(await decode()).toBe('AAAA');
- await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await expect(page.locator('#showMemberIdentityQr')).toBeFocused();
- await page.locator('#openMemberFriends').click();await expect(page.locator('#memberFriendsModal #memberReferralForm')).toHaveCount(0);
- await page.locator('#showFriendQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();expect(await decode()).toBe(base+'/member/#friend=AAAA');
- await page.keyboard.press('Escape');await expect(page.locator('#showFriendQr')).toBeFocused();await page.locator('#closeMemberFriends').click();
- await page.locator('#openMemberReferral').click();await page.locator('#showMemberReferralQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();expect(await decode()).toBe(base+'/member/#reward=AAAA');
- await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await page.locator('#showMemberReferralQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();await page.keyboard.press('Escape');
+ await page.keyboard.press('Escape');await expect(page.locator('#showMemberIdentityQr')).toBeFocused();
+ await page.locator('#openMemberFriends').click();await expect(page.locator('#friendInviteSection')).toHaveCount(0);await expect(page.locator('#scanFriendQr')).toBeVisible();
+ await page.locator('#closeMemberFriends').click();await page.locator('#openMemberReferral').click();await expect(page.locator('#memberReferralShare')).toHaveCount(0);await expect(page.locator('#scanMemberReferralQr')).toBeVisible();
  expect(await page.evaluate(()=>p2Calls.filter(c=>!c.action.endsWith('list')))).toHaveLength(0);
 });
 

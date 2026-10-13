@@ -193,48 +193,6 @@
     description.className = 'member-referral-description';
     description.textContent = '輸入或掃描被邀請者的會員編號，確認後領取優惠票券。';
 
-    const share = document.createElement('section');
-    share.className = 'member-referral-section';
-    share.id = 'memberReferralShare';
-    const shareTitle = document.createElement('strong');
-    shareTitle.textContent = '出示會員 QR Code';
-    const shareBody = document.createElement('div');
-    shareBody.className = 'friend-sharing';
-    const qr = document.createElement('canvas');
-    qr.id = 'memberReferralQr';
-    qr.className = 'friend-qr';
-    qr.hidden = true;
-    qr.setAttribute('aria-label', '邀請優惠 QR Code');
-    const shareActions = document.createElement('div');
-    shareActions.className = 'friend-link-actions';
-    const shareRow = document.createElement('div');
-    shareRow.className = 'member-referral-code-row';
-    const code = document.createElement('code');
-    code.id = 'memberReferralOwnCode';
-    code.className = 'member-invite-code';
-    code.textContent = '建立中';
-    const copy = document.createElement('button');
-    copy.id = 'copyMemberInviteCode';
-    copy.type = 'button';
-    copy.className = 'button button-refresh';
-    copy.textContent = '複製邀請優惠連結';
-    const shareButton = document.createElement('button');
-    shareButton.id = 'shareMemberReferral';
-    shareButton.type = 'button';
-    shareButton.className = 'button button-refresh';
-    shareButton.textContent = '分享邀請優惠';
-    const showQr = document.createElement('button');
-    showQr.id = 'showMemberReferralQr'; showQr.type = 'button';
-    showQr.className = 'button button-refresh'; showQr.textContent = '顯示 QR Code';
-    showQr.setAttribute('aria-haspopup', 'dialog');
-    showQr.addEventListener('click', () => window.QRDisplayDialog?.show({title: '邀請優惠 QR Code', memberCode: state.profile?.memberCode, value: referralShareUrl(), opener: showQr}));
-    shareRow.append(code, showQr, copy, shareButton);
-    const shareHelp = document.createElement('small');
-    shareHelp.textContent = '將自己的會員編號或 QR Code 出示給邀請者 A，由 A 掃描或輸入。A 確認後獲得 1 張活動票券；同一位被邀請者只能被登記一次。';
-    shareActions.append(shareRow, shareHelp);
-    shareBody.append(qr, shareActions);
-    share.append(shareTitle, shareBody);
-
     const bind = document.createElement('form');
     bind.id = 'memberReferralForm';
     bind.className = 'member-referral-section member-referral-bind';
@@ -310,7 +268,7 @@
     status.setAttribute('aria-live', 'polite');
     bind.append(bindTitle, bindLabel, input, help, scanActions, camera, submit, status);
 
-    dialog.append(heading, description, share, bind);
+    dialog.append(heading, description, bind);
     modal.append(dialog);
     document.body.append(modal);
 
@@ -362,8 +320,6 @@
       submit.disabled = state.binding || !input.value.trim();
       showReferralStatus('');
     });
-    copy.addEventListener('click', () => void copyReferralLink());
-    shareButton.addEventListener('click', () => void shareReferralLink());
 
     if (window.FriendQRScanner?.create) {
       referralScanner = window.FriendQRScanner.create(video, {
@@ -481,20 +437,9 @@
 
   function renderInviteCode(profile) {
     ensureReferralUi();
-    const codeEl = document.getElementById('memberReferralOwnCode');
-    if (!codeEl) return;
     const code = String(profile?.memberCode || '').trim().toUpperCase();
     const identityButton = document.getElementById('showMemberIdentityQr');
     if (identityButton) identityButton.disabled = !code;
-    codeEl.textContent = code ? '會員編號 · ' + code : '建立中';
-    for (const id of ['copyMemberInviteCode', 'shareMemberReferral', 'showMemberReferralQr']) {
-      const button = document.getElementById(id);
-      if (button) button.disabled = !code;
-    }
-
-    const canvas = document.getElementById('memberReferralQr');
-    if (!canvas) return;
-    canvas.hidden = true;
 
   }
 
