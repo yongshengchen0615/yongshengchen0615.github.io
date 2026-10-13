@@ -232,7 +232,7 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
     };
   });
   const submissions=await supabase.from("booking_receipts")
-    .select("receipt_id,booking_id,status,created_at,updated_at,failure_reason,requested_benefits,requested_booking_id,booking_completion_settlements:bookings!booking_receipts_booking_id_fkey(booking_completion_settlements(service_minutes,reward_details),booking_completion_adjustments(after_settlement,created_at,id))")
+    .select("receipt_id,booking_id,status,created_at,updated_at,failure_reason,requested_benefits,requested_booking_id,booking_completion_settlements:bookings!booking_receipts_booking_id_fkey(booking_items(service_id,service_title,unit_duration_minutes,quantity),booking_completion_settlements(service_minutes,reward_details),booking_completion_adjustments(after_settlement,created_at,id))")
     .eq("member_id",member.id).eq("submission_mode","accessible").in("status",["awaiting_review","bound","failed"])
     .order("updated_at",{ascending:false}).limit(10);
   if(submissions.error) throw new ApiError(500,"DATABASE_ERROR","收據登記狀態暫時無法讀取。");
@@ -240,10 +240,22 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
   if(settings.error) throw new ApiError(503,"SNAPSHOT_POLICY_UNAVAILABLE","目前無法確認快照定位政策，請稍後重試。");
   return {snapshotLocationRequired:settings.data.snapshot_location_required===true,
     snapshotLocations:settings.data.snapshot_location_required===true && Array.isArray(settings.data.snapshot_locations)
-      ? settings.data.snapshot_locations : [],bookings,submissions:(submissions.data||[]).map((r:any)=>({receiptId:r.receipt_id,bookingId:r.booking_id,
-    status:r.status,createdAt:r.created_at,updatedAt:r.updated_at,
-    dismissed:r.failure_reason==="admin-dismissed",cancelled:r.failure_reason==="member-cancelled",requestedBenefits:r.requested_benefits||[],requestedBookingId:r.requested_booking_id||"",
-    settlement:effectiveSettlement(r.booking_completion_settlements)}))};
+      ? settings.data.snapshot_locations : [],bookings,submissions:(submissions.data||[]).map((r:any)=>{
+      const booking=Array.isArray(r.booking_completion_settlements)
+        ? r.booking_completion_settlements[0] : r.booking_completion_settlements;
+      const services=(Array.isArray(booking?.booking_items)?booking.booking_items:[])
+        .filter((item:any)=>String(item?.service_id||"")!=="00000000-0000-4000-8000-000000000010")
+        .map((item:any)=>({
+          title:String(item?.service_title||"服務項目"),
+          minutes:Math.max(0,Number(item?.unit_duration_minutes||0)),
+          quantity:Math.max(1,Number(item?.quantity||1)),
+        }));
+      return {receiptId:r.receipt_id,bookingId:r.booking_id,
+        status:r.status,createdAt:r.created_at,updatedAt:r.updated_at,
+        dismissed:r.failure_reason==="admin-dismissed",cancelled:r.failure_reason==="member-cancelled",requestedBenefits:r.requested_benefits||[],requestedBookingId:r.requested_booking_id||"",
+        services:r.status==="bound"?services:[],
+        settlement:effectiveSettlement(r.booking_completion_settlements)};
+    })};
 }
 async function prepare(supabase:SupabaseClient,identity:Identity,member:any,body:Json):Promise<Json>{
   const bookingId=asText(body.bookingId,80);
