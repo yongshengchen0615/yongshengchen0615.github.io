@@ -72,7 +72,14 @@
         window.localStorage.setItem(LOGIN_BROWSER_KEY, key);
       }
       if (!/^[a-f0-9-]{72}$/.test(key)) throw new Error('invalid browser key');
-      mode = Boolean(window.localStorage.getItem(LOGIN_REGISTERED_KEY)) ? 'resume' : 'login';
+      const prior = window.localStorage.getItem(LOGIN_REGISTERED_KEY);
+      if (prior === 'replaced') {
+        const approved = typeof window.confirm === 'function' && window.confirm(
+          '此帳號已在其他裝置登入。是否在目前裝置重新登入，並強制登出另一裝置？'
+        );
+        if (!approved) throw clientError('LOGIN_TAKEOVER_CANCELLED', '已取消重新登入，其他裝置將維持登入。');
+      }
+      mode = !prior || prior === 'replaced' ? 'login' : 'resume';
     } catch (_) {
       throw clientError('AUTH_STORAGE_UNAVAILABLE', '無法安全保存登入連線，請允許此網站使用瀏覽器儲存空間。');
     }
@@ -532,7 +539,14 @@
             const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
             const scope = String(row.scope || '');
             const eventType = String(row.event_type || '');
-            if (scope === 'all' || scope === targetScope) schedule();
+            if ((scope === 'all' || scope === targetScope) && eventType === 'member.login.replaced' && !isTerminatingAccess) {
+              const session = getSession();
+              if (session?.idToken) {
+                void postJson(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api',
+                  config, { action:'user.booking.session.status',clientType:'booking',idToken:session.idToken },
+                  '登入狀態', {write:false}).catch(() => {});
+              }
+            } else if (scope === 'all' || scope === targetScope) schedule();
             if (typeof onBenefitsUpdate === 'function' && ['all', 'member', 'points', 'event', 'calendar'].includes(scope)) {
               onBenefitsUpdate({ scope, eventType });
             }
