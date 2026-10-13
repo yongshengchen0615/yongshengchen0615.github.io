@@ -523,6 +523,31 @@
         if (prizeOpportunities) item.append(prizeOpportunities);
         for (const context of offer.bookingSelections || []) item.append(Object.assign(document.createElement('p'), {className:'booking-selection-context',textContent:window.TicketBookingSelections?.label(context) || ''}));
         item.append(cost, footer);
+        const cancellableReservation = offer.reservedForBooking
+          ? offer.bookingSelections.find(context => context.status === 'pending' && context.editable && context.bookingId)
+          : null;
+        if (cancellableReservation) {
+          const cancelReservation = document.createElement('button');
+          cancelReservation.type = 'button';
+          cancelReservation.className = 'ticket-reservation-cancel';
+          cancelReservation.textContent = '取消預約使用';
+          cancelReservation.disabled = state.busy;
+          cancelReservation.setAttribute('aria-label', `取消「${offer.ticketTitle}」的預約票券選用`);
+          cancelReservation.addEventListener('click', async () => {
+            if (state.busy) return;
+            state.busy = true;
+            render();
+            try {
+              await window.TicketBookingSelections.cancelPointTicket(cancellableReservation.bookingId, offer.ticketId);
+            } catch (error) {
+              overviewError(error?.message || '取消預約使用失敗，請更新後再試。');
+            } finally {
+              state.busy = false;
+              render();
+            }
+          });
+          item.append(cancelReservation);
+        }
         section.append(item);
       });
 
