@@ -451,8 +451,12 @@
     let realtimeTimer = null;
     let loginCheckTimer = null;
     let loginCheckPending = false;
+    let loginCheckQueued = false;
     const validateCurrentLogin = () => {
-      if (disposed || targetScope === 'admin' || isTerminatingAccess || loginCheckPending) return;
+      if (disposed || targetScope === 'admin' || isTerminatingAccess) return;
+      // A takeover event may arrive while a status request is in flight.
+      // Never drop that invalidation just because the previous read was pending.
+      if (loginCheckPending) { loginCheckQueued = true; return; }
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       // Test accounts have an independent revocation lifecycle.
       if (window.TestModeClient?.getSessionToken?.()) return;
@@ -463,6 +467,10 @@
         config, { action:'user.booking.session.status',clientType:'booking',idToken:session.idToken },
         '登入狀態', { write:false }).catch(() => {}).finally(() => {
         loginCheckPending = false;
+        if (loginCheckQueued && !disposed && !isTerminatingAccess) {
+          loginCheckQueued = false;
+          validateCurrentLogin();
+        }
       });
     };
 
