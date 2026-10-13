@@ -118,12 +118,12 @@ test('replaced browser requires user approval before reclaiming a newer login', 
 });
 
 test('session status remains server-authenticated and never opens an admin bypass', () => {
-  assert.match(api, /session\\.\\(claim\\|logout\\|status\\)/);
-  assert.match(api, /return \\{ state:"active" \\}/);
-  assert.match(auth, /if \\(!allowLoginClaim && !canBypassUserRestrictions\\)/);
+  assert.match(api, /session\.\(claim\|logout\|status\)/);
+  assert.match(api, /return \{ state:"active" \}/);
+  assert.match(auth, /if \(!allowLoginClaim && !canBypassUserRestrictions\)/);
   assert.match(auth, /member_login_token_grants/);
-  assert.match(booking, /user\\.booking\\.session\\.status/);
+  assert.match(booking, /user\.booking\.session\.status/);
   assert.match(booking, /targetScope !== 'admin'/);
-  assert.match(member, /member\\.login\\.replaced'\\) verifyCurrentLogin\\(\\)/);
-  assert.match(member, /const approved = typeof window\\.confirm === 'function'/);
+  assert.match(member, /member\.login\.replaced'\) verifyCurrentLogin\(\)/);
+  assert.match(member, /const approved = typeof window\.confirm === 'function'/);
 });
