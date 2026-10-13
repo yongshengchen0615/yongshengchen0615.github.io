@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const sql = fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261013120000_fix_snapshot_event_open_dates.sql'),'utf8');
+const sql = fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261013035417_fix_snapshot_event_open_dates_20261013.sql'),'utf8');
 
 test('open-ended event tickets are valid at snapshot review while expired or future tickets remain invalid',()=>{
   assert.match(sql,/e\.starts_on is null or e\.starts_on<=[^\n]+Asia\/Taipei/);
