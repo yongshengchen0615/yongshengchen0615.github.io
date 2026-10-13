@@ -170,16 +170,10 @@
 
   async function claimBrowserSession(config, surface, idToken) {
     const browserKey = browserLoginKey();
-    const prior = window.localStorage.getItem(LOGIN_REGISTERED_KEY);
-    // A replaced browser cannot silently reclaim the account on page reload.
-    // Require an explicit takeover decision and a fresh server-verified LINE token.
-    if (prior === 'replaced') {
-      const approved = typeof window.confirm === 'function' && window.confirm(
-        '此帳號已在其他裝置登入。是否在目前裝置重新登入，並強制登出另一裝置？'
-      );
-      if (!approved) throw clientError('LOGIN_TAKEOVER_CANCELLED', '已取消重新登入，其他裝置將維持登入。');
-    }
-    const mode = !prior || prior === 'replaced' ? 'login' : 'resume';
+    // Opening a LINE LIFF is a new authenticated login attempt, not a
+    // background resume. The server atomically replaces older browser grants
+    // only when the newly verified ID token was issued later.
+    const mode = 'login';
     const action = surface === 'admin' ? 'admin.session.claim' : 'user.' + surface + '.session.claim';
     await sendRequest(config, surface, idToken, action, { browserKey, mode });
     window.localStorage.setItem(LOGIN_REGISTERED_KEY, '1');
@@ -276,11 +270,9 @@
   }
 
   function currentPresenceIdToken(context) {
-    try {
-      if (context && context.idToken && window.liff && window.liff.isLoggedIn() && typeof window.liff.getIDToken === 'function') {
-        return window.liff.getIDToken() || context.idToken;
-      }
-    } catch (_) {}
+    // LINE may rotate the LIFF ID token during an existing browser session.
+    // Only the token fingerprint claimed at login is granted server-side;
+    // silently substituting a rotated token would falsely revoke this device.
     return String(context && context.idToken || '');
   }
 
@@ -586,14 +578,20 @@
     // Broadcast is only an invalidation hint; authorization is checked by the
     // server for the current user, never inferred from an untrusted event.
     let sessionCheckPending = false;
+    let sessionCheckQueued = false;
     const verifyCurrentLogin = () => {
-      if (clientType === 'admin' || isTerminatingAccess || sessionCheckPending) return;
+      if (clientType === 'admin' || isTerminatingAccess) return;
+      if (sessionCheckPending) { sessionCheckQueued = true; return; }
       const active = sessions.get(clientType);
       if (!active || !active.idToken) return;
       sessionCheckPending = true;
       void sendRequest(active.config, clientType, active.idToken,
         'user.' + clientType + '.session.status', {}).catch(() => {}).finally(() => {
         sessionCheckPending = false;
+        if (sessionCheckQueued && !isTerminatingAccess) {
+          sessionCheckQueued = false;
+          verifyCurrentLogin();
+        }
       });
     };
     const client = realtimeClientFor(config);
@@ -605,6 +603,7 @@
       const refresh = () => {
         if (disposed || pending || document.visibilityState === 'hidden' ||
           (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+        verifyCurrentLogin();
         pending = true;
         Promise.resolve().then(() => onUpdate({
           clientType, eventTypes: [], reasons: ['periodic-reconcile']
@@ -707,7 +706,10 @@
     // implement setTimeout and should not count the independent reconciliation clock.
     if (typeof window.setInterval === 'function') {
       safetySyncTimer = window.setInterval(() => {
-        if (!disposed) schedule(0, { reason: 'periodic-reconcile' });
+        if (!disposed && !isPaused()) {
+          verifyCurrentLogin();
+          schedule(0, { reason: 'periodic-reconcile' });
+        }
       }, SAFETY_SYNC_MS);
     }
     document.addEventListener('visibilitychange', onVisibilityChange);
