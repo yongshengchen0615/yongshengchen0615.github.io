@@ -170,7 +170,16 @@
 
   async function claimBrowserSession(config, surface, idToken) {
     const browserKey = browserLoginKey();
-    const mode = Boolean(window.localStorage.getItem(LOGIN_REGISTERED_KEY)) ? 'resume' : 'login';
+    const prior = window.localStorage.getItem(LOGIN_REGISTERED_KEY);
+    // A replaced browser cannot silently reclaim the account on page reload.
+    // Require an explicit takeover decision and a fresh server-verified LINE token.
+    if (prior === 'replaced') {
+      const approved = typeof window.confirm === 'function' && window.confirm(
+        '此帳號已在其他裝置登入。是否在目前裝置重新登入，並強制登出另一裝置？'
+      );
+      if (!approved) throw clientError('LOGIN_TAKEOVER_CANCELLED', '已取消重新登入，其他裝置將維持登入。');
+    }
+    const mode = !prior || prior === 'replaced' ? 'login' : 'resume';
     const action = surface === 'admin' ? 'admin.session.claim' : 'user.' + surface + '.session.claim';
     await sendRequest(config, surface, idToken, action, { browserKey, mode });
     window.localStorage.setItem(LOGIN_REGISTERED_KEY, '1');
@@ -574,6 +583,19 @@
     if (config.realtimeEnabled === false || typeof onUpdate !== 'function') return () => {};
     const existing = realtimeSubscriptions.get(clientType);
     if (existing) return existing.unsubscribe;
+    // Broadcast is only an invalidation hint; authorization is checked by the
+    // server for the current user, never inferred from an untrusted event.
+    let sessionCheckPending = false;
+    const verifyCurrentLogin = () => {
+      if (clientType === 'admin' || isTerminatingAccess || sessionCheckPending) return;
+      const active = sessions.get(clientType);
+      if (!active || !active.idToken) return;
+      sessionCheckPending = true;
+      void sendRequest(active.config, clientType, active.idToken,
+        'user.' + clientType + '.session.status', {}).catch(() => {}).finally(() => {
+        sessionCheckPending = false;
+      });
+    };
     const client = realtimeClientFor(config);
     if (!client) {
       // When the Realtime SDK/CDN is unavailable, keep member data synchronized
@@ -665,10 +687,19 @@
       });
     };
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') schedule(0, { reason: 'visibility' });
+      if (document.visibilityState === 'visible') {
+        verifyCurrentLogin();
+        schedule(0, { reason: 'visibility' });
+      }
     };
-    const onPageShow = (event) => schedule(0, { reason: event && event.persisted ? 'bfcache' : 'pageshow' });
-    const onOnline = () => schedule(0, { reason: 'online' });
+    const onPageShow = (event) => {
+      verifyCurrentLogin();
+      schedule(0, { reason: event && event.persisted ? 'bfcache' : 'pageshow' });
+    };
+    const onOnline = () => {
+      verifyCurrentLogin();
+      schedule(0, { reason: 'online' });
+    };
     // Safety net for lost Realtime messages or a disconnected mobile WebSocket.
     // It refreshes only while the application is visible; background LIFF tabs do
     // not poll. The normal Realtime path still invalidates immediately.
@@ -691,7 +722,8 @@
         if (scope !== 'all' && scope !== clientType) return;
         const eventType = String(row.event_type || '');
         emitRealtimeEvent('member-system:realtime-invalidation', { clientType, scope, eventType });
-        schedule(650, { reason: 'realtime', eventType });
+        if (eventType === 'member.login.replaced') verifyCurrentLogin();
+        else schedule(650, { reason: 'realtime', eventType });
       })
       .subscribe((status) => {
         const nextStatus = String(status || '');
@@ -702,8 +734,10 @@
           schedule(0, { reason: 'realtime-disconnected' });
           return;
         }
-        if (subscribedOnce) schedule(0, { reason: 'reconnect' });
-        else subscribedOnce = true;
+        if (subscribedOnce) {
+          verifyCurrentLogin();
+          schedule(0, { reason: 'reconnect' });
+        } else subscribedOnce = true;
       });
 
     const unsubscribe = () => {
