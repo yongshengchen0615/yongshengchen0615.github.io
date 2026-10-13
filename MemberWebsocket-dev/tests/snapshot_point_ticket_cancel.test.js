@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, '..');
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
 
 test('pending snapshot cancellation mutates only receipt intent and location proof', () => {
-  const sql = read('supabase/migrations/20261013182500_member_cancel_snapshot_point_ticket.sql');
+  const sql = read('supabase/migrations/20261013102334_member_cancel_snapshot_point_ticket.sql');
   assert.match(sql, /security invoker/i);
   assert.match(sql, /for update/i);
   assert.match(sql, /member_id = v_member_id/i);
