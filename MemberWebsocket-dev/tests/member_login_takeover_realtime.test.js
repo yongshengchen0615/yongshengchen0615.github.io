@@ -104,17 +104,21 @@ test('single-login takeover: old identity is revalidated immediately after a suc
   assert.equal(second.calls.some(x => x[0] === 'liff.closeWindow'), false);
 });
 
-test('replaced browser requires user approval before reclaiming a newer login', async () => {
+test('new LIFF login silently replaces an old browser without user-facing takeover confirmation', async () => {
   const local = new Map([['member-login-registered-v1','replaced']]);
-  const server = request => ({ data: { state:request.mode === 'login' ? 'replaced' : 'resumed' } });
-  const denied = harness(server, local, { token:'fresh-A', approve:false });
-  await assert.rejects(denied.window.MemberSystem.signIn(config,'member'), { code:'LOGIN_TAKEOVER_CANCELLED' });
-  assert.equal(denied.calls.some(x => x[1] === 'user.member.session.claim'), false);
-  assert.equal(local.get('member-login-registered-v1'), 'replaced');
-  const approved = harness(server, local, { token:'fresh-B', approve:true });
-  await approved.window.MemberSystem.signIn(config,'member');
-  assert.ok(approved.calls.some(x => x[1] === 'user.member.session.claim' && x[2] === 'login'));
+  const server = request => ({ data: { state: request.mode === 'login' ? 'replaced' : 'resumed' } });
+  const next = harness(server, local, { token:'fresh-new-token', approve:false });
+  await next.window.MemberSystem.signIn(config,'member');
+  assert.ok(next.calls.some(x => x[1] === 'user.member.session.claim' && x[2] === 'login'));
+  assert.equal(next.calls.some(x => x[0] === 'confirm'), false);
   assert.equal(local.get('member-login-registered-v1'), '1');
+});
+
+test('a previously registered browser makes a fresh server-verified login claim instead of a denied resume', async () => {
+  const local = new Map([['member-login-registered-v1','1']]);
+  const next = harness(() => ({data:{ state:'replaced' }}), local, { token:'other-device-new-token' });
+  await next.window.MemberSystem.signIn(config,'points');
+  assert.ok(next.calls.some(x => x[1] === 'user.points.session.claim' && x[2] === 'login'));
 });
 
 test('session status remains server-authenticated and never opens an admin bypass', () => {
@@ -125,5 +129,6 @@ test('session status remains server-authenticated and never opens an admin bypas
   assert.match(booking, /user\.booking\.session\.status/);
   assert.match(booking, /targetScope !== 'admin'/);
   assert.match(member, /member\.login\.replaced'\) verifyCurrentLogin\(\)/);
-  assert.match(member, /const approved = typeof window\.confirm === 'function'/);
+  assert.doesNotMatch(member, /window\\.confirm\\(/);
+  assert.match(member, /const mode = 'login'/);
 });
