@@ -84,7 +84,7 @@ test('cancelling a snapshot preserves the booking reservation and sends the corr
   p.buttons()[1].click();
   await tick();
   assert.equal(p.bookings.length,0);
-  assert.deepEqual(p.requests,[{surface:'points',action:'user.pointcard.snapshot-ticket.cancel',body:{
+  assert.deepEqual(JSON.parse(JSON.stringify(p.requests)),[{surface:'points',action:'user.pointcard.snapshot-ticket.cancel',body:{
    receiptId:p.receiptId,ticketId:p.ticketId,expectedUpdatedAt:'2026-10-13T10:00:00Z'
   }}]);
   assert.deepEqual(p.labels(),['取消預約使用']);
