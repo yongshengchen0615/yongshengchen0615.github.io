@@ -4,7 +4,7 @@ const root=path.resolve(__dirname,'../..');
 test('member ticket intent and admin audit use protected PostgreSQL transactions',async t=>{
  const db=await load(); const q=async(sql,args=[]) => (await db.query(sql,args)).rows; const one=async(sql,args=[]) => (await q(sql,args))[0];
  try{
-  for(const name of ['20261006023020_booking_ticket_usage_consistency.sql','20261002210000_booking_point_reservation_balance.sql','20261012100000_snapshot_mode_ticket_geofence_proof.sql','20261012133000_booking_selection_without_gps.sql','20261013040758_member_booking_selections_and_audit_query.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8'));
+  for(const name of ['20261006023020_booking_ticket_usage_consistency.sql','20261002210000_booking_point_reservation_balance.sql','20261012100000_snapshot_mode_ticket_geofence_proof.sql','20261012133000_booking_selection_without_gps.sql','20261013043627_member_booking_selections_and_audit_query.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8'));
   await db.exec('select maintenance.ensure_required_system_baseline();select maintenance.ensure_event_ticket_settings_baseline();');
   await db.exec("insert into admins(line_user_id,role,status) values('QA:admin','admin','active'),('QA:pending','none','pending');");
   const m=(await one("insert into members(line_user_id,member_code,status,membership_status,is_test_account) values('QA:member','QA-MEMBER','active','active',true) returning id")).id;

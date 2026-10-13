@@ -39,7 +39,7 @@
 ## 部署與回退
 
 1. CI 執行 regression、DOM／PostgreSQL integration、Chromium E2E、browser syntax、Edge typecheck。
-2. 套用 `20261013040758_member_booking_selections_and_audit_query.sql`，部署更新的 api（使用相同 LINE 自訂認證，verify_jwt=false）。
+2. 套用 `20261013043627_member_booking_selections_and_audit_query.sql`，部署更新的 api（使用相同 LINE 自訂認證，verify_jwt=false）。
 3. 合併 main，確認 GitHub Pages 及 Edge health、RPC 權限、實際 DB 版本、保留工作與日誌。
 4. 若需回退 UI/API，還原本 PR 程式碼；新增 table/RPC 相容保留，不刪預選或稽核。若需停止保留清除，可用 `cron.unschedule('operation-audit-retention')`。保留期已清除的超期資料不能以程式碼回退恢復。
 
