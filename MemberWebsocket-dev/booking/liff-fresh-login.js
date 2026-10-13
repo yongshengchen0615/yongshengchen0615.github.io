@@ -73,12 +73,10 @@
     } else {
       idToken = await freshBookingSignIn(config);
     }
-    if (idToken && !(window.TestModeClient?.getSessionToken?.())) {
-      await window.BookingSystem.claimBrowserSession(config, 'booking', idToken);
-    }
-    if (typeof window.BookingSystem.startPresence === 'function') {
-      await window.BookingSystem.startPresence(config, 'booking', idToken);
-    }
-    return idToken;
+    // Use the same authenticated completion as BookingSystem.signIn().
+    // In particular this must register the claimed token for getSession();
+    // the receipt/snapshot code must not mistake a valid login for a
+    // closed Presence connection. Test-mode sessions may have no LINE token.
+    return await window.BookingSystem.completeSignIn(config, 'booking', idToken);
   };
 })();
