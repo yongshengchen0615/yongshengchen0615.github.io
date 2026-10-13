@@ -7,3 +7,9 @@
 .booking-selection-context{font-size:.85rem;line-height:1.5;color:var(--theme-text-secondary,#536858);overflow-wrap:anywhere}
 .booking-selection-panel .is-error{color:var(--theme-danger,#b3261e)}
 @media(max-width:560px){.booking-selection-panel{padding:16px}.booking-selection-row{align-items:flex-start;flex-direction:column}.booking-selection-controls button{flex:1 1 130px}}
+
+/* Member point-ticket reservation release action. Never style it like redemption. */
+.member-ticket .ticket-reservation-cancel{justify-self:start;min-height:40px;padding:8px 14px;border:1px solid var(--theme-border,#c5cfc8);border-radius:10px;background:var(--theme-surface-raised,#fff);color:var(--theme-text,#26332c);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.member-ticket .ticket-reservation-cancel:hover:not(:disabled){border-color:var(--theme-accent,#2e6142);background:var(--theme-surface,#f4f7f3)}
+.member-ticket .ticket-reservation-cancel:focus-visible{outline:3px solid var(--theme-accent,#2e6142);outline-offset:2px}
+.member-ticket .ticket-reservation-cancel:disabled{opacity:.55;cursor:not-allowed}
