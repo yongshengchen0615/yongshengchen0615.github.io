@@ -261,11 +261,13 @@
         if (ticketId) matchedTicketIds.add(ticketId);
 
         const reservedForBooking = Boolean(ticket && ticket.reservedForBooking);
+        const pendingSnapshot = ticket?.pendingSnapshot || null;
         const shortage = Math.max(0, thresholdStamps - cardStamps);
         const expired = Boolean(card.expired);
         const active = String(card.status || 'active') === 'active';
         let statusText = '可勾選使用';
         if (reservedForBooking) statusText = '已預約使用';
+        else if (pendingSnapshot) statusText = '快照待審核';
         else if (expired) statusText = '集點卡已超過使用期限';
         else if (!active) statusText = '集點卡目前未開放使用';
         else if (shortage > 0) statusText = `點數不足，還差 ${shortage} 點`;
@@ -288,10 +290,11 @@
           requiresLocation: Boolean(ticket && ticket.requiresLocation),
           redemptionLocations: Array.isArray(ticket?.redemptionLocations) ? ticket.redemptionLocations : [],
           reservedForBooking,
+          pendingSnapshot,
           bookingSelections: Array.isArray(ticket?.bookingSelections) ? ticket.bookingSelections : [],
           eligibleBookings: Array.isArray(ticket?.eligibleBookings) ? ticket.eligibleBookings : [],
           shortage,
-          baseCanUse: Boolean(ticketId) && !reservedForBooking && !expired && active && shortage === 0 && Boolean(ticket?.eligibleBookings?.length),
+          baseCanUse: Boolean(ticketId) && !reservedForBooking && !pendingSnapshot && !expired && active && shortage === 0 && Boolean(ticket?.eligibleBookings?.length),
           statusText
         };
       });
@@ -479,7 +482,7 @@
         }
 
         const item = document.createElement('article');
-        item.className = `member-ticket ui-ticket${offer.baseCanUse ? ' is-ready' : ' locked'}${offer.reservedForBooking ? ' is-reserved' : ''}${isSelected ? ' is-selected' : ''}`;
+        item.className = `member-ticket ui-ticket${offer.baseCanUse ? ' is-ready' : ' locked'}${offer.reservedForBooking || offer.pendingSnapshot ? ' is-reserved' : ''}${isSelected ? ' is-selected' : ''}`;
         item.dataset.cardStyle = safeCardStyle(offer.cardStyleKey);
 
         const type = document.createElement('span');
@@ -514,7 +517,7 @@
         checkbox.disabled = state.busy || !selectable || !offer.ticketId;
         checkbox.setAttribute('aria-label', `${offer.ticketTitle}，${statusText}`);
         const selectText = document.createElement('span');
-        selectText.textContent = offer.reservedForBooking ? '已預約使用' : isSelected ? '已選' : '選擇';
+        selectText.textContent = offer.reservedForBooking ? '已預約使用' : offer.pendingSnapshot ? '快照待審核' : isSelected ? '已選' : '選擇';
         selectWrap.append(checkbox, selectText);
         footer.append(status, selectWrap);
 
@@ -547,6 +550,38 @@
             }
           });
           item.append(cancelReservation);
+        }
+        if (offer.pendingSnapshot && !offer.reservedForBooking) {
+          const cancelSnapshot = document.createElement('button');
+          cancelSnapshot.type = 'button';
+          cancelSnapshot.className = 'ticket-reservation-cancel';
+          cancelSnapshot.textContent = '取消快照票券';
+          cancelSnapshot.disabled = state.busy;
+          cancelSnapshot.setAttribute('aria-label', `取消「${offer.ticketTitle}」的快照待審核票券`);
+          cancelSnapshot.addEventListener('click', async () => {
+            if (state.busy) return;
+            if (!window.confirm(`確定取消「${offer.ticketTitle}」的快照票券使用意願？收據與其他待審核票券仍會保留。`)) return;
+            state.busy = true;
+            render();
+            try {
+              await window.MemberSystem.request(
+                state.config, 'points', state.idToken,
+                'user.pointcard.snapshot-ticket.cancel', {
+                  receiptId: offer.pendingSnapshot.receiptId,
+                  ticketId: offer.ticketId,
+                  expectedUpdatedAt: offer.pendingSnapshot.updatedAt
+                }
+              );
+              await state.refreshData();
+              overviewError('已取消這張快照票券；收據及其他待審核票券保留。');
+            } catch (error) {
+              overviewError(error?.message || '無法取消快照票券，請更新資料後再試。');
+            } finally {
+              state.busy = false;
+              render();
+            }
+          });
+          item.append(cancelSnapshot);
         }
         section.append(item);
       });
