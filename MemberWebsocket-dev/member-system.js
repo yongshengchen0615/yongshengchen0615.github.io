@@ -578,14 +578,20 @@
     // Broadcast is only an invalidation hint; authorization is checked by the
     // server for the current user, never inferred from an untrusted event.
     let sessionCheckPending = false;
+    let sessionCheckQueued = false;
     const verifyCurrentLogin = () => {
-      if (clientType === 'admin' || isTerminatingAccess || sessionCheckPending) return;
+      if (clientType === 'admin' || isTerminatingAccess) return;
+      if (sessionCheckPending) { sessionCheckQueued = true; return; }
       const active = sessions.get(clientType);
       if (!active || !active.idToken) return;
       sessionCheckPending = true;
       void sendRequest(active.config, clientType, active.idToken,
         'user.' + clientType + '.session.status', {}).catch(() => {}).finally(() => {
         sessionCheckPending = false;
+        if (sessionCheckQueued && !isTerminatingAccess) {
+          sessionCheckQueued = false;
+          verifyCurrentLogin();
+        }
       });
     };
     const client = realtimeClientFor(config);
