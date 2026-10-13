@@ -55,10 +55,26 @@
     }
     const idToken = window.liff.getIDToken();
     if (!idToken) throw clientError('LIFF_ID_TOKEN_MISSING', '無法取得 LINE 登入憑證，請重新登入。');
-    if (!(window.TestModeClient?.getSessionToken?.()) && !isAdmin) await claimBrowserSession(config, clientType, idToken);
-    if (!isAdmin) authenticatedSession = { config, idToken: String(idToken) };
-    if (!isAdmin) await startPresence(config, clientType, idToken);
-    return idToken;
+    return await completeSignIn(config, clientType, idToken);
+  }
+
+  // Shared completion for standard signIn() and booking/liff-fresh-login.js.
+  // Claim first, then bind the exact granted token for booking receipts,
+  // snapshot geofences, and resumed WebViews; never infer authentication
+  // from Presence, which intentionally ends when LINE is backgrounded.
+  async function completeSignIn(config, clientType, idToken) {
+    if (clientType === 'admin') return idToken;
+    if (clientType !== 'booking' && clientType !== 'member') {
+      throw clientError('CLIENT_TYPE_MISMATCH', '登入頁面類型不正確。');
+    }
+    if (isTerminatingAccess) throw clientError('SESSION_REVOKED', '連線已結束，請重新登入。');
+    const token = String(idToken || '');
+    const isTestSession = Boolean(window.TestModeClient?.getSessionToken?.());
+    if (!token && !isTestSession) throw clientError('AUTH_REQUIRED', '無法取得 LINE 登入憑證，請重新登入。');
+    if (!isTestSession) await claimBrowserSession(config, clientType, token);
+    authenticatedSession = { config, idToken: token };
+    if (clientType === 'booking') await startPresence(config, clientType, token);
+    return token;
   }
 
   const LOGIN_BROWSER_KEY = 'member-login-browser-v1';
@@ -719,5 +735,5 @@
     return { config: authenticatedSession.config, idToken: authenticatedSession.idToken };
   }
 
-  window.BookingSystem = { loadConfig, signIn, startPresence, claimBrowserSession, getSession, request, memberProfile, bookingBenefits, claimEventTicket, sendMemberChatMessage, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
+  window.BookingSystem = { loadConfig, signIn, completeSignIn, startPresence, claimBrowserSession, getSession, request, memberProfile, bookingBenefits, claimEventTicket, sendMemberChatMessage, subscribeRealtime, openMemberJoin, logout, showNotice, formatDate, addDays, clientError };
 })();
