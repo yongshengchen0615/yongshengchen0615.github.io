@@ -60,7 +60,7 @@ test('event cancellation updates only the chosen pending event ticket and keeps 
 });
 
 test('event snapshot endpoint restricts receipt ownership and updates only event benefit', () => {
-  const sql = read('supabase/migrations/20261014091000_member_cancel_snapshot_event_ticket.sql');
+  const sql = read('supabase/migrations/20261014011701_member_cancel_snapshot_event_ticket.sql');
   for (const re of [/security invoker/i, /member_id = v_member_id/, /submission_mode = 'accessible'/,
     /status <> 'awaiting_review'/, /updated_at is distinct from p_expected_updated_at/,
     /entry\.item->>'kind' = 'event' and entry\.item->>'id' = p_ticket_id/,
