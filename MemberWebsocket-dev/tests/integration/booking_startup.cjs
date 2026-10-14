@@ -83,7 +83,7 @@ async function fixture(mode) {
     const bookingCard = el('bookingList').querySelector('.booking-item[data-booking-id]');
     assert.ok(bookingCard, 'Booking history card should render');
     assert.equal(bookingCard.querySelector('details.member-booking-details'), null, 'Booking history should not contain a second details toggle');
-    assert.match(bookingCard.querySelector('.booking-service-items')?.textContent || '', /腳底40/, 'Service details remain in the card');
+    assert.match(bookingCard.querySelector('.booking-service-items, .group-history-summary')?.textContent || '', /腳底40/, 'Service details remain in individual or group booking cards');
     const bookingHeader = bookingCard.querySelector(':scope > .booking-item-top');
     assert.equal(bookingHeader?.getAttribute('aria-expanded'), 'false');
     bookingHeader.click();
