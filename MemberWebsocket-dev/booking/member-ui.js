@@ -8,13 +8,15 @@
   const originalRequest = window.BookingSystem.request.bind(window.BookingSystem);
   const originalConfirm = window.confirm.bind(window);
   const BOOKING_GROUPS = [
-    { key: 'reserved', title: '已預約服務', description: '等待確認、已確認與取消待確認的預約服務。' },
-    { key: 'completed', title: '已完成的服務', description: '已由管理端確認完成的服務紀錄。' },
-    { key: 'no_show', title: '無故未到', description: '管理端已標記為無故未到的預約紀錄。' },
-    { key: 'cancelled', title: '已取消的服務', description: '已由管理端確認取消或未通過的預約服務。' },
+    { key: 'reserved', title: '已預約服務', tabTitle: '已預約', description: '等待確認、已確認與取消待確認的預約服務。' },
+    { key: 'completed', title: '已完成的服務', tabTitle: '已完成', description: '已由管理端確認完成的服務紀錄。' },
+    { key: 'cancelled', title: '已取消的服務', tabTitle: '已取消', description: '已由管理端確認取消或未通過的預約服務。' },
+    { key: 'no_show', title: '無故未到', tabTitle: '無故未到', description: '由管理端標記為無故未到的預約紀錄。' },
   ];
   let lastProfile = null;
   let expandedBookingId = '';
+  let activeBookingGroup = 'reserved';
+  let bookingGroupManuallySelected = false;
 
   function membershipRequiredError() {
     if (typeof window.BookingSystem.clientError === 'function') {
@@ -135,8 +137,8 @@
   }
 
   function bookingGroupKey(item) {
-    if (item.classList.contains('status-completed')) return 'completed';
     if (item.classList.contains('status-no_show')) return 'no_show';
+    if (item.classList.contains('status-completed')) return 'completed';
     if (item.classList.contains('status-cancelled') || item.classList.contains('status-rejected')) return 'cancelled';
     return 'reserved';
   }
@@ -144,23 +146,15 @@
   function createBookingGroup(group, items) {
     const section = document.createElement('section');
     section.className = `booking-service-group booking-service-group-${group.key}`;
+    section.id = `bookingHistoryPanel-${group.key}`;
     section.dataset.bookingServiceGroup = group.key;
-    section.setAttribute('aria-labelledby', `bookingServiceGroupTitle-${group.key}`);
+    section.setAttribute('role', 'tabpanel');
+    section.setAttribute('aria-labelledby', `bookingHistoryTab-${group.key}`);
+    section.tabIndex = 0;
 
-    const heading = document.createElement('div');
-    heading.className = 'booking-service-group-heading';
-    const text = document.createElement('div');
-    const title = document.createElement('h3');
-    title.id = `bookingServiceGroupTitle-${group.key}`;
-    title.textContent = group.title;
     const description = document.createElement('p');
+    description.className = 'booking-history-panel-description';
     description.textContent = group.description;
-    const count = document.createElement('span');
-    count.className = 'booking-service-group-count';
-    count.textContent = `${items.length} 筆`;
-    text.append(title, description);
-    heading.append(text, count);
-
     const list = document.createElement('div');
     list.className = 'booking-service-group-list';
     if (items.length) {
@@ -168,18 +162,83 @@
     } else {
       const empty = document.createElement('div');
       empty.className = 'booking-service-group-empty';
-      empty.textContent = group.key === 'reserved'
-        ? '目前沒有已預約服務'
-        : group.key === 'completed'
-          ? '目前沒有已完成的服務'
-          : group.key === 'no_show'
-            ? '目前沒有無故未到的紀錄'
-            : '目前沒有已取消的服務';
+      empty.textContent = group.key === 'no_show' ? '目前沒有無故未到的紀錄' : `目前沒有${group.title}`;
       list.appendChild(empty);
     }
-
-    section.append(heading, list);
+    section.append(description, list);
     return section;
+  }
+
+  function createBookingTabs(grouped) {
+    const tabs = document.createElement('div');
+    tabs.className = 'booking-history-tabs';
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', '我的預約狀態');
+    BOOKING_GROUPS.forEach((group) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'booking-history-tab';
+      button.id = `bookingHistoryTab-${group.key}`;
+      button.dataset.bookingTab = group.key;
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-controls', `bookingHistoryPanel-${group.key}`);
+      const count = grouped.get(group.key).length;
+      button.setAttribute('aria-label', `${group.title}，共 ${count} 筆`);
+      const label = document.createElement('span');
+      label.className = 'booking-history-tab-label';
+      label.textContent = group.tabTitle;
+      const badge = document.createElement('span');
+      badge.className = 'booking-history-tab-count';
+      badge.textContent = `${count} 筆`;
+      button.append(label, badge);
+      tabs.appendChild(button);
+    });
+    return tabs;
+  }
+
+  function activateBookingGroup(bookingList, key, focusTab = false) {
+    if (!BOOKING_GROUPS.some((group) => group.key === key)) return;
+    activeBookingGroup = key;
+    BOOKING_GROUPS.forEach((group) => {
+      const selected = group.key === key;
+      const tab = bookingList.querySelector(`#bookingHistoryTab-${group.key}`);
+      const panel = bookingList.querySelector(`#bookingHistoryPanel-${group.key}`);
+      if (tab) {
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        tab.classList.toggle('is-active', selected);
+        if (selected && focusTab) tab.focus();
+      }
+      if (panel) {
+        panel.hidden = !selected;
+        panel.classList.toggle('hidden', !selected);
+      }
+    });
+  }
+
+  function handleBookingTabClick(event) {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest('[role="tab"][data-booking-tab]');
+    const bookingList = button?.closest('#bookingList');
+    if (!bookingList) return;
+    bookingGroupManuallySelected = true;
+    activateBookingGroup(bookingList, button.dataset.bookingTab);
+  }
+
+  function handleBookingTabKeydown(event) {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest('[role="tab"][data-booking-tab]');
+    const bookingList = button?.closest('#bookingList');
+    if (!bookingList) return;
+    const index = BOOKING_GROUPS.findIndex((group) => group.key === button.dataset.bookingTab);
+    if (index < 0) return;
+    event.preventDefault();
+    const nextIndex = event.key === 'Home' ? 0
+      : event.key === 'End' ? BOOKING_GROUPS.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + BOOKING_GROUPS.length) % BOOKING_GROUPS.length;
+    bookingGroupManuallySelected = true;
+    activateBookingGroup(bookingList, BOOKING_GROUPS[nextIndex].key, true);
   }
 
   function bookingCardId(card) {
@@ -249,14 +308,26 @@
     normalizeBookingUi(bookingList);
 
     const directItems = [...bookingList.children].filter((node) => node.classList?.contains('booking-item'));
-    if (!directItems.length) {
+    // Repeated calls must not replace already grouped cards with empty tab panels.
+    if (!directItems.length && [...bookingList.children].some((node) => node.classList?.contains('booking-history-tabs'))) {
       syncBookingAccordionState(bookingList);
       return;
     }
-
     const grouped = new Map(BOOKING_GROUPS.map((group) => [group.key, []]));
     directItems.forEach((item) => grouped.get(bookingGroupKey(item)).push(item));
-    bookingList.replaceChildren(...BOOKING_GROUPS.map((group) => createBookingGroup(group, grouped.get(group.key))));
+
+    // A booking-specific deep link opens its matching tab on initial load.
+    if (!bookingGroupManuallySelected) {
+      const target = directItems.find((item) => item.classList.contains('booking-detail-target'));
+      if (target) activeBookingGroup = bookingGroupKey(target);
+    }
+
+    bookingList.replaceChildren(
+      createBookingTabs(grouped),
+      ...BOOKING_GROUPS.map((group) => createBookingGroup(group, grouped.get(group.key))),
+    );
+    document.getElementById('bookingEmpty')?.classList.add('hidden');
+    activateBookingGroup(bookingList, activeBookingGroup);
     normalizeBookingUi(bookingList);
     syncBookingAccordionState(bookingList);
   }
@@ -264,6 +335,8 @@
   function installBookingHistoryInteractions() {
     const bookingList = document.getElementById('bookingList');
     if (!bookingList) return;
+    bookingList.addEventListener('click', handleBookingTabClick);
+    bookingList.addEventListener('keydown', handleBookingTabKeydown);
     bookingList.addEventListener('click', handleBookingHistoryClick);
     bookingList.addEventListener('keydown', handleBookingHistoryKeydown);
   }
@@ -324,6 +397,8 @@
     window.confirm = originalConfirm;
     const bookingList = document.getElementById('bookingList');
     if (bookingList) {
+      bookingList.removeEventListener('click', handleBookingTabClick);
+      bookingList.removeEventListener('keydown', handleBookingTabKeydown);
       bookingList.removeEventListener('click', handleBookingHistoryClick);
       bookingList.removeEventListener('keydown', handleBookingHistoryKeydown);
     }
