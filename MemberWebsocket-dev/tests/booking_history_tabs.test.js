@@ -26,6 +26,7 @@ test('my bookings has four mutually exclusive status tabs with live counts', () 
   assert.match(ui, /aria-controls/);
   assert.match(ui, /panel\.hidden = !selected/);
   assert.match(ui, /bookingGroupManuallySelected/);
+  assert.match(ui, /booking-history-tabs'\)\)\) \{/);
   assert.match(ui, /booking-detail-target/);
   assert.match(ui, /handleBookingTabKeydown/);
   assert.match(css, /grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
