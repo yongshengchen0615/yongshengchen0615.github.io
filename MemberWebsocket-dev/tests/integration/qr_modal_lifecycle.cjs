@@ -51,3 +51,15 @@ test('QR display is lazy, purpose-specific, cancels stale rendering and reports 
   f.w.QRDisplayDialog.show({memberCode:'AAAA'});await tick();assert.match(f.w.document.getElementById('qrDisplayPanel').textContent,/暫時無法顯示/);
  }finally{f.w.close();}
 });
+
+test('points transfer production page loads its own QR encoder before display and transfer handlers',()=>{
+ const html=read('points/index.html');
+ const scripts=Array.from(html.matchAll(/<script[^>]*src="([^"]+)"[^>]*><\/script>/g),match=>match[1].split('?')[0]);
+ const encoder=scripts.indexOf('../vendor/friend-qrcode.js');
+ const dialog=scripts.indexOf('../qr-scan-dialog.js');
+ const transfer=scripts.indexOf('./point-transfer.js');
+ assert.ok(encoder>=0,'points page must load the QR encoder; browser fixtures must not mask a missing asset');
+ assert.ok(dialog>encoder,'QR encoder must load before the display dialog');
+ assert.ok(transfer>dialog,'transfer click handler must load after the QR display dialog');
+ assert.match(read('vendor/friend-qrcode.js'),/FriendQRCode/,'the encoder asset must exist');
+});
