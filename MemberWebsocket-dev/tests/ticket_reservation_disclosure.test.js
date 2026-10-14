@@ -22,10 +22,10 @@ test('both ticket surfaces show independent expandable booking and snapshot rows
   }
   assert.match(read('ticket-booking-selections.css'), /ticket-reservation-summary:focus-visible/);
   assert.match(shared, /提交時間/);
-  assert.match(shared, /timeZone: 'Asia\\/Taipei'/);
+  assert.ok(shared.includes("timeZone: 'Asia/Taipei'"));
   const api = read('supabase/functions/api/index.ts');
   assert.match(api, /receipt_id,created_at,updated_at,requested_benefits/);
-  assert.match(api, /createdAt:String\\(receipt.created_at\\)/);
+  assert.ok(api.includes('createdAt:String(receipt.created_at)'));
 });
 
 test('event cancellation updates only the chosen pending event ticket and keeps points', async () => {
