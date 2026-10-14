@@ -74,7 +74,10 @@ test('production recipient runner does not debit and rejects a failed friend fet
 
 test('own QR and friend picker are cancellable dialogs and reopening preserves the transfer form',async({page})=>{
  await page.locator('#pointTransferAmount').fill('2');await page.locator('#pointTransferMemberCode').fill('BBBB');
+ await expect(page.locator('#pointTransferCopyOwnCode')).toHaveCount(0);
+ await expect(page.locator('#pointTransferOwnMemberCode')).toHaveText('AAAA');
  await page.locator('#pointTransferShowOwnQr').click();await expect(page.locator('#qrDisplayPanel canvas')).toBeVisible();
+ await expect(page.locator('#qrDisplayPanel button').filter({hasText:'複製會員編號'})).toBeVisible();
  expect(await page.locator('#qrDisplayPanel canvas').evaluate(canvas=>{const c=canvas.getContext('2d');return FriendQRDecode(c.getImageData(0,0,canvas.width,canvas.height).data,canvas.width,canvas.height).data;})).toBe('AAAA');
  await page.locator('.qr-scan-dialog-heading .qr-scan-dialog-close').click();await expect(page.locator('#pointTransferShowOwnQr')).toBeFocused();
  await expect(page.locator('#qrDisplayPanel')).toBeHidden();
