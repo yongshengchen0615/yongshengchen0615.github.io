@@ -10,8 +10,8 @@ test('LINE copy payload and management use one full participant formatter with s
  const {copyText,status}=await loadAdminCopyText(db,id);assert.equal(status,'pending');
  const expected='營業日 2026-10-14｜10:00–11:00\n王先生\n電話：0912345678\n預約人數：2 位\n\n第一位預約\n預約項目：肩頸 × 2\n預約技師：甲\n\n第二位預約\n預約項目：腳底\n預約技師：乙';assert.equal(copyText,expected);
  const message=buildBookingFlexMessage({...job,copyText,bookingStatus:status}),buttons=message.contents.footer.contents.filter(x=>x.type==='button');
- assert.equal(buttons[0].action.type,'clipboard');assert.equal(buttons[0].action.clipboardText,expected);assert.equal(buttons[1].action.type,'uri');assert.match(buttons[1].action.uri,/bookingAction=confirm/);
- assert.doesNotMatch(buttons[1].action.uri,/token|電話|0912|王/);
+ assert.equal(buttons[0].action.type,'clipboard');assert.equal(buttons[0].action.clipboardText,expected);assert.equal(buttons.length,1,'管理端 LINE 訊息只保留複製預約內容按鈕');
+ assert.equal(buttons[0].action.label,'複製預約內容');
  const long=buildBookingFlexMessage({...job,copyText:'長'.repeat(1001)});assert.equal(long.contents.footer.contents[0].action.type,'uri');assert.equal(long.contents.footer.contents[0].action.label,'複製預約內容');assert.equal(JSON.stringify(long).includes('長'.repeat(20)),false);
  const stale=buildBookingFlexMessage({...job,copyText,bookingStatus:'cancelled'});assert.equal(stale.contents.footer.contents.some(x=>x.action?.label==='確認預約'),false);
 });
