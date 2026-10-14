@@ -24,7 +24,7 @@ test('member usage picker supports kinds, filtered API pagination and selecting 
     assert.match(html, new RegExp('id="' + id + '"'));
   }
   assert.match(app, /memberPageSize: 100, memberQuery: usage\.query, memberKind: usage\.kind/);
-  assert.match(app, /usage\.members\.find\(\(item\) => item\.lineUserId === els\.memberUsageSelect\.value\)/);
+  assert.match(app, /state\.memberUsage\.members\.find\(\(item\) => item\.lineUserId === els\.memberUsageSelect\.value\)/);
   assert.match(app, /openMemberRecordsModal\(member, false\)/);
 });
 
