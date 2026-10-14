@@ -594,12 +594,14 @@ async function snapshotGeoTicketPreview(
   return items.map(item=>{
     if(item?.requiresLocation!==true) return item;
     const checked=results.get(item.kind+":"+item.selectionId);
-    const canUse=checked?.allowed===true &&
-      (item.kind==="points"
-        ? Number(item.pointCost)>0&&Number(item.pointBalance)>=Number(item.pointCost)&&item.reservedForBooking!==true
-        : item.locked!==true&&item.claimRequired!==true&&!!item.selectionId);
+    // GPS is one requirement, never an override of ticket ownership, tier,
+    // reservation-budget, or issuance eligibility evaluated by the catalog.
+    const canUse=checked?.allowed===true && item.selectable===true
+      && item.claimRequired!==true && !!item.selectionId;
     return {...item,selectable:canUse,
-      disabledReason:canUse?"":checked?.reason||"此票券目前無法在快照模式登記。"};
+      disabledReason:canUse?"":checked?.allowed!==true
+        ? checked?.reason||"此票券目前未通過指定地點 GPS 驗證。"
+        : String(item.disabledReason||"此票券目前不符合快照登記條件。")};
   });
 }
 
@@ -618,7 +620,49 @@ async function accessibleBenefitCatalog(supabase:SupabaseClient,member:any,curre
     .map((item:any)=>item?.kind==="event"&&item?.claimRequired===true
       ? {...item,selectable:false,disabledReason:"會員尚未領取此活動票券；管理員不可代替會員領取。"}
       : item);
-  const snapshotItems=await snapshotGeoTicketPreview(supabase,String(member.id),items,location);
+  // Snapshot is retrospective: a later confirmed booking must keep its own
+  // reserved points and ticket, but surplus points may independently fund now.
+  // This exception is snapshot-only; general booking remains one ticket / ID.
+  const pendingPointIds=items.filter((item:any)=>item.kind==="points"
+    && item.reservedForBooking===true && item.selectionId)
+    .map((item:any)=>String(item.selectionId));
+  const futurePointRefs=new Set<string>();
+  if(pendingPointIds.length){
+    const reserved=await supabase.from("booking_benefit_selections")
+      .select("benefit_ref,booking_id").eq("member_id",String(member.id))
+      .eq("benefit_kind","points").eq("status","pending")
+      .in("benefit_ref",pendingPointIds);
+    if(reserved.error) throw dbError(reserved.error);
+    const bookingIds=[...new Set((reserved.data||[]).map((row:any)=>String(row.booking_id||"")).filter(Boolean))];
+    if(bookingIds.length){
+      const bookings=await supabase.from("bookings")
+        .select("id,status,start_at,completed_at").eq("member_id",String(member.id))
+        .in("id",bookingIds);
+      if(bookings.error) throw dbError(bookings.error);
+      const futureIds=new Set((bookings.data||[]).filter((row:any)=>
+        row.status==="confirmed" && !row.completed_at &&
+        Date.parse(String(row.start_at||"").replace(" ","T").replace(/Z$/,"")+"+08:00")>Date.now()
+      ).map((row:any)=>String(row.id)));
+      for(const row of reserved.data||[]){
+        if(futureIds.has(String(row.booking_id))) futurePointRefs.add(String(row.benefit_ref));
+      }
+    }
+  }
+  const snapshotCandidates=items.map((item:any)=>{
+    if(item.kind!=="points" || item.reservedForBooking!==true) return item;
+    const cost=Math.max(0,Number(item.pointCost)||0);
+    const enough=cost>0 && Number(item.pointBalance)>=cost;
+    const future=futurePointRefs.has(String(item.selectionId));
+    const selectable=future && enough;
+    return {...item,selectable,
+      disabledReason:selectable?"":!future
+        ?"此票券已被其他預約使用或保留，且該預約不屬於尚未開始的未來預約。"
+        :`一般預約已保留其所需點數，剩餘 ${Math.max(0,Number(item.pointBalance)||0)} 點，不足以再登記此票券（需 ${cost} 點）。`,
+      conditionLabel:selectable
+        ?String(item.conditionLabel||"")+" · 已保留下次一般預約所需點數，剩餘點數仍足以登記本次快照"
+        :item.conditionLabel};
+  });
+  const snapshotItems=await snapshotGeoTicketPreview(supabase,String(member.id),snapshotCandidates,location);
   const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   const dayStart=new Date(today+"T00:00:00+08:00");
   const dayEnd=new Date(dayStart.getTime()+86400000);
