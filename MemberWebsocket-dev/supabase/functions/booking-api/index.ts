@@ -648,7 +648,7 @@ async function audit(supabase: SupabaseClient, identity: Identity, role: "member
 }
 
 async function userBootstrap(supabase: SupabaseClient, member: any, body:Json={}): Promise<Json> {
-  const [settings, services, serviceTypeRewards, bookingResult] = await Promise.all([
+  const [settings, services, serviceTypeRewards, bookingResult, noShowResult] = await Promise.all([
     bookingSettings(supabase),
     activeServices(supabase),
     bookingServiceTypeRewards(supabase),
@@ -658,16 +658,27 @@ async function userBootstrap(supabase: SupabaseClient, member: any, body:Json={}
       .order("booking_date", { ascending: false })
       .order("start_time", { ascending: false })
       .limit(50),
+    // Keep no-show history visible after newer reservations fill the usual window.
+    supabase.from("bookings")
+      .select("*")
+      .eq("member_id", member.id)
+      .eq("status", "no_show")
+      .order("booking_date", { ascending: false })
+      .order("start_time", { ascending: false })
+      .limit(50),
   ]);
   if ((bookingResult as any).error) throw mapDatabaseError((bookingResult as any).error);
+  if ((noShowResult as any).error) throw mapDatabaseError((noShowResult as any).error);
+  const bookingRows = new Map<string, any>();
+  for (const row of [...(bookingResult.data || []), ...(noShowResult.data || [])]) bookingRows.set(row.id, row);
   const target=await linkedBooking(supabase,asText(body.bookingId,60),String(member.id));
-  if(target && !(bookingResult.data || []).some((b:any)=>b.id===target.id)) bookingResult.data!.unshift(target);
+  if(target) bookingRows.set(target.id, target);
   return {
     serverNow: new Date().toISOString(),
     today: currentBusinessDate(taipeiDate(), taipeiMinutes(), settings.work_start_time, settings.work_end_time),
     settings: { ...settingsClient(settings), serviceTypeRewards },
     services: services.map(serviceClient),
-    bookings: await hydrateBookings(supabase, ((bookingResult as any).data || []) as any[]),
+    bookings: await hydrateBookings(supabase, [...bookingRows.values()].sort((a, b) => `${b.booking_date} ${b.start_time}`.localeCompare(`${a.booking_date} ${a.start_time}`))),
   };
 }
 
@@ -901,8 +912,17 @@ async function adminBookings(supabase: SupabaseClient): Promise<Json[]> {
     .limit(400);
   if (recent.error) throw mapDatabaseError(recent.error);
 
+  // Include historical no-shows beyond the rolling seven-day operations view.
+  const noShows = await supabase.from("bookings")
+    .select("*, members!bookings_member_id_fkey(display_name, member_code)")
+    .eq("status", "no_show")
+    .order("booking_date", { ascending: false })
+    .order("start_time", { ascending: false })
+    .limit(100);
+  if (noShows.error) throw mapDatabaseError(noShows.error);
+
   const rows = new Map<string, any>();
-  for (const row of [...(pending.data || []), ...(recent.data || [])]) rows.set(row.id, row);
+  for (const row of [...(pending.data || []), ...(recent.data || []), ...(noShows.data || [])]) rows.set(row.id, row);
   const sorted = [...rows.values()].sort((a, b) => `${a.booking_date} ${a.start_time}`.localeCompare(`${b.booking_date} ${b.start_time}`));
   return await hydrateBookings(supabase, sorted);
 }

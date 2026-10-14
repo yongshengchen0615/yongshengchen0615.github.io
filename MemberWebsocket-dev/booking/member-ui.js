@@ -162,7 +162,7 @@
     } else {
       const empty = document.createElement('div');
       empty.className = 'booking-service-group-empty';
-      empty.textContent = `目前沒有${group.title}`;
+      empty.textContent = group.key === 'no_show' ? '目前沒有無故未到的紀錄' : `目前沒有${group.title}`;
       list.appendChild(empty);
     }
     section.append(description, list);

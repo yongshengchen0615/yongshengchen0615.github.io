@@ -12,6 +12,11 @@
 @media(max-width:420px){.booking-item.booking-history-collapsible>.booking-item-top{padding-right:30px}.booking-item.booking-history-collapsible>.booking-item-top::after{right:0}}
 @media(prefers-reduced-motion:reduce){.booking-item.booking-history-collapsible,.booking-item.booking-history-collapsible>.booking-item-top::after{transition:none}}
 
+.booking-service-group-no_show .booking-service-group-count{background:#fff0eb;color:#a34832}
+.booking-service-group-no_show .booking-service-group-empty{background:#fffaf7}
+.booking-item.status-no_show{border-color:rgba(163,72,50,.26)}
+.booking-item .status-badge.status-no_show{background:#fff0eb;color:#a34832}
+
 /* Counted, keyboard-accessible status tabs for member booking history. */
 #bookingList.booking-list{gap:12px}
 .booking-history-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;padding:5px;border:1px solid var(--theme-border);border-radius:16px;background:var(--theme-surface-muted)}
