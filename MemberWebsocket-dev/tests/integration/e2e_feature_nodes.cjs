@@ -38,7 +38,7 @@ test('accessible node drives production mode UI and restores each member prefere
     const d=dom('booking'),w=d.window;
     try {
       if(preference!==null)w.localStorage.setItem(preferenceKey,preference);
-      const items=[{kind:'points',selectable:true,title:'QA card'}, {kind:'event',selectable:true,title:'QA event'}, {kind:'points',selectable:true,reservedForBooking:true}];
+      const items=[{kind:'points',selectable:true,title:'QA card'}, {kind:'event',selectable:true,title:'QA event'}, {kind:'points',selectable:true,reservedForBooking:true}, {kind:'points',selectable:false,reservedForBooking:true}];
       let cameraCalls=0;
       w.BookingBenefits={getItems:()=>items,syncNow:()=>{w.document.getElementById('bookingBenefits').dataset.state='ready';w.document.getElementById('bookingBenefitsList').setAttribute('aria-busy','false');w.dispatchEvent(new w.CustomEvent('booking:benefits-loaded',{detail:{items}}));}};
       w.BookingReceipts={openAccessible:()=>cameraCalls++,refresh:async()=>w.dispatchEvent(new w.CustomEvent('booking:receipts-updated',{detail:{submissions:[]}}))};
