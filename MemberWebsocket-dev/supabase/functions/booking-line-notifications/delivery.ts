@@ -430,25 +430,18 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
 
   const footerActions: Array<Record<string, unknown>> = [];
   if (job.channel === 'member' && parsed.title === '預約確認') {
-    // LINE has no native accordion. Keep only the summary and an authenticated LIFF link.
+    // LINE has no native accordion. Keep a concise confirmation summary without a detail button.
     bodyContents.length = 0;
     if (schedule) bodyContents.push(schedule);
     const summary = [...parsed.services,...parsed.participants.flatMap(p => p.items)];
     if (summary.length) bodyContents.push(servicesCard([truncate(summary.join('、'),500)],style.color)!);
-    if (!bodyContents.length) bodyContents.push(fallbackCard('預約已確認，請開啟明細查看最新資訊。'));
+    if (!bodyContents.length) bodyContents.push(fallbackCard('預約已確認。'));
   }
-  if (job.booking_id) {
-    if (job.channel === 'admin' && parsed.title === '預約') {
-      const copy=String(job.copyText || '');
-      footerActions.push({type:'button',height:'sm',action:copy && Array.from(copy).length<=1000
-        ? {type:'clipboard',label:'複製預約內容',clipboardText:copy}
-        : {type:'uri',label:'複製預約內容',uri:bookingDetailUri(job.booking_id,true,'copy')}});
-      if (!job.bookingStatus || job.bookingStatus==='pending') footerActions.push({type:'button',height:'sm',action:{type:'uri',label:'確認預約',uri:bookingDetailUri(job.booking_id,true,'confirm')}});
-      else footerActions.push({type:'text',text:'預約狀態已更新，請至管理端查看。',size:'xs',wrap:true});
-      footerActions.push({type:'button',height:'sm',action:{type:'uri',label:'開啟管理端／複製',uri:bookingDetailUri(job.booking_id,true,'copy')}});
-    } else if (job.channel==='member' && parsed.title==='預約確認') {
-      footerActions.push({type:'button',height:'sm',action:{type:'uri',label:'查看預約明細',uri:bookingDetailUri(job.booking_id)}});
-    }
+  if (job.booking_id && job.channel === 'admin' && parsed.title === '預約') {
+    const copy = String(job.copyText || '');
+    footerActions.push({type:'button',height:'sm',action:copy && Array.from(copy).length<=1000
+      ? {type:'clipboard',label:'複製預約內容',clipboardText:copy}
+      : {type:'uri',label:'複製預約內容',uri:bookingDetailUri(job.booking_id,true,'copy')}});
   }
 
   const headerContents: FlexText[] = [
