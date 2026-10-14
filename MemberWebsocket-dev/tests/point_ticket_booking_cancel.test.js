@@ -79,13 +79,15 @@ test('duplicate cancellation is an idempotent refresh, and declined confirmation
   assert.equal(second.requests.length, 0);
 });
 
-test('cancel control appears only for editable pending ticket reservations', () => {
+test('ticket-local disclosure exposes independent pending booking cancellation', () => {
   const overview = read('points/pointcard-ticket-overview.js');
-  assert.match(overview, /offer\.reservedForBooking\s*\? offer\.bookingSelections\.find\(context => context\.status === 'pending' && context\.editable/);
-  assert.match(overview, /cancelReservation\.textContent = '取消預約使用'/);
-  assert.match(overview, /TicketBookingSelections\.cancelPointTicket\(cancellableReservation\.bookingId, offer\.ticketId\)/);
-  const html = read('points/index.html');
-  assert.match(html, /ticket-booking-selections\.js\?v=[^"]*point-cancel-20261013-1/);
-  assert.match(html, /pointcard-ticket-overview\.js\?v=[^"]*point-cancel-20261013-1/);
-  assert.match(html, /ticket-booking-selections\.css\?v=[^"]*point-cancel-20261013-1/);
+  const shared = read('ticket-booking-selections.js');
+  assert.match(overview, /createTicketReservationDisclosure/);
+  assert.match(overview, /onCancelBooking: async \(context\)/);
+  assert.match(overview, /TicketBookingSelections\.cancelPointTicket\(context\.bookingId, offer\.ticketId\)/);
+  assert.match(shared, /context\.status === 'pending' && context\.editable/);
+  assert.match(shared, /取消此一般預約票券/);
+  for (const asset of ['ticket-booking-selections.js', 'pointcard-ticket-overview.js', 'ticket-booking-selections.css']) {
+    assert.match(read('points/index.html'), new RegExp(asset.replace(/\./g, '\\.') + '\\?v=[^"]*reservation-disclosure-20261014-1'));
+  }
 });
