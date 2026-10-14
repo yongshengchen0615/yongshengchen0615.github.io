@@ -31,6 +31,8 @@ test('member snapshot details use four counted tabs with exclusive server-define
   assert.match(ui, /ArrowRight/);
   assert.match(ui, /booking-detail-target/);
   assert.match(ui, /details\.open = true/);
+  assert.match(ui, /history\.replaceChildren\(\)/);
+  assert.match(ui, /history\.hidden = true/);
   assert.match(css, /snapshot-history-panel\[hidden\]/);
   assert.match(html, /booking-accessible\.css\?v=[^"]*history-tabs-20261014-1/);
   assert.match(html, /booking-accessible\.js\?v=[^"]*history-tabs-20261014-1/);
