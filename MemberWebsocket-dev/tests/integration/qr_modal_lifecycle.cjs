@@ -54,7 +54,7 @@ test('QR display is lazy, purpose-specific, cancels stale rendering and reports 
 
 test('points transfer production page loads its own QR encoder before display and transfer handlers',()=>{
  const html=read('points/index.html');
- const scripts=Array.from(html.matchAll(/<script\\b[^>]*\\bsrc="([^"]+)"[^>]*><\\/script>/g),match=>match[1].split('?')[0]);
+ const scripts=Array.from(html.matchAll(/<script[^>]*src="([^"]+)"[^>]*><\/script>/g),match=>match[1].split('?')[0]);
  const encoder=scripts.indexOf('../vendor/friend-qrcode.js');
  const dialog=scripts.indexOf('../qr-scan-dialog.js');
  const transfer=scripts.indexOf('./point-transfer.js');
