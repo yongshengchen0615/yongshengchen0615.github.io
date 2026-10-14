@@ -87,6 +87,67 @@ Deno.test('confirmed member notification contains the booking summary without a 
   assert(serialized.includes('2026/09/15') && serialized.includes('腳底40'), 'confirmation summary must remain visible');
 });
 
+Deno.test('member confirmation shows each participant with its own services and technician', () => {
+  const message = buildBookingFlexMessage({
+    ...sampleJob,
+    booking_id: '30000000-0000-4000-8000-000000000001',
+  });
+  const body = message.contents.body as Record<string, unknown>;
+  const cards = body.contents as Array<Record<string, unknown>>;
+  assert(cards.length === 2, 'confirmation must show schedule and a per-participant card');
+  const groups = (cards[1].contents as Array<Record<string, unknown>>)
+    .filter((component) => component.type === 'box');
+  assert(groups.length === 2, 'two people must render as two distinct groups');
+  const first = collectComponents(groups[0]);
+  const second = collectComponents(groups[1]);
+  assert(first.some((component) => component.text === '第一位'), 'first group label must be 第一位');
+  assert(first.some((component) => component.text === '預約項目'), 'first group must label the service');
+  assert(first.some((component) => component.text === '腳底40'), 'first group must display the first service');
+  assert(first.some((component) => component.text === '預約技師'), 'first group must label the technician');
+  assert(first.some((component) => component.text === '10'), 'first group must display the assigned technician');
+  assert(!first.some((component) => component.text === '肩頸30、頭部20'), 'first group must not leak second person services');
+  assert(second.some((component) => component.text === '第二位'), 'second group label must be 第二位');
+  assert(second.some((component) => component.text === '肩頸30、頭部20'), 'second group must display its own services');
+  assert(second.some((component) => component.text === '現場安排'), 'second group must display its own technician');
+  assert(!second.some((component) => component.text === '腳底40'), 'second group must not include first person services');
+  const bodyComponents = collectComponents(body);
+  assert(!bodyComponents.some((component) => component.text === '個別時間' || component.text === '個別金額'),
+    'member confirmation should only contain service and technician per person');
+  const footer = message.contents.footer as Record<string, unknown>;
+  assert(!collectComponents(footer).some((component) => component.type === 'button'),
+    'member confirmation must not restore the removed booking detail button');
+});
+
+Deno.test('member confirmation supports single and additional participants', () => {
+  const firstOnly = sampleJob.message_text.split('\n\n第二位預約')[0].replace('預約人數：2 位', '預約人數：1 位');
+  const threePeople = sampleJob.message_text + '\n\n第三位預約\n預約項目：精油按摩60\n預約技師：小林';
+  for (const [messageText, expectedLabels] of [
+    [firstOnly, ['第一位']],
+    [threePeople, ['第一位', '第二位', '第三位']],
+  ] as const) {
+    const message = buildBookingFlexMessage({ ...sampleJob, message_text: messageText });
+    const body = message.contents.body as Record<string, unknown>;
+    const cards = body.contents as Array<Record<string, unknown>>;
+    const groups = (cards[1].contents as Array<Record<string, unknown>>).filter((item) => item.type === 'box');
+    const labels = groups.map((group) => ((group.contents as Array<Record<string, unknown>>)[0]).text);
+    assert(JSON.stringify(labels) === JSON.stringify(expectedLabels),
+      'confirmation group count and ordering must match participants');
+    if (expectedLabels.length === 3) {
+      const third = collectComponents(groups[2]);
+      assert(third.some((item) => item.text === '精油按摩60'), 'third participant must have its own service');
+      assert(third.some((item) => item.text === '小林'), 'third participant must have its own technician');
+    }
+  }
+});
+
+Deno.test('member legacy confirmation without participant sections retains service details', () => {
+  const message = buildBookingFlexMessage({
+    ...sampleJob,
+    message_text: ['【預約確認】', '日期：2026/09/15', '時段：10:00–11:00', '預約項目：', '腳底40'].join('\n'),
+  });
+  assert(JSON.stringify(message.contents).includes('腳底40'), 'legacy confirmation must not lose services');
+});
+
 Deno.test('admin new booking notification shows only the copy button', () => {
   for (const bookingStatus of ['pending', 'confirmed']) {
     const copyText = '2026/09/15 10:00 王小姐 腳底40';

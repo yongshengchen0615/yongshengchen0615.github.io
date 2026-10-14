@@ -293,9 +293,9 @@ function servicesCard(services: string[], accent: string): Record<string, unknow
   };
 }
 
-function participantsCard(participants: ParsedBookingParticipant[], accent: string): Record<string, unknown> | null {
+function participantsCard(participants: ParsedBookingParticipant[], accent: string, memberConfirmation = false): Record<string, unknown> | null {
   if (!participants.length) return null;
-  const contents: Array<Record<string, unknown>> = [
+  const contents: Array<Record<string, unknown>> = memberConfirmation ? [] : [
     {
       type: 'text',
       text: '每位預約明細',
@@ -315,15 +315,17 @@ function participantsCard(participants: ParsedBookingParticipant[], accent: stri
       contents: [
         {
           type: 'text',
-          text: truncate(participant.label, 40),
+          text: truncate(memberConfirmation ? participant.label.replace(/預約$/, '') : participant.label, 40),
           size: 'sm',
           weight: 'bold',
           color: TEXT_COLOR,
           wrap: true,
         },
         fieldRow('預約項目', participant.items.length ? participant.items.join('、') : '—'),
-        fieldRow('個別時間', participant.duration || '—'),
-        fieldRow('個別金額', participant.amount || '—'),
+        ...(memberConfirmation ? [] : [
+          fieldRow('個別時間', participant.duration || '—'),
+          fieldRow('個別金額', participant.amount || '—'),
+        ]),
         fieldRow('預約技師', participant.technician || '現場安排'),
       ],
     });
@@ -420,7 +422,8 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
 
   const schedule = scheduleCard(parsed, style.color);
   const details = detailsCard(parsed.fields);
-  const participants = participantsCard(parsed.participants, style.color);
+  const memberConfirmation = job.channel === 'member' && parsed.title === '預約確認';
+  const participants = participantsCard(parsed.participants, style.color, memberConfirmation);
   const services = parsed.participants.length ? null : servicesCard(parsed.services, style.color);
   if (schedule) bodyContents.push(schedule);
   if (details) bodyContents.push(details);
@@ -429,12 +432,12 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
   if (!bodyContents.length) bodyContents.push(fallbackCard(parsed.fallbackText));
 
   const footerActions: Array<Record<string, unknown>> = [];
-  if (job.channel === 'member' && parsed.title === '預約確認') {
-    // LINE has no native accordion. Keep a concise confirmation summary without a detail button.
+  if (memberConfirmation) {
+    // Show each participant's services and technician separately, without an external detail button.
     bodyContents.length = 0;
     if (schedule) bodyContents.push(schedule);
-    const summary = [...parsed.services,...parsed.participants.flatMap(p => p.items)];
-    if (summary.length) bodyContents.push(servicesCard([truncate(summary.join('、'),500)],style.color)!);
+    if (participants) bodyContents.push(participants);
+    else if (services) bodyContents.push(services); // Legacy notifications without participant sections.
     if (!bodyContents.length) bodyContents.push(fallbackCard('預約已確認。'));
   }
   if (job.booking_id && job.channel === 'admin' && parsed.title === '預約') {
