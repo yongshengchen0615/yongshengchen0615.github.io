@@ -461,7 +461,12 @@
       const title = document.createElement('h3');
       title.textContent = text(card.title || '集點卡');
       const meta = document.createElement('small');
-      meta.textContent = `目前可用 ${points(card.availableStamps ?? card.stamps)} 點・共 ${offers.length} 個票券節點`;
+       const generalReserved = points(card.generalReservedStamps ?? card.reservedStamps);
+       const snapshotReserved = points(card.snapshotReservedStamps);
+       const reservationSummary = snapshotReserved > 0
+         ? `・一般預約 ${generalReserved} 點＋快照待審核 ${snapshotReserved} 點＝合計 ${generalReserved + snapshotReserved} 點已預約`
+         : '';
+       meta.textContent = `目前可用 ${points(card.availableStamps ?? card.stamps)} 點${reservationSummary}・共 ${offers.length} 個票券節點`;
       heading.append(title, meta);
       section.append(heading);
 

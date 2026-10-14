@@ -242,8 +242,10 @@
       const meta = document.createElement('span');
       const availableStamps = Math.max(0, Number(card.availableStamps ?? card.stamps ?? 0));
       const reservedStamps = Math.max(0, Number(card.reservedStamps || 0));
+      const generalReservedStamps = Math.max(0, Number(card.generalReservedStamps ?? reservedStamps));
+      const snapshotReservedStamps = Math.max(0, Number(card.snapshotReservedStamps || 0));
       meta.textContent = reservedStamps > 0
-        ? `${availableStamps} 點可用 · ${reservedStamps} 點已預約`
+        ? `${availableStamps} 點可用 · ${reservedStamps} 點已預約${snapshotReservedStamps > 0 ? `（一般 ${generalReservedStamps} · 快照待審核 ${snapshotReservedStamps}）` : ''}`
         : `${availableStamps} 點`;
       button.append(title, meta);
       return button;
@@ -264,6 +266,8 @@
   function renderActiveCard(card) {
     const totalStamps = Math.max(0, Number(card.totalStamps ?? card.stamps ?? 0));
     const reservedStamps = Math.max(0, Number(card.reservedStamps || 0));
+    const generalReservedStamps = Math.max(0, Number(card.generalReservedStamps ?? reservedStamps));
+    const snapshotReservedStamps = Math.max(0, Number(card.snapshotReservedStamps || 0));
     const stamps = Math.max(0, Number(card.availableStamps ?? (totalStamps - reservedStamps)));
     const ticketOfferCount = Array.isArray(card.rewards)
       ? card.rewards.length
@@ -292,7 +296,9 @@
         : unavailable
           ? '這張集點卡目前不可使用'
           : reservedStamps > 0
-          ? `目前可用 ${stamps} 點；另有 ${reservedStamps} 點已預約使用，將於服務完成時自動核銷。`
+          ? snapshotReservedStamps > 0
+             ? `目前可用 ${stamps} 點；合計 ${reservedStamps} 點已預約（一般預約 ${generalReservedStamps} 點＋快照待審核 ${snapshotReservedStamps} 點）。一般預約在結算時扣點，快照須經審核後才扣點。`
+             : `目前可用 ${stamps} 點；另有 ${reservedStamps} 點已預約使用，將於服務完成時自動核銷。`
           : '點數會持續累積，達標後可於下方票券總覽選擇使用。';
     els.remainingMessage.textContent = ticketOfferCount
       ? `已設定 ${ticketOfferCount} 種兌換票券`
@@ -308,6 +314,8 @@
       stamps,
       totalStamps,
       reservedStamps,
+      generalReservedStamps,
+      snapshotReservedStamps,
       expiresOn: card.expiryMode === 'date' ? String(card.expiresOn || '') : '',
       transferEligible: !unavailable
     } }));
