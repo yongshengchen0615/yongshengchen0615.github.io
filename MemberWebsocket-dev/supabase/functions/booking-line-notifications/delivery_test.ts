@@ -71,12 +71,58 @@ Deno.test('booking notification builds a structured mobile-friendly Flex Message
   assert(components.some((item) => item.text === 'Lumen Club 預約系統'), 'Flex footer must identify the booking system');
 });
 
-Deno.test('confirmed member notification is concise and links authorized details', () => {
-  const message = buildBookingFlexMessage({ ...sampleJob, booking_id:'30000000-0000-4000-8000-000000000001', benefits:{pointTickets:['SECRET-OFFER'],eventTickets:[],tierActivities:[],tierLabel:'SECRET-TIER'} });
-  const serialized=JSON.stringify(message);
-  assert(!serialized.includes('SECRET-OFFER') && !serialized.includes('SECRET-TIER'),'offers and tier must not be rendered');
-  assert(serialized.includes('查看預約明細'),'authenticated LIFF details must be linked');
-  assert(serialized.includes('2010787602-sgiB0ETj'),'use existing booking LIFF app');
+Deno.test('confirmed member notification contains the booking summary without a detail button', () => {
+  const message = buildBookingFlexMessage({
+    ...sampleJob,
+    booking_id: '30000000-0000-4000-8000-000000000001',
+    benefits: { pointTickets: ['SECRET-OFFER'], eventTickets: [], tierActivities: [], tierLabel: 'SECRET-TIER' },
+  });
+  const serialized = JSON.stringify(message);
+  assert(!serialized.includes('SECRET-OFFER') && !serialized.includes('SECRET-TIER'), 'offers and tier must not be rendered');
+  assert(!serialized.includes('查看預約明細'), 'member confirmation must not render a detail button');
+  assert(!serialized.includes('2010787602-sgiB0ETj'), 'member confirmation must not render a booking LIFF link');
+  const footer = message.contents.footer as Record<string, unknown>;
+  const buttons = collectComponents(footer).filter((item) => item.type === 'button');
+  assert(buttons.length === 0, 'member confirmation must not have footer action buttons');
+  assert(serialized.includes('2026/09/15') && serialized.includes('腳底40'), 'confirmation summary must remain visible');
+});
+
+Deno.test('admin new booking notification shows only the copy button', () => {
+  for (const bookingStatus of ['pending', 'confirmed']) {
+    const copyText = '2026/09/15 10:00 王小姐 腳底40';
+    const message = buildBookingFlexMessage({
+      ...sampleJob,
+      channel: 'admin',
+      booking_id: '30000000-0000-4000-8000-000000000001',
+      message_text: sampleJob.message_text.replace('【預約確認】', '【預約】'),
+      copyText,
+      bookingStatus,
+    });
+    const footer = message.contents.footer as Record<string, unknown>;
+    const buttons = collectComponents(footer).filter((item) => item.type === 'button');
+    assert(buttons.length === 1, 'admin new booking must have exactly one action regardless of booking status');
+    const action = buttons[0].action as Record<string, unknown>;
+    assert(action.label === '複製預約內容', 'the sole admin action must be the copy button');
+    assert(action.type === 'clipboard' && action.clipboardText === copyText, 'copy button must preserve the booking copy text');
+    assert(!JSON.stringify(message).includes('確認預約'), 'admin message must not offer inline confirmation');
+    assert(!JSON.stringify(message).includes('開啟管理端／複製'), 'admin message must not show an extra admin link');
+  }
+});
+
+Deno.test('admin copy action keeps the existing LIFF fallback for long text', () => {
+  const message = buildBookingFlexMessage({
+    ...sampleJob,
+    channel: 'admin',
+    booking_id: '30000000-0000-4000-8000-000000000001',
+    message_text: sampleJob.message_text.replace('【預約確認】', '【預約】'),
+    copyText: 'a'.repeat(1001),
+  });
+  const footer = message.contents.footer as Record<string, unknown>;
+  const buttons = collectComponents(footer).filter((item) => item.type === 'button');
+  assert(buttons.length === 1, 'long copy text must still show only one button');
+  const action = buttons[0].action as Record<string, unknown>;
+  assert(action.label === '複製預約內容' && action.type === 'uri', 'long copy text should use the existing authenticated fallback');
+  assert(String(action.uri).includes('bookingAction=copy'), 'fallback must trigger the copy flow');
 });
 
 Deno.test('legacy aggregate service notification remains compatible', () => {
