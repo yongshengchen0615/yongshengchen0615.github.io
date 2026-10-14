@@ -18,6 +18,9 @@
     p.textContent = value; p.classList.toggle('is-error', error);
   }
   function install() {
+    // The event page uses per-ticket reservation disclosures, not the standalone editor.
+    // Keep the shared context for event ticket cancellation and refresh callbacks.
+    if (settings.surface !== 'points') return;
     if ($('bookingSelectionPanel')) return;
     const host = $(settings.surface === 'points' ? 'pointsView' : 'eventView'); if (!host) return;
     const panel = node('section', '', 'booking-selection-panel'); panel.id = 'bookingSelectionPanel';
