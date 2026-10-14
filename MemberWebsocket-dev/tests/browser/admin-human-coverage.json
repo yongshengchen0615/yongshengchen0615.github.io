@@ -555,7 +555,9 @@
       "name": "待確認與已確認一般預約人工標記無故未到、二次確認、列表與數量同步",
       "cases": [
         "BOOKING_NO_SHOW_390",
-        "BOOKING_NO_SHOW_1280"
+        "BOOKING_NO_SHOW_1280",
+        "BOOKING_CONFIRMED_NO_SHOW_390",
+        "BOOKING_CONFIRMED_NO_SHOW_1280"
       ]
     }
   ]
