@@ -10,15 +10,14 @@ test('LINE copy payload and management use one full participant formatter with s
  const {copyText,status}=await loadAdminCopyText(db,id);assert.equal(status,'pending');
  const expected='營業日 2026-10-14｜10:00–11:00\n王先生\n電話：0912345678\n預約人數：2 位\n\n第一位預約\n預約項目：肩頸 × 2\n預約技師：甲\n\n第二位預約\n預約項目：腳底\n預約技師：乙';assert.equal(copyText,expected);
  const message=buildBookingFlexMessage({...job,copyText,bookingStatus:status}),buttons=message.contents.footer.contents.filter(x=>x.type==='button');
- assert.equal(buttons[0].action.type,'clipboard');assert.equal(buttons[0].action.clipboardText,expected);assert.equal(buttons.length,1,'管理端 LINE 訊息只保留複製預約內容按鈕');
- assert.equal(buttons[0].action.label,'複製預約內容');
+ assert.equal(buttons.length,1,'Admin LINE only exposes the copy action');assert.equal(buttons[0].action.type,'clipboard');assert.equal(buttons[0].action.clipboardText,expected);
  const long=buildBookingFlexMessage({...job,copyText:'長'.repeat(1001)});assert.equal(long.contents.footer.contents[0].action.type,'uri');assert.equal(long.contents.footer.contents[0].action.label,'複製預約內容');assert.equal(JSON.stringify(long).includes('長'.repeat(20)),false);
  const stale=buildBookingFlexMessage({...job,copyText,bookingStatus:'cancelled'});assert.equal(stale.contents.footer.contents.some(x=>x.action?.label==='確認預約'),false);
 });
-test('member confirmed LINE preserves date and service, drops tier and offered tickets, does not add a detail button',async()=>{
+test('member confirmed LINE preserves date and service, drops tier and offered tickets, without a detail button',async()=>{
  const {buildBookingFlexMessage}=await load('supabase/functions/booking-line-notifications/delivery.ts');
  const result=buildBookingFlexMessage({...job,channel:'member',message_text:'【預約確認】\n日期：2026/10/14\n時段：10:00–11:00\n預約項目：肩頸',benefits:{pointTickets:['OFFER-SECRET'],eventTickets:['EVENT-SECRET'],tierActivities:['TIER-SECRET'],tierLabel:'GOLD-SECRET'}});
- const serialized=JSON.stringify(result);assert.doesNotMatch(serialized,/OFFER-SECRET|EVENT-SECRET|TIER-SECRET|GOLD-SECRET|可用集點卡|會員階級/);assert.match(serialized,/2026\/10\/14/);assert.match(serialized,/10:00/);assert.match(serialized,/肩頸/);assert.doesNotMatch(serialized,/查看預約明細/);
+ const serialized=JSON.stringify(result);assert.doesNotMatch(serialized,/OFFER-SECRET|EVENT-SECRET|TIER-SECRET|GOLD-SECRET|可用集點卡|會員階級/);assert.match(serialized,/2026\/10\/14/);assert.match(serialized,/10:00/);assert.match(serialized,/肩頸/);assert.doesNotMatch(serialized,/查看預約明細/);assert.equal(result.contents.footer.contents.some(x=>x.type==='button'),false);
 });
 test('linked member booking detail fails closed for forged or another member booking',async()=>{
  const {linkedBooking}=await load('supabase/functions/_shared/linked-booking.ts');
