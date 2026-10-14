@@ -50,14 +50,26 @@ test('MEMBER_PROFILE_STATUS — edit all test profile fields, disable, reopen an
   await expect(p.locator('#memberModal')).toBeHidden();await expect(p.locator('#memberRecordsModal')).toBeVisible();await p.getByRole('button',{name:'狀態'}).click();await expect(p.locator('#memberDisplayName')).toHaveValue('QA changed');await expect(p.locator('#memberStatus')).toHaveValue('disabled');
   await select(p,'memberStatus','active');await click(p,'saveMemberButton');await expect(p.locator('#memberModal')).toBeHidden();expect(calls(info.fixture,'admin.member.update')).toHaveLength(2);
 });
-test('MEMBER_360 — status and grant actions, all record tabs, summary navigation and modal close',async({page:p})=>{
+test('MEMBER_360 — status and grant actions, then history workspace member selector and categories',async({page:p},info)=>{
   await openMember360(p);
   await expect(p.locator('#memberRecordsOverview')).toContainText('狀態');
   await expect(p.locator('#memberRecordsOverview')).toContainText('＋ 發放');
   await p.getByRole('button',{name:'狀態'}).click(); await expect(p.locator('#memberModal')).toBeVisible();
   await p.keyboard.press('Escape'); await expect(p.locator('#memberModal')).toBeHidden(); await expect(p.locator('#memberRecordsModal')).toBeVisible();
-  for(const filter of ['all','presence','pointCards','eventTickets','calendar','bookings','testAutomation']){const b=p.locator('[data-record-filter="'+filter+'"]');await b.click();await expect(b).toHaveAttribute('aria-selected','true');}
-  await click(p,'closeMemberRecordsModal');await expect(p.locator('#memberRecordsModal')).toBeHidden();
+  await click(p,'memberRecordsOpenUsage');
+  await expect(p.locator('#memberRecordsModal')).toBeHidden();
+  await expect(p.locator('#memberUsagePanel')).toBeVisible();
+  await expect(p.locator('#memberUsageSelect')).toBeEnabled();
+  for(const filter of ['all','presence','pointCards','eventTickets','calendar','bookings','testAutomation']) {
+    const b=p.locator('#memberUsagePanel [data-record-filter="'+filter+'"]');
+    await b.click();
+    await expect(b).toHaveAttribute('aria-selected','true');
+  }
+  await select(p,'memberUsageKind','test');
+  await expect(p.locator('#memberUsageSelect')).toBeEnabled();
+  await expect.poll(()=>calls(info.fixture,'admin.members.list').some(c=>c.payload.memberKind==='test')).toBe(true);
+  await p.locator('#memberUsageSelect').selectOption({index:1});
+  await expect(p.locator('#memberUsageSelectedLabel')).not.toBeEmpty();
 });
 test('MEMBER_FORCE_LOGOUT — click revokes only the selected member and refreshes presence',async({page:p},info)=>{
   await p.locator('[data-action="force-logout"]').first().click();await expect.poll(()=>calls(info.fixture,'admin.member.force-logout').length).toBe(1);expect(info.fixture.members[0].isOnline).toBe(false);expect(info.fixture.members[1].isOnline).toBe(true);
@@ -400,7 +412,7 @@ test('MEMBER_REMOVE — cancelled or mismatched confirmation has no effects; con
   p.removeAllListeners('dialog');p.on('dialog',d=>d.dismiss());
   await p.getByRole('button',{name:'移除會員全部資料'}).click();expect(calls(info.fixture,'admin.member.remove')).toHaveLength(0);
   p.removeAllListeners('dialog');p.on('dialog',d=>d.type()==='prompt'?d.accept('wrong'):d.accept());
-  await p.getByRole('button',{name:'移除會員全部資料'}).click();await expect(p.locator('#memberRecordsMessage')).toContainText('會員編號不符');expect(calls(info.fixture,'admin.member.remove')).toHaveLength(0);
+  await p.getByRole('button',{name:'移除會員全部資料'}).click();await expect(p.locator('#memberRecordsModalMessage')).toContainText('會員編號不符');expect(calls(info.fixture,'admin.member.remove')).toHaveLength(0);
   p.removeAllListeners('dialog');p.on('dialog',d=>d.type()==='prompt'?d.accept('TEST1'):d.accept());
   await p.getByRole('button',{name:'移除會員全部資料'}).click();await expect(p.locator('#memberRecordsModal')).toBeHidden();
   expect(calls(info.fixture,'admin.member.remove')).toHaveLength(1);expect(info.fixture.members).toHaveLength(2);
