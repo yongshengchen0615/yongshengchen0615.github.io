@@ -96,13 +96,13 @@ test('snapshot UI allows upload when admin policy OFF and retries when ON fails'
   const accessible = read('booking/booking-accessible.js');
   const receipt = read('booking/booking-receipt.js');
   const page = read('booking/index.html');
-  assert.match(accessible, /beginSnapshotMode\\?\\.\\(\\)/);
+  assert.match(accessible, /beginSnapshotMode\?\.\(\)/);
   assert.match(accessible, /status !== 'ready' && status !== 'optional'/);
   assert.match(accessible, /管理端未要求快照定位/);
   assert.match(accessible, /bookingSnapshotLocationRetry/);
-  assert.match(receipt, /if \\(!modeLocationRequired\\)/);
-  assert.match(receipt, /if \\(policy.snapshotLocationRequired !== true\\) return freshModeLocation\\(\\)/);
-  assert.match(receipt, /state\\.location = await snapshotLocation\\(\\)/);
+  assert.match(receipt, /if \(!modeLocationRequired\)/);
+  assert.match(receipt, /if \(policy\.snapshotLocationRequired !== true\) return freshModeLocation\(\)/);
+  assert.match(receipt, /state\.location = await snapshotLocation\(\)/);
   assert.match(page, /id="bookingSnapshotLocationStatus"/);
   assert.match(page, /id="bookingAccessibleUpload"[^>]*disabled/);
 });
