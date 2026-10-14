@@ -12,6 +12,28 @@ test('combined point cost blocks submission; removal keeps intent distinct from 
 test('uncertain response keeps checkbox draft and request ID; changing server version locks stale editor',async()=>{const p=page();try{p.w.document.querySelector('#bookingSelectionList button').click();await tick();const first=p.w.document.querySelector('[data-ref="P1"]');first.checked=false;first.dispatchEvent(new p.w.Event('change'));p.setFailure(new Error('connection lost'));p.w.document.getElementById('bookingSelectionEditor').dispatchEvent(new p.w.Event('submit',{cancelable:true}));await tick();const req=p.calls.at(-1).body.requestId;assert.match(p.w.document.getElementById('bookingSelectionMessage').textContent,/connection lost/);assert.equal(p.w.document.querySelector('[data-ref="P1"]').checked,false);p.w.document.getElementById('bookingSelectionEditor').dispatchEvent(new p.w.Event('submit',{cancelable:true}));await tick();assert.equal(p.calls.at(-1).body.requestId,req);p.w.document.querySelector('#bookingSelectionList button').click();await tick();p.w.TicketBookingSelections.render([{...booking,updatedAt:'changed'}],p.config);assert.equal(p.w.document.getElementById('bookingSelectionSave').disabled,true);assert.match(p.w.document.getElementById('bookingSelectionMessage').textContent,/重新載入/);const check=p.w.document.querySelector('[data-ref=P1]');check.checked=true;check.dispatchEvent(new p.w.Event('change'));assert.equal(p.w.document.getElementById('bookingSelectionSave').disabled,true);}finally{p.dom.window.close();}});
 
 
+
+test('production points page omits standalone booking selection panel but preserves per-ticket cancellation',async()=>{
+ const app=fs.readFileSync(path.resolve(__dirname,'../../points/app.js'),'utf8');
+ assert.match(app,/showStandaloneEditor:\s*false/,'points must disable the standalone editor at the production call site');
+ const p=page();
+ try{
+  const config={...p.config,showStandaloneEditor:false};
+  p.w.TicketBookingSelections.render([structuredClone(booking)],config);
+  assert.equal(p.w.document.getElementById('bookingSelectionPanel'),null,'even an existing panel is removed');
+  p.w.TicketBookingSelections.render([structuredClone(booking)],config);
+  assert.equal(p.w.document.getElementById('bookingSelectionPanel'),null,'refresh must not recreate the panel');
+  p.w.crypto.randomUUID=()=> 'test-cancel-unique-id';
+  assert.equal(await p.w.TicketBookingSelections.cancelPointTicket(booking.bookingId,'P1'),true);
+  assert.equal(p.calls.some(call=>call.action==='user.pointcard.booking-selections.detail'),true);
+  const update=p.calls.find(call=>call.action==='user.pointcard.booking-selections.update');
+  assert.ok(update,'per-ticket cancellation must remain available');
+  assert.deepEqual(Array.from(update.body.benefits),[],'only the selected ticket is removed');
+  assert.equal(p.refreshes(),1,'cancellation still refreshes the ticket overview');
+  assert.equal(p.w.document.getElementById('bookingSelectionPanel'),null);
+ } finally {p.dom.window.close();}
+});
+
 const ticketOverviewSource=fs.readFileSync(path.resolve(__dirname,'../../points/pointcard-ticket-overview.js'),'utf8');
 
 async function combinedTicketPage({booking=true,snapshot=true,editable=true,confirm=true}={}){
