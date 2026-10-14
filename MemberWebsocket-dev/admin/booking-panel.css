@@ -159,3 +159,6 @@
   border-bottom:0
 }
 /* Status filters share experience.css with accessible review. */
+
+/* Regular booking no-show status is distinct from cancellation. */
+#bookingPanel .booking-admin-status.status-no_show{background:#fff0eb;color:#a34832}

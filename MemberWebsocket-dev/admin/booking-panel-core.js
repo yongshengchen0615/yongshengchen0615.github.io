@@ -210,6 +210,7 @@
                 <button class="booking-admin-filter-button active" data-booking-filter="pending" type="button">待確認</button>
                 <button class="booking-admin-filter-button" data-booking-filter="confirmed" type="button">已確認</button>
                 <button class="booking-admin-filter-button" data-booking-filter="completed" type="button">已完成</button>
+                <button class="booking-admin-filter-button" data-booking-filter="no_show" type="button">無故未到</button>
                 <button class="booking-admin-filter-button" data-booking-filter="all" type="button">全部</button>
               </div>
             </div>
@@ -1790,7 +1791,7 @@
     });
   }
   function setFilter(filter) {
-    state.filter = ['pending','confirmed','completed','all'].includes(filter) ? filter : 'pending';
+    state.filter = ['pending','confirmed','completed','no_show','all'].includes(filter) ? filter : 'pending';
     document.querySelectorAll('[data-booking-filter]').forEach((button) => button.classList.toggle('active', button.dataset.bookingFilter === state.filter));
     renderBookings();
   }

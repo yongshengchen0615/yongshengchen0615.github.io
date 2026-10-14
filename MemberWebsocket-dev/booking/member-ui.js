@@ -10,6 +10,7 @@
   const BOOKING_GROUPS = [
     { key: 'reserved', title: '已預約服務', description: '等待確認、已確認與取消待確認的預約服務。' },
     { key: 'completed', title: '已完成的服務', description: '已由管理端確認完成的服務紀錄。' },
+    { key: 'no_show', title: '無故未到', description: '管理端已標記為無故未到的預約紀錄。' },
     { key: 'cancelled', title: '已取消的服務', description: '已由管理端確認取消或未通過的預約服務。' },
   ];
   let lastProfile = null;
@@ -135,6 +136,7 @@
 
   function bookingGroupKey(item) {
     if (item.classList.contains('status-completed')) return 'completed';
+    if (item.classList.contains('status-no_show')) return 'no_show';
     if (item.classList.contains('status-cancelled') || item.classList.contains('status-rejected')) return 'cancelled';
     return 'reserved';
   }
@@ -170,7 +172,9 @@
         ? '目前沒有已預約服務'
         : group.key === 'completed'
           ? '目前沒有已完成的服務'
-          : '目前沒有已取消的服務';
+          : group.key === 'no_show'
+            ? '目前沒有無故未到的紀錄'
+            : '目前沒有已取消的服務';
       list.appendChild(empty);
     }
 
