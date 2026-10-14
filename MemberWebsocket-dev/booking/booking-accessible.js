@@ -5,6 +5,16 @@
   let enabled = false;
   let memberId = '';
   let lastChatFeedback = null;
+  const SNAPSHOT_HISTORY_GROUPS = [
+    { key: 'pending', label: '待審核', empty: '目前沒有待審核的快照' },
+    { key: 'registered', label: '已登記', empty: '目前沒有已登記的快照' },
+    { key: 'attention', label: '需處理', empty: '目前沒有需要處理的快照' },
+    { key: 'withdrawn', label: '已撤回', empty: '目前沒有已撤回的快照' },
+  ];
+  let activeSnapshotHistoryGroup = 'pending';
+  let snapshotHistoryTabSelected = false;
+  let snapshotHistoryInitialized = false;
+  let lastScrolledSnapshotId = '';
   function snapshotChatFeedback(result) {
     if (result?.alreadyApplied === true) return '此快照先前已送出，不會重複傳送 LINE 訊息。';
     if (result?.chatResult?.sent === true) return '已由你的 LINE 將「快照確認」傳送到官方帳號聊天。';
@@ -111,24 +121,168 @@
         : '目前沒有可登記或可領取的票券；仍可送出快照收據。';
     }
   }
+  function snapshotHistoryGroup(row) {
+    if (row.cancelled === true) return 'withdrawn';
+    if (row.dismissed === true || row.status === 'failed') return 'attention';
+    if (row.status === 'bound') return 'registered';
+    return 'pending';
+  }
+
+  function snapshotHistoryStatusLabel(row) {
+    if (row.cancelled === true) return '已撤回';
+    if (row.dismissed === true) return '需重新提供收據';
+    if (row.status === 'failed') return '處理未完成';
+    if (row.status === 'bound') return '已登記';
+    return '待審核';
+  }
+
+  function activateSnapshotHistoryGroup(host, key, focus = false) {
+    if (!SNAPSHOT_HISTORY_GROUPS.some(group => group.key === key)) return;
+    activeSnapshotHistoryGroup = key;
+    SNAPSHOT_HISTORY_GROUPS.forEach(group => {
+      const selected = group.key === key;
+      const tab = host.querySelector('#snapshotHistoryTab-' + group.key);
+      const panel = host.querySelector('#snapshotHistoryPanel-' + group.key);
+      if (tab) {
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        tab.classList.toggle('is-active', selected);
+        if (selected && focus) tab.focus();
+      }
+      if (panel) panel.hidden = !selected;
+    });
+  }
+
+  function installSnapshotHistoryTabs(host) {
+    if (host.dataset.snapshotTabsBound === '1') return;
+    host.dataset.snapshotTabsBound = '1';
+    host.addEventListener('click', event => {
+      const tab = event.target?.closest?.('[data-snapshot-history-tab]');
+      if (!tab || !host.contains(tab)) return;
+      snapshotHistoryTabSelected = true;
+      activateSnapshotHistoryGroup(host, tab.dataset.snapshotHistoryTab);
+    });
+    host.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const tab = event.target?.closest?.('[data-snapshot-history-tab]');
+      if (!tab || !host.contains(tab)) return;
+      const index = SNAPSHOT_HISTORY_GROUPS.findIndex(group => group.key === tab.dataset.snapshotHistoryTab);
+      if (index < 0) return;
+      event.preventDefault();
+      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? SNAPSHOT_HISTORY_GROUPS.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + SNAPSHOT_HISTORY_GROUPS.length) % SNAPSHOT_HISTORY_GROUPS.length;
+      snapshotHistoryTabSelected = true;
+      activateSnapshotHistoryGroup(host, SNAPSHOT_HISTORY_GROUPS[nextIndex].key, true);
+    });
+  }
+
   function renderSnapshotHistory(submissions) {
-    const view=el('bookingView');if(!view)return;
-    let host=el('bookingSnapshotHistory');if(!host){host=document.createElement('section');host.id='bookingSnapshotHistory';host.className='booking-card';view.append(host);}
-    host.replaceChildren();const rows=Array.isArray(submissions) ? submissions : [];host.hidden=!rows.length;if(!rows.length)return;
-    const heading=document.createElement('h2');heading.textContent='快照預約明細';host.append(heading);
-    const requested=new URLSearchParams(window.location.search).get('receiptId');
-    for(const row of rows){
-      const details=document.createElement('details');details.className='member-booking-details';details.dataset.receiptId=String(row.receiptId || '');
-      const summary=document.createElement('summary');summary.textContent=`${row.cancelled ? '已撤回' : row.dismissed ? '需重新提供收據' : row.status==='bound' ? '已登記' : '待審核'} · ${String(row.receiptId || '')}`;details.append(summary);
-      const add=text=>{const p=document.createElement('p');p.textContent=text;details.append(p);};
-      const submittedAt=new Date(row.createdAt || '');
-      add('送出時間：'+(Number.isFinite(submittedAt.getTime()) ? new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',dateStyle:'medium',timeStyle:'short'}).format(submittedAt) : '—'));
-      const benefits=Array.isArray(row.requestedBenefits) ? row.requestedBenefits : [];
-      add('本次登記票券：'+(benefits.map(x=>String(x.title || x.id || '票券')).join('、') || '未選用'));
-      const settlement=Array.isArray(row.settlement) ? row.settlement[0] : row.settlement;
-      if(settlement)add(`已核准服務時間：${Number(settlement.service_minutes || 0)} 分鐘`);
-      if(requested===String(row.receiptId)){details.classList.add('booking-detail-target');window.requestAnimationFrame(()=>details.scrollIntoView?.({block:'center'}));}
-      host.append(details);
+    const view = el('bookingView');
+    if (!view) return;
+    let host = el('bookingSnapshotHistory');
+    if (!host) {
+      host = document.createElement('section');
+      host.id = 'bookingSnapshotHistory';
+      host.className = 'booking-card booking-snapshot-history';
+      view.append(host);
+    }
+    installSnapshotHistoryTabs(host);
+    const rows = Array.isArray(submissions) ? submissions : [];
+    host.hidden = !rows.length;
+    host.replaceChildren();
+    if (!rows.length) return;
+
+    const heading = document.createElement('h2');
+    heading.textContent = '快照預約明細';
+    heading.id = 'snapshotHistoryTitle';
+    host.setAttribute('aria-labelledby', heading.id);
+    const groups = new Map(SNAPSHOT_HISTORY_GROUPS.map(group => [group.key, []]));
+    const requestedId = new URLSearchParams(window.location.search).get('receiptId');
+    let targetDetails = null;
+
+    for (const row of rows) {
+      const details = document.createElement('details');
+      details.className = 'member-booking-details';
+      details.dataset.receiptId = String(row.receiptId || '');
+      const summary = document.createElement('summary');
+      summary.textContent = snapshotHistoryStatusLabel(row) + ' · ' + String(row.receiptId || '');
+      details.append(summary);
+      const add = value => {
+        const p = document.createElement('p');
+        p.textContent = value;
+        details.append(p);
+      };
+      const submittedAt = new Date(row.createdAt || '');
+      add('送出時間：' + (Number.isFinite(submittedAt.getTime())
+        ? new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', dateStyle: 'medium', timeStyle: 'short' }).format(submittedAt)
+        : '—'));
+      const benefits = Array.isArray(row.requestedBenefits) ? row.requestedBenefits : [];
+      add('本次登記票券：' + (benefits.map(item => String(item.title || item.id || '票券')).join('、') || '未選用'));
+      const settlement = Array.isArray(row.settlement) ? row.settlement[0] : row.settlement;
+      if (settlement) add('已核准服務時間：' + Number(settlement.service_minutes || 0) + ' 分鐘');
+      if (requestedId && requestedId === details.dataset.receiptId) {
+        details.classList.add('booking-detail-target');
+        details.open = true;
+        targetDetails = details;
+      }
+      groups.get(snapshotHistoryGroup(row)).push(details);
+    }
+
+    const tabs = document.createElement('div');
+    tabs.className = 'booking-history-tabs booking-snapshot-history-tabs';
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', '快照預約明細分類');
+    const panels = [];
+    SNAPSHOT_HISTORY_GROUPS.forEach(group => {
+      const items = groups.get(group.key);
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.id = 'snapshotHistoryTab-' + group.key;
+      tab.className = 'booking-history-tab';
+      tab.dataset.snapshotHistoryTab = group.key;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-controls', 'snapshotHistoryPanel-' + group.key);
+      tab.setAttribute('aria-label', group.label + '，共 ' + items.length + ' 筆');
+      const label = document.createElement('span');
+      label.className = 'booking-history-tab-label';
+      label.textContent = group.label;
+      const count = document.createElement('span');
+      count.className = 'booking-history-tab-count';
+      count.textContent = items.length + ' 筆';
+      tab.append(label, count);
+      tabs.append(tab);
+
+      const panel = document.createElement('section');
+      panel.id = 'snapshotHistoryPanel-' + group.key;
+      panel.className = 'snapshot-history-panel';
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tab.id);
+      panel.tabIndex = 0;
+      if (items.length) panel.append(...items);
+      else {
+        const empty = document.createElement('p');
+        empty.className = 'snapshot-history-empty';
+        empty.textContent = group.empty;
+        panel.append(empty);
+      }
+      panels.push(panel);
+    });
+
+    if (!snapshotHistoryTabSelected && targetDetails) {
+      activeSnapshotHistoryGroup = snapshotHistoryGroup(rows.find(row => String(row.receiptId || '') === requestedId));
+    } else if (!snapshotHistoryInitialized && !groups.get(activeSnapshotHistoryGroup).length) {
+      activeSnapshotHistoryGroup = SNAPSHOT_HISTORY_GROUPS.find(group => groups.get(group.key).length)?.key || 'pending';
+    }
+    snapshotHistoryInitialized = true;
+    host.append(heading, tabs, ...panels);
+    activateSnapshotHistoryGroup(host, activeSnapshotHistoryGroup);
+    if (targetDetails && !snapshotHistoryTabSelected && lastScrolledSnapshotId !== requestedId) {
+      lastScrolledSnapshotId = requestedId;
+      window.requestAnimationFrame(() => {
+        if (host.contains(targetDetails) && !targetDetails.closest('[hidden]')) {
+          targetDetails.scrollIntoView?.({ block: 'center' });
+        }
+      });
     }
   }
   function renderStatus(submissions) {
