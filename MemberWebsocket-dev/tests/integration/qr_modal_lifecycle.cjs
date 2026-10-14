@@ -63,3 +63,17 @@ test('points transfer production page loads its own QR encoder before display an
  assert.ok(transfer>dialog,'transfer click handler must load after the QR display dialog');
  assert.match(read('vendor/friend-qrcode.js'),/FriendQRCode/,'the encoder asset must exist');
 });
+
+test('points transfer removes only the outer copy button; the QR dialog still offers copy',async()=>{
+ const transfer=read('points/point-transfer.js');
+ assert.doesNotMatch(transfer,/pointTransferCopyOwnCode|copyOwnMemberCode|point-transfer-copy-proxy/);
+ const f=page();try{
+  f.w.FriendQRCode={toCanvas:async()=>{}};
+  assert.equal(f.w.QRDisplayDialog.show({memberCode:'AAAA',title:'我的會員 QR Code',opener:f.opener}),true);
+  await tick();
+  const dialog=f.w.document.getElementById('qrDisplayPanel');
+  assert.equal(dialog.querySelector('strong').textContent,'AAAA');
+  assert.equal(dialog.querySelector('button').textContent,'複製會員編號');
+  f.w.QRDisplayDialog.close();
+ } finally {f.w.close();}
+});
