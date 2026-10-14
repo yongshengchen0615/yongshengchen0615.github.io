@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const core = fs.readFileSync(path.join(root, 'admin/booking-panel-core.js'), 'utf8');
-const migration = fs.readFileSync(path.join(root, 'supabase/migrations/20261014083000_allow_confirmed_booking_no_show.sql'), 'utf8');
+const migration = fs.readFileSync(path.join(root, 'supabase/migrations/20261014083341_allow_confirmed_booking_no_show.sql'), 'utf8');
 
 test('pending and confirmed regular bookings share the no-show button and retain distinct follow-up actions', () => {
   assert.match(core, /if \(booking\.status === 'pending' \|\| booking\.status === 'confirmed'\) \{\s*const reason = noShowUnavailableReason\(booking\)/);
