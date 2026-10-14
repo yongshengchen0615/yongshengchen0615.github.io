@@ -69,6 +69,7 @@ const WRITE_ACTIONS = new Set([
   "admin.grant-message-presets.save",
   "user.pointcard.ticket.redeem",
   "user.pointcard.snapshot-ticket.cancel",
+  "user.event.snapshot-ticket.cancel",
   "user.event.ticket.claim",
   "user.event.ticket.redeem",
   "user.booking.event-ticket.claim",
