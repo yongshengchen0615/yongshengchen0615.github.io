@@ -8,13 +8,11 @@
   const originalRequest = window.BookingSystem.request.bind(window.BookingSystem);
   const originalConfirm = window.confirm.bind(window);
   const BOOKING_GROUPS = [
-    { key: 'reserved', title: '已預約服務', description: '等待確認、已確認與取消待確認的預約服務。' },
-    { key: 'completed', title: '已完成的服務', description: '已由管理端確認完成的服務紀錄。' },
+    { key: 'reserved', title: '已預約服務', tabTitle: '已預約', description: '等待確認、已確認與取消待確認的預約服務。' },
+    { key: 'completed', title: '已完成的服務', tabTitle: '已完成', description: '已由管理端確認完成的服務紀錄。' },
     { key: 'cancelled', title: '已取消的服務', tabTitle: '已取消', description: '已由管理端確認取消或未通過的預約服務。' },
     { key: 'no_show', title: '無故未到', tabTitle: '無故未到', description: '由管理端標記為無故未到的預約紀錄。' },
   ];
-  BOOKING_GROUPS[0].tabTitle = '已預約';
-  BOOKING_GROUPS[1].tabTitle = '已完成';
   let lastProfile = null;
   let expandedBookingId = '';
   let activeBookingGroup = 'reserved';
