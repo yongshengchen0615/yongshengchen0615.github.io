@@ -54,7 +54,7 @@ test('member ticket surfaces render booked tickets as 已預約使用', () => {
   assert.match(points, /: offer\.reservedForBooking \? '已預約使用' : offer\.pendingSnapshot \? '快照待審核'/);
 
   assert.match(event, /reserved \? '已預約使用'/);
-  assert.match(event, /已選入預約，將於服務完成時自動核銷/);
+  assert.match(event, /已選入一般預約，將於服務完成時自動核銷/);
   assert.match(event, /offer\.history \|\| offer\.reservedForBooking/);
   assert.match(eventCss, /\.event-ticket-state\.reserved/);
 });

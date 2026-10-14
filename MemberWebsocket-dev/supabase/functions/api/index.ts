@@ -69,6 +69,7 @@ const WRITE_ACTIONS = new Set([
   "admin.grant-message-presets.save",
   "user.pointcard.ticket.redeem",
   "user.pointcard.snapshot-ticket.cancel",
+  "user.event.snapshot-ticket.cancel",
   "user.event.ticket.claim",
   "user.event.ticket.redeem",
   "user.booking.event-ticket.claim",
@@ -224,6 +225,7 @@ function clientTypeForAction(action: string): ClientType {
   if (action.startsWith("user.pointcard.booking-selections.")) return "points";
   if (action === "user.pointcard.snapshot-ticket.cancel") return "points";
   if (action.startsWith("user.event.booking-selections.")) return "event";
+  if (action === "user.event.snapshot-ticket.cancel") return "event";
   const memberSession = /^user\.(member|points|event|calendar|booking)\.session\.(claim|logout|status)$/.exec(action);
   if (memberSession) return memberSession[1] as ClientType;
   if (action === "admin.session.claim" || action === "admin.session.logout") return "admin";
@@ -1055,18 +1057,20 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     supabase.rpc("member_ticket_booking_options", { p_member_id: member.id }),
     loadMemberBookingSelections(supabase, String(member.id)),
     supabase.from("booking_receipts")
-      .select("receipt_id,updated_at,requested_benefits")
+      .select("receipt_id,created_at,updated_at,requested_benefits")
       .eq("member_id",member.id).eq("submission_mode","accessible")
       .eq("status","awaiting_review").order("created_at",{ascending:false}).limit(100),
   ]);
   if (snapshotReceipts.error) throw mapDatabaseError(snapshotReceipts.error);
-  const snapshotByPointTicket = new Map<string,Json>();
+  const snapshotByPointTicket = new Map<string,Json[]>();
   for (const receipt of snapshotReceipts.data || []) {
     for (const benefit of Array.isArray(receipt.requested_benefits) ? receipt.requested_benefits : []) {
-      if (benefit?.kind !== "points" || !benefit.id || snapshotByPointTicket.has(String(benefit.id))) continue;
-      snapshotByPointTicket.set(String(benefit.id), {
-        receiptId:String(receipt.receipt_id),updatedAt:String(receipt.updated_at),
-      });
+      if (benefit?.kind !== "points" || !benefit.id) continue;
+      const ref = String(benefit.id);
+      const snapshots = snapshotByPointTicket.get(ref) || [];
+      if (!snapshots.some(item => item.receiptId === String(receipt.receipt_id)))
+        snapshots.push({ receiptId:String(receipt.receipt_id),createdAt:String(receipt.created_at),updatedAt:String(receipt.updated_at) });
+      snapshotByPointTicket.set(ref,snapshots);
     }
   }
   if (bookingOptions.error) throw mapDatabaseError(bookingOptions.error);
@@ -1113,7 +1117,7 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   for (const ticket of availableTickets) {
     const cardId = cardIdByUuid.get(ticket.point_card_id) || "";
     const list = ticketByCard.get(cardId) || [];
-    list.push({ ...pointTicketClient(ticket,cardId,reservedPointTicketIds.has(String(ticket.ticket_id || ""))), pendingSnapshot: snapshotByPointTicket.get(String(ticket.ticket_id || "")) || null, bookingSelections: contextsForTicket(bookingSelections,"points",ticket.ticket_id), eligibleBookings: (bookingOptions.data as any)?.points?.[ticket.ticket_id] || [] });
+    list.push({ ...pointTicketClient(ticket,cardId,reservedPointTicketIds.has(String(ticket.ticket_id || ""))), pendingSnapshot: (snapshotByPointTicket.get(String(ticket.ticket_id || "")) || [])[0] || null, pendingSnapshots: snapshotByPointTicket.get(String(ticket.ticket_id || "")) || [], bookingSelections: contextsForTicket(bookingSelections,"points",ticket.ticket_id), eligibleBookings: (bookingOptions.data as any)?.points?.[ticket.ticket_id] || [] });
     ticketByCard.set(cardId,list);
   }
 
@@ -1218,7 +1222,7 @@ async function adminEventTickets(supabase: SupabaseClient): Promise<any[]> {
 }
 
 async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
-  const [profile,{ data: eventRows, error },allHistoryRes,pendingSelectionsRes,bookingOptions,bookingSelections] = await Promise.all([
+  const [profile,{ data: eventRows, error },allHistoryRes,pendingSelectionsRes,bookingOptions,bookingSelections,snapshotReceipts] = await Promise.all([
     profileFor(supabase,member),
     supabase.from("event_tickets").select("*").eq("status","active").is("deleted_at",null).order("created_at",{ ascending:false }),
     supabase.from("event_ticket_claims").select("*,event_tickets(*)").eq("member_id",member.id).eq("status","used").order("used_at",{ ascending:false }),
@@ -1226,7 +1230,22 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       .eq("member_id",member.id).eq("benefit_kind","event").eq("status","pending"),
     supabase.rpc("member_ticket_booking_options", { p_member_id: member.id }),
     loadMemberBookingSelections(supabase, String(member.id)),
+    supabase.from("booking_receipts").select("receipt_id,created_at,updated_at,requested_benefits")
+      .eq("member_id",member.id).eq("submission_mode","accessible")
+      .eq("status","awaiting_review").order("created_at",{ascending:false}).limit(100),
   ]);
+  if (snapshotReceipts.error) throw mapDatabaseError(snapshotReceipts.error);
+  const pendingSnapshotsByClaim = new Map<string,Json[]>();
+  for (const receipt of snapshotReceipts.data || []) {
+    for (const benefit of Array.isArray(receipt.requested_benefits) ? receipt.requested_benefits : []) {
+      if (benefit?.kind !== "event" || !benefit.id) continue;
+      const ref = String(benefit.id);
+      const snapshots = pendingSnapshotsByClaim.get(ref) || [];
+      if (!snapshots.some(item => item.receiptId === String(receipt.receipt_id)))
+        snapshots.push({ receiptId:String(receipt.receipt_id),createdAt:String(receipt.created_at),updatedAt:String(receipt.updated_at) });
+      pendingSnapshotsByClaim.set(ref,snapshots);
+    }
+  }
   if (bookingOptions.error) throw mapDatabaseError(bookingOptions.error);
   if (error) throw mapDatabaseError(error);
   const ids = (eventRows || []).map((row:any) => row.id);
@@ -1263,6 +1282,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     const tierEligible = visibility.tierEligible;
     const soldOut = Number(row.quota || 0) > 0 && (counts.get(row.id)||0) >= Number(row.quota);
     const reservedForBooking = Boolean(claimRow && reservedEventClaimIds.has(String(claimRow.claim_id || "")));
+    const pendingSnapshots = claimRow ? pendingSnapshotsByClaim.get(String(claimRow.claim_id || "")) || [] : [];
     return [{
       ticket,
       claim,
@@ -1270,10 +1290,12 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       tierEligible,
       locked:visibility.locked, lockReason:visibility.lockReason, requiredTierLabels:visibility.requiredTierLabels,
       canClaim: !["referral","membership_join"].includes(String(row.ticket_type || "")) && !claim && tierEligible && availability === "active" && !soldOut,
-      canUse: Boolean(claim && claim.status === "available" && tierEligible && availability === "active" && !reservedForBooking && (bookingOptions.data as any)?.event?.[claimRow.claim_id]?.length),
+      canUse: Boolean(claim && claim.status === "available" && tierEligible && availability === "active" && !reservedForBooking && !pendingSnapshots.length && (bookingOptions.data as any)?.event?.[claimRow.claim_id]?.length),
       eligibleBookings: claimRow ? (bookingOptions.data as any)?.event?.[claimRow.claim_id] || [] : [],
       usageDisabledReason: "請先有管理員已確認、尚未完成且符合票券項目條件的預約。",
       reservedForBooking,
+      pendingSnapshot: pendingSnapshots[0] || null,
+      pendingSnapshots,
       bookingSelections: claimRow ? contextsForTicket(bookingSelections,"event",claimRow.claim_id) : [],
       soldOut,
       history: false,
@@ -2044,16 +2066,18 @@ async function adminIntegrationOverview(supabase: SupabaseClient): Promise<Json>
 }
 
 async function handleAction(supabase: SupabaseClient, identity: { lineUserId: string; displayName: string; issuedAtMs?: number }, action: string, body: Json): Promise<Json> {
-  if (action === "user.pointcard.snapshot-ticket.cancel") {
+  if (action === "user.pointcard.snapshot-ticket.cancel" || action === "user.event.snapshot-ticket.cancel") {
     const member = await requireJoinedMember(supabase,identity);
     const receiptId = requireText(body.receiptId,"快照識別",80);
     const ticketId = requireText(body.ticketId,"票券識別",120);
     const expectedUpdatedAt = requireText(body.expectedUpdatedAt,"快照版本",80);
-    if (!/^BR-[a-f0-9]{32}$/i.test(receiptId) || !/^PT-[a-f0-9]{32}$/i.test(ticketId)
+    if (!/^BR-[a-f0-9]{32}$/i.test(receiptId) || !(action.startsWith("user.pointcard") ? /^PT-[a-f0-9]{32}$/i : /^EC-[a-f0-9]{32}$/i).test(ticketId)
       || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
       throw new ApiError(400,"INVALID_INPUT","快照或票券識別不正確，請重新整理。");
     }
-    const result = await supabase.rpc("member_cancel_snapshot_point_ticket_request",{
+    const result = await supabase.rpc(action.startsWith("user.pointcard")
+      ? "member_cancel_snapshot_point_ticket_request"
+      : "member_cancel_snapshot_event_ticket_request",{
       p_line_user_id:identity.lineUserId,
       p_receipt_id:receiptId,p_ticket_id:ticketId,p_expected_updated_at:expectedUpdatedAt,
     });

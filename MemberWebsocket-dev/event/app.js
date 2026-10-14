@@ -8,6 +8,8 @@
   let loginProgressValue = 8;
   let autoOpenHandled = false;
   let locationTracker = null;
+  let ticketReservationBusy = false;
+  const expandedReservationTickets = new Set();
 
   window.addEventListener('DOMContentLoaded', () => {
     window.MemberSystem.bindDialogKeyboard();
@@ -112,13 +114,54 @@
   }
 
   function createOfferCard(offer) {
-    const ticket = ticketForOffer(offer); const history = Boolean(offer.history); const fixed = isFixedOffer(offer); const used = history || String(offer?.claim?.status || '') === 'used'; const reserved = !used && Boolean(offer.reservedForBooking);
+    const ticket = ticketForOffer(offer); const history = Boolean(offer.history); const fixed = isFixedOffer(offer); const used = history || String(offer?.claim?.status || '') === 'used'; const reserved = !used && Boolean(offer.reservedForBooking); const snapshotPending = !used && Boolean(offer.pendingSnapshot);
     const eligible = !history && eventTicketTierEligible(offer);
-    const stateLabel = used ? '已使用' : reserved ? '已預約使用' : !eligible ? '需升級' : offer.claim ? '已領取' : offer.soldOut ? '額滿' : fixed ? '尚未取得' : availabilityLabel(offer.availability);
+    const stateLabel = used ? '已使用' : reserved ? '已預約使用' : snapshotPending ? '快照待審核' : !eligible ? '需升級' : offer.claim ? '已領取' : offer.soldOut ? '額滿' : fixed ? '尚未取得' : availabilityLabel(offer.availability);
     const item = window.EventTicketUI.create(ticket, { history, fixed, stateLabel, stateClass: used ? 'used' : reserved ? 'reserved' : eligible ? offer.availability : 'tier-locked', usedAt: eventTicketTimestamp(offer.claim && offer.claim.usedAt) });
-    const eventTicketId = eventTicketIdForOffer(offer); const action = document.createElement('div'); action.className = 'event-ticket-action'; const hint = document.createElement('small'); hint.textContent = used ? '票券已使用，使用紀錄已保留' : reserved ? '已選入預約，將於服務完成時自動核銷' : !eligible ? '目前會員等級無法領取或使用' : fixed && !offer.claim ? '符合固定發放條件時會由系統自動發放' : offer.claim ? claimLabel(offer.claim.status) : offer.soldOut ? '限量張數已領完' : offer.availability === 'scheduled' ? '活動開始後即可領取' : offer.availability === 'ended' ? '活動已結束' : '點開查看完整說明'; const button = document.createElement('button'); button.type = 'button'; button.className = `ticket-button${!history && (offer.canClaim || offer.canUse) ? ' accent' : ''}`; button.dataset.eventTicketId = eventTicketId; button.textContent = history ? '查看紀錄' : reserved ? '已預約使用' : !eligible ? '查看詳情' : offer.claim ? offer.canUse ? '查看並使用' : '查看使用條件' : offer.canClaim ? '領取票券' : '查看詳情'; button.disabled = !eventTicketId; button.addEventListener('click', () => openTicketModal(eventTicketId)); action.append(hint); if (!used || history) action.append(button);
-    for (const context of offer.bookingSelections || []) item.append(Object.assign(document.createElement('p'), {className:'booking-selection-context',textContent:window.TicketBookingSelections?.label(context) || ''}));
-    item.append(action); return item;
+    const eventTicketId = eventTicketIdForOffer(offer); const action = document.createElement('div'); action.className = 'event-ticket-action'; const hint = document.createElement('small'); hint.textContent = used ? '票券已使用，使用紀錄已保留' : reserved ? '已選入一般預約，將於服務完成時自動核銷' : snapshotPending ? '已選入快照，待管理員審核' : !eligible ? '目前會員等級無法領取或使用' : fixed && !offer.claim ? '符合固定發放條件時會由系統自動發放' : offer.claim ? claimLabel(offer.claim.status) : offer.soldOut ? '限量張數已領完' : offer.availability === 'scheduled' ? '活動開始後即可領取' : offer.availability === 'ended' ? '活動已結束' : '點開查看完整說明'; const button = document.createElement('button'); button.type = 'button'; button.className = `ticket-button${!history && (offer.canClaim || offer.canUse) ? ' accent' : ''}`; button.dataset.eventTicketId = eventTicketId; button.textContent = history ? '查看紀錄' : reserved ? '已預約使用' : snapshotPending ? '快照待審核' : !eligible ? '查看詳情' : offer.claim ? offer.canUse ? '查看並使用' : '查看使用條件' : offer.canClaim ? '領取票券' : '查看詳情'; button.disabled = !eventTicketId; button.addEventListener('click', () => openTicketModal(eventTicketId)); action.append(hint); if (!used || history) action.append(button);
+    item.append(action);
+    const ref = String(offer?.claim?.claimId || '');
+    const reservationDetails = window.TicketBookingSelections?.createTicketReservationDisclosure({
+      title: String(ticket.title || '活動票券'),
+      bookingSelections: offer.bookingSelections,
+      pendingSnapshots: offer.pendingSnapshots,
+      expanded: expandedReservationTickets.has(ref),
+      onToggle: (open) => {
+        if (open) expandedReservationTickets.add(ref);
+        else expandedReservationTickets.delete(ref);
+      },
+      onCancelBooking: async (context) => {
+        if (ticketReservationBusy || !ref) return;
+        ticketReservationBusy = true;
+        try {
+          await window.TicketBookingSelections.cancelTicket(context.bookingId, 'event', ref);
+        } catch (error) {
+          window.alert(error?.message || '取消活動票券一般預約失敗，請更新後重試。');
+        } finally {
+          ticketReservationBusy = false;
+          renderOffers();
+        }
+      },
+      onCancelSnapshot: async (snapshot) => {
+        if (ticketReservationBusy || !ref) return;
+        if (!window.confirm(`確定取消「${ticket.title || '活動票券'}」在這筆快照中的使用意願？其他預約與票券將保留。`)) return;
+        ticketReservationBusy = true;
+        try {
+          await window.MemberSystem.request(state.config, 'event', state.idToken,
+            'user.event.snapshot-ticket.cancel', {
+              receiptId: snapshot.receiptId, ticketId: ref, expectedUpdatedAt: snapshot.updatedAt
+            });
+          await loadOffers(false);
+        } catch (error) {
+          window.alert(error?.message || '取消活動票券快照失敗，請更新後重試。');
+        } finally {
+          ticketReservationBusy = false;
+          renderOffers();
+        }
+      }
+    });
+    if (reservationDetails) item.append(reservationDetails);
+    return item;
   }
 
   function createHistoryItem(offer) {
@@ -154,7 +197,7 @@
     const ticket = ticketForOffer(offer); const claim = offer.claim; const history = Boolean(offer.history); const reserved = !history && Boolean(offer.reservedForBooking);
     els.ticketModalType.textContent = isFixedOffer(offer) ? '固定票券' : ticket.ticketType === 'lottery' ? '活動抽獎券' : ticket.ticketType === 'referral' ? '好友邀請券' : ticket.ticketType === 'membership_join' ? '加入會員券' : '活動優惠券'; els.ticketModalTitle.textContent = String(ticket.title || '活動票券'); els.ticketModalDate.textContent = history ? `已使用：${eventTicketTimestamp(claim && claim.usedAt)}` : `${eventDates(ticket)}${isFixedOffer(offer) ? '' : ` · 限量張數：${eventTicketQuotaText(ticket)}`}`; els.ticketModalDescription.textContent = String(claim ? claim.ticketDescription : ticket.description || '查看活動內容與使用說明。'); els.ticketModalUsageMethod.textContent = `使用方式：${String(claim ? claim.usageMethod : ticket.usageMethod || '請依活動現場指示使用')}`; els.ticketModalUsageInstructions.textContent = String(claim ? claim.usageInstructions : ticket.usageInstructions || '領取後請在活動期間出示本券。');
     const prizes = claim ? claim.prizes : ticket.prizes; renderPrizes(ticket.ticketType, prizes);
-    const needsGps = Boolean(claim && ticket.requiresLocation && !history && !reserved);
+    const needsGps = Boolean(claim && ticket.requiresLocation && !history && !reserved && !offer.pendingSnapshot);
     els.ticketModalLocationStatus.classList.toggle('hidden', !needsGps);
     els.ticketModalLocationButton.classList.toggle('hidden', !needsGps);
     els.ticketModalLocationButton.disabled = state.processing;
@@ -367,7 +410,7 @@
     return activeOffer || historyOffer || null;
   }
   function ticketForOffer(offer) { const ticket = offer && offer.ticket || {}; const claim = offer && offer.claim; if (!claim) return ticket; return { ...ticket, title: String(claim.ticketTitle || ticket.title || ''), ticketType: claim.ticketType || ticket.ticketType, description: String(claim.ticketDescription || ticket.description || ''), usageMethod: String(claim.usageMethod || ticket.usageMethod || ''), usageInstructions: String(claim.usageInstructions || ticket.usageInstructions || ''), prizes: Array.isArray(claim.prizes) ? claim.prizes : ticket.prizes }; }
-  function modalStatusText(offer) { if (offer.history) return `這張票券已於 ${eventTicketTimestamp(offer.claim && offer.claim.usedAt)} 使用；內容與結果會保留在此紀錄。`; if (offer.reservedForBooking) return '這張票券已預約使用，將於該次預約服務完成時自動核銷。'; if (!eventTicketTierEligible(offer)) return `這張票券只適用於${eventTicketAllowedTiers(ticketForOffer(offer))}；目前會員等級無法領取或使用。`; if (isFixedOffer(offer) && !offer.claim) return '符合固定票券的發放條件後，系統會自動發到你的會員帳戶，不需要手動領取。'; if (offer.claim) return offer.canUse ? '你已領取這張票券；選擇對應預約並確認後，票券會完成核銷。' : String(offer.usageDisabledReason || '需先有管理員已確認、尚未完成且符合項目條件的預約。'); if (offer.soldOut) return '這張活動票券的限量張數已全數領取。'; if (offer.availability === 'scheduled') return '活動尚未開始，開始後即可領取。'; if (offer.availability === 'ended') return '活動已結束，這張票券目前無法領取。'; return '領取後票券會綁定你的 LINE 會員，且每位會員限領一次。'; }
+  function modalStatusText(offer) { if (offer.history) return `這張票券已於 ${eventTicketTimestamp(offer.claim && offer.claim.usedAt)} 使用；內容與結果會保留在此紀錄。`; if (offer.reservedForBooking) return '這張票券已預約使用，將於該次預約服務完成時自動核銷。'; if (offer.pendingSnapshot) return '這張票券已選入快照預約，正等待管理員審核。'; if (!eventTicketTierEligible(offer)) return `這張票券只適用於${eventTicketAllowedTiers(ticketForOffer(offer))}；目前會員等級無法領取或使用。`; if (isFixedOffer(offer) && !offer.claim) return '符合固定票券的發放條件後，系統會自動發到你的會員帳戶，不需要手動領取。'; if (offer.claim) return offer.canUse ? '你已領取這張票券；選擇對應預約並確認後，票券會完成核銷。' : String(offer.usageDisabledReason || '需先有管理員已確認、尚未完成且符合項目條件的預約。'); if (offer.soldOut) return '這張活動票券的限量張數已全數領取。'; if (offer.availability === 'scheduled') return '活動尚未開始，開始後即可領取。'; if (offer.availability === 'ended') return '活動已結束，這張票券目前無法領取。'; return '領取後票券會綁定你的 LINE 會員，且每位會員限領一次。'; }
   function claimLabel(status) { return status === 'used' ? '已使用' : '已領取，可使用'; }
   function eventTicketTierEligible(offer) { return offer && offer.tierEligible !== false; }
   function eventTicketAllowedTiers(ticket) { const labels = ticket && ticket.allowedTierLabels; return Array.isArray(labels) && labels.length ? labels.join('、') : '全部會員等級'; }
