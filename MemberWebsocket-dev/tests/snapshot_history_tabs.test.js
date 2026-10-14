@@ -38,9 +38,10 @@ test('member snapshot details use four counted tabs with exclusive server-define
 
 test('snapshot classification retains existing approval, ticket and cancellation actions', () => {
   const ui = read('booking/booking-accessible.js');
+  const receipt = read('booking/booking-receipt.js');
   const api = read('supabase/functions/booking-receipt-api/index.ts');
   assert.match(ui, /user\.booking\.receipt\.cancel/);
-  assert.match(ui, /user\.booking\.receipt\.list/);
+  assert.match(receipt, /user\.booking\.receipt\.list/);
   assert.match(ui, /requestedBenefits/);
   assert.match(ui, /settlement\.service_minutes/);
   assert.match(ui, /snapshotHistoryStatusLabel\(row\)/);
