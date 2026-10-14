@@ -119,6 +119,26 @@ async function run() {
     url: 'https://example.test/admin/', runScripts: 'outside-only',
   });
   const browser = browserDom.window;
+  // The snapshot editor is rendered dynamically by booking-panel-core.js in
+  // production. Supply only its DOM controls for this isolated picker test.
+  browser.document.body.insertAdjacentHTML('beforeend', `
+    <input type="checkbox" id="bookingAdminSnapshotLocationRequired">
+    <div id="bookingAdminSnapshotLocationControls" class="hidden">
+      <div id="bookingAdminSnapshotLocationRows"></div>
+      <span id="bookingAdminSnapshotLocationCount"></span>
+      <p id="bookingAdminSnapshotMapStatus"></p>
+      <div id="bookingAdminSnapshotLocationMap"></div>
+      <div id="bookingAdminSnapshotLocationDraft" class="hidden">
+        <input id="bookingAdminSnapshotLocationDraftName">
+        <input id="bookingAdminSnapshotLocationDraftRadius" value="100">
+        <button id="addBookingAdminSnapshotLocationButton" type="button">新增地點</button>
+        <button id="clearBookingAdminSnapshotLocationDraftButton" type="button">取消</button>
+      </div>
+      <button id="bookingAdminSnapshotUseCurrentLocationButton" type="button">使用即時 GPS 選點</button>
+      <input id="bookingAdminSnapshotAddressSearch">
+      <button id="bookingAdminSnapshotAddressSearchButton" type="button">搜尋</button>
+      <div id="bookingAdminSnapshotAddressResults"></div>
+    </div>`);
   try {
     Object.defineProperty(browser, 'isSecureContext', { configurable: true, value: true });
     const watches = [];
