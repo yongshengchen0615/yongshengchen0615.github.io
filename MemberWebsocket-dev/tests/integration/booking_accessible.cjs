@@ -35,7 +35,9 @@ test('accessible mode remembers preference, exposes eligible tickets safely and 
     ]}}));
     const tickets=w.document.getElementById('bookingAccessibleTickets');
     assert.equal(tickets.children.length,3); assert.equal(tickets.querySelector('img'),null);
-    assert.match(tickets.textContent,/尚未領取/); assert.match(tickets.textContent,/需身體項目/);\n     assert.match(tickets.textContent,/未來預約已保留但快照點數充足/);\n     assert.doesNotMatch(tickets.textContent,/未來預約已保留而點數不足/);
+    assert.match(tickets.textContent,/尚未領取/); assert.match(tickets.textContent,/需身體項目/);
+     assert.match(tickets.textContent,/未來預約已保留但快照點數充足/);
+     assert.doesNotMatch(tickets.textContent,/未來預約已保留而點數不足/);
     assert.equal(tickets.querySelector('input'),null,'Ticket display must not silently redeem or claim');
     w.dispatchEvent(new w.CustomEvent('booking:receipts-updated',{detail:{submissions:[{status:'bound',settlement:{service_minutes:60,reward_details:[{points:2}]}}]}}));
     assert.match(w.document.getElementById('bookingAccessibleStatus').textContent,/60 分鐘.*2 點/);
