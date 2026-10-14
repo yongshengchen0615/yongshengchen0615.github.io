@@ -294,7 +294,7 @@
       resolve(fix);
     }, error => reject(new Error(error?.code === 1 ? '定位權限未開啟，請允許 GPS 後按「重新定位」。'
       : error?.code === 3 ? 'GPS 定位逾時，請按「重新定位」重試。' : '暫時無法取得 GPS 定位，請按「重新定位」重試。')),
-    { maximumAge: 0, timeout: 12000, enableHighAccuracy: true });
+    { maximumAge: 0, timeout: 12000, enableHighAccuracy: true }));
     const locations = Array.isArray(policy.snapshotLocations) ? policy.snapshotLocations : [];
     if (!locations.length) throw new Error('管理端尚未設定快照可使用地點，請聯絡管理員。');
     const allowed = locations.map(item => String(item.name || '').trim()).filter(Boolean).join('、');
