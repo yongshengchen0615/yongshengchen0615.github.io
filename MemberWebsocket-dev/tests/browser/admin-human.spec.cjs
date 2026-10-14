@@ -472,3 +472,28 @@ for(const width of [390,1280])test('BOOKING_NO_SHOW_'+width+' — explicit confi
  expect(calls(info.fixture,'admin.booking.status.complete')).toHaveLength(0);await expect(p.locator('#bookingAdminPendingCount')).toHaveText('0');
  await p.locator('[data-booking-filter="all"]').click();await expect(p.locator('#bookingAdminQueue')).toContainText('無故未到');
 });
+
+
+for(const width of [390,1280])test('BOOKING_CONFIRMED_NO_SHOW_'+width+' — confirmed booking keeps no-show action and audit-safe transition',async({page:p},info)=>{
+ if(typeof p.setViewportSize==='function')await p.setViewportSize({width,height:900});
+ seedBooking(info.fixture,'confirmed');
+ info.fixture.bookings[0].startAt='2000-01-01T10:00:00+08:00';
+ info.fixture.bookings[0].endAt='2000-01-01T10:30:00+08:00';
+ await booking(p,'bookingAdminQueueSubtab');
+ await p.locator('[data-booking-filter="confirmed"]').click();
+ const row=p.locator('[data-booking-id="booking-1"]');
+ const action=row.getByRole('button',{name:'無故未到',exact:true});
+ await expect(action).toBeEnabled();
+ await action.click();
+ await expect(p.locator('#bookingAdminCrudModal')).toContainText('不核銷票券、不扣點');
+ await expect(p.locator('#bookingAdminCrudModal')).not.toContainText('仍待確認');
+ await p.locator('#bookingAdminCrudModal input[type="checkbox"]').check();
+ await p.locator('#bookingAdminCrudModal button[type="submit"]').click();
+ await expect(p.locator('#bookingAdminCrudModal')).toBeHidden();
+ expect(info.fixture.bookings[0].status).toBe('no_show');
+ expect(calls(info.fixture,'admin.booking.status.update').at(-1).payload.status).toBe('no_show');
+ expect(calls(info.fixture,'admin.booking.status.complete')).toHaveLength(0);
+ await expect(p.locator('#bookingAdminConfirmedCount')).toHaveText('0');
+ await p.locator('[data-booking-filter="all"]').click();
+ await expect(p.locator('#bookingAdminQueue')).toContainText('無故未到');
+});

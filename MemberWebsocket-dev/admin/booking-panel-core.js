@@ -1336,13 +1336,15 @@
           actions.append(actionButton('修改服務項目', 'button button-outline', () => openBookingItemsModal(booking)));
         }
         actions.append(actionButton('修改預約票券', 'button button-outline', () => openBookingBenefitsModal(booking)));
-        if (booking.status === 'pending') {
+        if (booking.status === 'pending' || booking.status === 'confirmed') {
           const reason = noShowUnavailableReason(booking);
           const noShow = actionButton('無故未到', 'button button-danger', () => openNoShow(booking, textarea.value));
           noShow.dataset.noShowId=bookingId; noShow.disabled = Boolean(reason); noShow.title = reason;
           noShow.setAttribute('aria-label', reason ? `無故未到：${reason}` : '無故未到');
           actions.append(noShow);
           if (reason) { const hint = document.createElement('small'); hint.textContent = reason; actions.append(hint); }
+        }
+        if (booking.status === 'pending') {
           actions.append(
             actionButton('不通過', 'button button-outline', () => updateBookingStatus(booking, 'rejected', textarea.value)),
             actionButton('確認預約', 'button button-dark', () => updateBookingStatus(booking, 'confirmed', textarea.value)),
@@ -1752,7 +1754,7 @@
 
   function noShowUnavailableReason(booking) {
     if (booking.receiptSubmissionId || String(booking.requestId || '').startsWith('receipt-register:')) return '快照請使用獨立審核流程。';
-    if (booking.status !== 'pending') return '只有待確認的一般預約可標記。';
+    if (!['pending', 'confirmed'].includes(booking.status)) return '只有待確認或已確認的一般預約可標記。';
     if (booking.cancellationRequestedAt && !booking.cancellationReviewedAt) return '請先處理取消申請。';
     const raw = String(booking.endAt || '');
     const end = Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : `${raw}+08:00`);
@@ -1764,7 +1766,7 @@
     const reason = noShowUnavailableReason(booking);
     if (reason) { showMessage(els.bookingAdminServiceMessage, reason, 'error'); return; }
     els.bookingAdminCrudModalTitle.textContent = '確認標記無故未到';
-    els.bookingAdminCrudModalBody.innerHTML = `<form class="booking-admin-form"><p>${escapeHtml(booking.memberDisplayName || '會員')} · ${escapeHtml(booking.memberCode || '')}</p><p>${escapeHtml(booking.startAt || '')}–${escapeHtml(booking.endAt || '')}</p><p>目前仍待確認。確認此會員未到場？此操作不核銷票券、不扣點、不計入違規；僅解除本筆未使用票券的保留。</p><label><input type="checkbox" required> 我已人工核對，確認這筆仍待確認的預約無故未到。</label><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel type="button" class="button button-outline">返回</button><button type="submit" class="button button-danger">確認標記無故未到</button></div></form>`;
+    els.bookingAdminCrudModalBody.innerHTML = `<form class="booking-admin-form"><p>${escapeHtml(booking.memberDisplayName || '會員')} · ${escapeHtml(booking.memberCode || '')}</p><p>${escapeHtml(booking.startAt || '')}–${escapeHtml(booking.endAt || '')}</p><p>確認此會員未到場？此操作不核銷票券、不扣點、不計入違規；僅解除本筆未使用票券的保留。</p><label><input type="checkbox" required> 我已人工核對，確認這筆預約無故未到。</label><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel type="button" class="button button-outline">返回</button><button type="submit" class="button button-danger">確認標記無故未到</button></div></form>`;
     const form = els.bookingAdminCrudModalBody.querySelector('form');
     form.querySelector('[data-cancel]').addEventListener('click', closeModal);
     form.addEventListener('submit', async e => {
