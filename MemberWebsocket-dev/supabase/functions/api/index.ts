@@ -1057,7 +1057,7 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     supabase.rpc("member_ticket_booking_options", { p_member_id: member.id }),
     loadMemberBookingSelections(supabase, String(member.id)),
     supabase.from("booking_receipts")
-      .select("receipt_id,updated_at,requested_benefits")
+      .select("receipt_id,created_at,updated_at,requested_benefits")
       .eq("member_id",member.id).eq("submission_mode","accessible")
       .eq("status","awaiting_review").order("created_at",{ascending:false}).limit(100),
   ]);
@@ -1069,7 +1069,7 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       const ref = String(benefit.id);
       const snapshots = snapshotByPointTicket.get(ref) || [];
       if (!snapshots.some(item => item.receiptId === String(receipt.receipt_id)))
-        snapshots.push({ receiptId:String(receipt.receipt_id),updatedAt:String(receipt.updated_at) });
+        snapshots.push({ receiptId:String(receipt.receipt_id),createdAt:String(receipt.created_at),updatedAt:String(receipt.updated_at) });
       snapshotByPointTicket.set(ref,snapshots);
     }
   }
@@ -1230,7 +1230,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       .eq("member_id",member.id).eq("benefit_kind","event").eq("status","pending"),
     supabase.rpc("member_ticket_booking_options", { p_member_id: member.id }),
     loadMemberBookingSelections(supabase, String(member.id)),
-    supabase.from("booking_receipts").select("receipt_id,updated_at,requested_benefits")
+    supabase.from("booking_receipts").select("receipt_id,created_at,updated_at,requested_benefits")
       .eq("member_id",member.id).eq("submission_mode","accessible")
       .eq("status","awaiting_review").order("created_at",{ascending:false}).limit(100),
   ]);
@@ -1242,7 +1242,7 @@ async function eventBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       const ref = String(benefit.id);
       const snapshots = pendingSnapshotsByClaim.get(ref) || [];
       if (!snapshots.some(item => item.receiptId === String(receipt.receipt_id)))
-        snapshots.push({ receiptId:String(receipt.receipt_id),updatedAt:String(receipt.updated_at) });
+        snapshots.push({ receiptId:String(receipt.receipt_id),createdAt:String(receipt.created_at),updatedAt:String(receipt.updated_at) });
       pendingSnapshotsByClaim.set(ref,snapshots);
     }
   }
