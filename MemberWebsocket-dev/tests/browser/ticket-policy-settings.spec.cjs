@@ -55,7 +55,8 @@ for (const width of [1280, 320]) {
 
     for (const panel of [point, event]) {
       await page.evaluate(() => window.scrollTo(0, 0));
-      if (panel === point) await page.locator('#cardsTab').click();
+      await page.locator(panel === point ? '#cardsTab' : '#eventsTab').click();
+      await expect(panel).toBeVisible();
       const bounds = await panel.evaluate((el) => ({
         width: el.getBoundingClientRect().width,
         left: el.getBoundingClientRect().left,
