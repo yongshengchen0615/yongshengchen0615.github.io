@@ -246,7 +246,15 @@
     for (const snapshot of snapshots) {
       const row = node('div', '', 'ticket-reservation-row');
       row.append(node('strong', '快照預約・待審核', 'ticket-reservation-kind'));
-      row.append(node('span', `快照編號 ${String(snapshot.receiptId).slice(0, 14)}…`, 'ticket-reservation-detail'));
+      const created = String(snapshot.createdAt || '');
+      const parsed = created ? new Date(created) : null;
+      const dateLabel = parsed && !Number.isNaN(parsed.getTime())
+        ? new Intl.DateTimeFormat('zh-Hant-TW', {
+          timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+        }).format(parsed)
+        : '';
+      row.append(node('span', `${dateLabel ? `提交時間 ${dateLabel} · ` : ''}快照編號 ${String(snapshot.receiptId)}`, 'ticket-reservation-detail'));
       addCancel(row, '取消此快照票券', `取消「${title}」於快照 ${snapshot.receiptId} 的票券`,
         () => onCancelSnapshot?.(snapshot));
       list.append(row);
