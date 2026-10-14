@@ -26,14 +26,16 @@
     const statusLabel = el('bookingSnapshotLocationStatus');
     const retry = el('bookingSnapshotLocationRetry');
     const upload = el('bookingAccessibleUpload');
-    if (upload) upload.disabled = enabled && status !== 'ready';
+    if (upload) upload.disabled = enabled && status !== 'ready' && status !== 'optional';
     if (retry) retry.classList.toggle('hidden', status !== 'error');
     if (!statusLabel) return;
     statusLabel.textContent = status === 'ready'
       ? 'GPS 已定位，可以拍攝快照收據。送出時會再次確認定位有效性。'
+      : status === 'optional' ? '管理端未要求快照定位，可直接拍攝收據。部分票券仍有獨立的定位限制。'
+      : status === 'checking' ? '正在確認管理端的快照定位設定…'
       : status === 'requesting' ? '正在取得 GPS 定位，請允許裝置提供位置…'
-      : status === 'error' ? (message || '定位失敗，請按「重新定位」。')
-      : '切換到快照模式後將請求 GPS 定位。';
+      : status === 'error' ? (message || '目前無法確認定位設定，請按「重新定位」。')
+      : '進入快照模式後，系統會依管理端設定確認是否需要 GPS。';
     statusLabel.classList.toggle('error', status === 'error');
   }
 
@@ -53,8 +55,8 @@
       catch { if (el('bookingModePreference')) el('bookingModePreference').textContent = '此裝置無法儲存偏好；重新開啟時會使用一般模式。'; }
     }
     if (enabled) {
-      renderLocationState({ status: 'requesting' });
-      // Browser permission must be requested as part of the mode-toggle gesture.
+      renderLocationState({ status: 'checking' });
+      // Check the administrator policy before accessing device geolocation.
       void window.BookingReceipts?.beginSnapshotMode?.().catch(() => {});
       renderTickets(window.BookingBenefits?.getItems?.() || []);
       void window.BookingReceipts?.refresh?.();

@@ -78,7 +78,7 @@ test.beforeAll(async()=>{
           ]
         });
         if(action==='user.booking.receipt.options')return json(res,{ticketBookingRequired:url.searchParams.get('mode')==='tickets-required',items:[{kind:'event',selectionId:'QA-TICKET',title:'QA held ticket',selectable:true,eligibleBookings:[]},{kind:'event',selectionId:'QA-EXPIRED',title:'Expired',selectable:false,disabledReason:'票券已過期'}]});
-        if(action==='user.booking.receipt.list')return json(res,{snapshotLocationRequired:url.searchParams.get('mode')==='location-required',snapshotLocations:[{name:'QA 指定門市',latitude:25.033964,longitude:121.564468,radiusMeters:100}],bookings:[],submissions:[]});
+        if(action==='user.booking.receipt.list')return json(res,{snapshotLocationRequired:['location-required','unclaimed-event'].includes(url.searchParams.get('mode')),snapshotLocations:[{name:'QA 指定門市',latitude:25.033964,longitude:121.564468,radiusMeters:100}],bookings:[],submissions:[]});
         if(action==='user.event.bootstrap')return json(res,{profile:{displayName:'QA',tierKey:'general'},usedTickets:[],usedTicketCount:0,offers:[{
           ticket:{eventTicketId:'QA-GEO',title:'GPS QA',ticketType:'coupon',description:'GPS receipt QA',usageMethod:'Once',usageInstructions:'Once',requiresLocation:true,redemptionLocations:[{name:'QA 指定門市',latitude:25.033964,longitude:121.564468,radiusMeters:100}],allowedTierKeys:['general'],prizes:[]},
           claim:{claimId:'QA-CLAIM',status:'claimed',ticketTitle:'GPS QA',ticketDescription:'GPS receipt QA',ticketType:'coupon'},eligibleBookings:[{bookingId:'00000000-0000-4000-8000-000000000001',bookingDate:'2099-01-01',startTime:'10:00',title:'GPS booking'}],canUse:true,availability:'open',tierEligible:true
@@ -100,12 +100,11 @@ test.beforeAll(async()=>{
 test.afterAll(async()=>{await new Promise(resolve=>server.close(resolve));});
 test.beforeEach(async({page})=>{await page.route('https://**',route=>route.abort());page.on('dialog',dialog=>dialog.accept());});
 async function open(page,run,mode='',accessible=true) {
-  // Mode-entry GPS is mandatory, even when the global snapshot policy is OFF.
-  // Keep the explicit denied-permission scenario ungranted; camera/upload
-  // fixtures receive a valid geolocation so that they test their own behavior.
+  // Policy OFF needs only camera permission. A GPS-restricted ticket fixture
+  // enables snapshot GPS explicitly and gets geolocation permission.
   if (accessible && mode !== 'location-required') {
-    await page.context().grantPermissions(['geolocation','camera'],{origin:base});
-    await page.context().setGeolocation({latitude:25.033964,longitude:121.564468,accuracy:10});
+    await page.context().grantPermissions(mode === 'unclaimed-event' ? ['geolocation','camera'] : ['camera'],{origin:base});
+    if (mode === 'unclaimed-event') await page.context().setGeolocation({latitude:25.033964,longitude:121.564468,accuracy:10});
   }
   await page.goto(base+'/receipt?run='+run+'&mode='+mode);
   expect(await page.evaluate(()=>typeof window.BookingSystem?.getSession)).toBe('function');
@@ -125,6 +124,21 @@ test('snapshot positioning policy blocks denied GPS and successful retries send 
  expect(state.prepare[0].location).toMatchObject({latitude:25.033964,longitude:121.564472,accuracy:10});
  expect(state.finalize[0].location.timestamp).toBeGreaterThan(Date.now()-120000);
 });
+test('snapshot policy OFF permits receipt upload with location permission unavailable',async({page})=>{
+  const run='snapshot-location-optional';
+  await open(page,run);
+  await expect(page.locator('#bookingReceiptCapture')).toHaveText('拍攝收據');
+  await expect(page.locator('#bookingReceiptFile')).toBeEnabled();
+  await capture(page);
+  await page.locator('#bookingReceiptSubmit').click();
+  await expect(page.locator('#bookingReceiptModal')).toBeHidden();
+  const state=runs.get(run);
+  expect(state.prepare).toHaveLength(1);
+  expect(state.finalize).toHaveLength(1);
+  expect(state.prepare[0].location).toBeNull();
+  expect(state.finalize[0].location).toBeNull();
+});
+
 async function capture(page,{screenSnapshot=false}={}) {
   let snapshotSize=0;
   await expect(page.locator('#bookingReceiptCapture')).toHaveText('拍攝收據');

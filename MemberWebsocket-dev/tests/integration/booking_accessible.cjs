@@ -183,7 +183,7 @@ test('accessible receipt camera sends a receipt without a booking and locks dupl
       calls.push({action,payload});
       if(action.endsWith('.prepare'))return {receiptId:'receipt',objectPath:'path',uploadToken:'token'};
       if(action.endsWith('.finalize'))return finalize;
-      return {bookings:[],submissions:[]};
+      return {bookings:[],submissions:[],snapshotLocationRequired:false,snapshotLocations:[]};
     }};
     w.supabase={createClient:()=>({storage:{from:()=>({uploadToSignedUrl:async()=>({})})}})};
     w.eval(read('booking/booking-receipt.js'));
@@ -206,7 +206,7 @@ test('accessible E2E screen snapshot hook is test-session gated and skips the ph
   try {
     Object.defineProperty(w.navigator,'geolocation',{value:{getCurrentPosition:ok=>ok({coords:{latitude:25.03,longitude:121.56,accuracy:15},timestamp:Date.now()})}});
     Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:async()=>{cameraCalls+=1;throw new Error('camera must not run');}}});
-    w.BookingSystem={getSession:()=>({config:{},idToken:'fixture'}),request:async()=>({bookings:[],submissions:[]})};
+    w.BookingSystem={getSession:()=>({config:{},idToken:'fixture'}),request:async()=>({bookings:[],submissions:[],snapshotLocationRequired:false,snapshotLocations:[]})};
     w.supabase={createClient:()=>({storage:{from:()=>({uploadToSignedUrl:async()=>({})})}})};
     w.eval(read('booking/booking-receipt.js'));
 

@@ -32,6 +32,7 @@
   // Snapshot-mode GPS stays in memory only; it is never stored in localStorage.
   // Starting it from the mode toggle keeps the permission request tied to a user action.
   let modeLocation = null;
+  let modeLocationRequired = null;
   let modeLocationGeneration = 0;
   let modeLocationPending = null;
 
@@ -48,19 +49,40 @@
     }));
   }
 
+  async function loadSnapshotPolicy() {
+    const current = session();
+    if (!current) throw new Error('登入狀態已失效，請重新整理。');
+    const policy = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.list');
+    if (typeof policy?.snapshotLocationRequired !== 'boolean') {
+      throw new Error('目前無法確認管理端的快照定位設定，請稍後重試。');
+    }
+    return policy;
+  }
+
   function beginSnapshotMode() {
     const generation = ++modeLocationGeneration;
     modeLocation = null;
-    reportModeLocation('requesting');
-    const pending = snapshotLocation().then(point => {
+    modeLocationRequired = null;
+    reportModeLocation('checking');
+    // The administrative setting is authoritative. Never request GPS while OFF.
+    const pending = (async () => {
+      const policy = await loadSnapshotPolicy();
+      if (generation !== modeLocationGeneration) return null;
+      modeLocationRequired = policy.snapshotLocationRequired === true;
+      if (!modeLocationRequired) {
+        reportModeLocation('optional');
+        return null;
+      }
+      reportModeLocation('requesting');
+      const point = await requestSnapshotGps(policy);
       if (generation === modeLocationGeneration) {
         modeLocation = point;
         reportModeLocation('ready');
       }
       return generation === modeLocationGeneration ? point : null;
-    }).catch(error => {
+    })().catch(error => {
       if (generation === modeLocationGeneration) {
-        reportModeLocation('error', error?.message || '無法取得 GPS 定位，請重新嘗試。');
+        reportModeLocation('error', error?.message || '目前無法確認快照定位設定，請重新嘗試。');
       }
       throw error;
     }).finally(() => {
@@ -73,6 +95,7 @@
   function endSnapshotMode() {
     ++modeLocationGeneration;
     modeLocation = null;
+    modeLocationRequired = null;
     modeLocationPending = null;
     reportModeLocation('idle');
   }
@@ -257,46 +280,43 @@
     if (options?.skipCamera !== true) void startCamera();
   }
 
-  async function snapshotLocation() {
-    if (!session()) throw new Error('登入狀態已失效，請重新整理。');
+  async function requestSnapshotGps(policy) {
     if (window.isSecureContext === false || !navigator.geolocation?.getCurrentPosition) {
       throw new Error('此裝置不支援定位，請使用 HTTPS 及支援 GPS 定位的瀏覽器。');
     }
-    // Do not await a network policy fetch before prompting: this is initiated
-    // immediately by the member entering snapshot mode.
-    return await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(position => {
-      const point = { latitude: position.coords.latitude, longitude: position.coords.longitude,
+    const point = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(position => {
+      const fix = { latitude: position.coords.latitude, longitude: position.coords.longitude,
         accuracy: position.coords.accuracy, timestamp: position.timestamp };
-      if (!Object.values(point).every(Number.isFinite) || Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180 || point.accuracy <= 0 || point.accuracy > 100
-        || point.timestamp < Date.now() - 120000 || point.timestamp > Date.now() + 30000) {
+      if (!Object.values(fix).every(Number.isFinite) || Math.abs(fix.latitude) > 90 || Math.abs(fix.longitude) > 180 || fix.accuracy <= 0 || fix.accuracy > 100
+        || fix.timestamp < Date.now() - 120000 || fix.timestamp > Date.now() + 30000) {
         reject(new Error('GPS 定位不夠精準或已失效（需在 100 公尺內），請重新定位。')); return;
       }
-      resolve(point);
+      resolve(fix);
     }, error => reject(new Error(error?.code === 1 ? '定位權限未開啟，請允許 GPS 後按「重新定位」。'
       : error?.code === 3 ? 'GPS 定位逾時，請按「重新定位」重試。' : '暫時無法取得 GPS 定位，請按「重新定位」重試。')),
-    { maximumAge: 0, timeout: 12000, enableHighAccuracy: true })).then(async point => {
-      // The permission prompt has already happened. Now check the latest
-      // server-managed geofence policy and display the configured place name.
-      const current = session();
-      if (!current) throw new Error('登入狀態已失效，請重新整理。');
-      const policy = await window.BookingSystem.request(current.config, 'booking', current.idToken, 'user.booking.receipt.list');
-      if (policy.snapshotLocationRequired === true) {
-        const locations = Array.isArray(policy.snapshotLocations) ? policy.snapshotLocations : [];
-        if (!locations.length) throw new Error('管理端尚未設定快照可使用地點，請聯絡管理員。');
-        const allowed = locations.map(item => String(item.name || '').trim()).filter(Boolean).join('、');
-        const toRadians = degrees => degrees * Math.PI / 180;
-        const near = locations.some(location => {
-          const lat = Number(location.latitude), lon = Number(location.longitude), meters = Number(location.radiusMeters);
-          if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(meters)) return false;
-          const dLat = toRadians(point.latitude - lat), dLon = toRadians(point.longitude - lon);
-          const arc = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat)) * Math.cos(toRadians(point.latitude)) * Math.sin(dLon / 2) ** 2;
-          const distance = 2 * 6371000 * Math.asin(Math.sqrt(Math.min(1, arc)));
-          return distance <= meters && point.accuracy <= meters;
-        });
-        if (!near) throw new Error(`目前不在快照指定地點「${allowed || '管理端設定的地點'}」範圍內，請抵達後重新定位。`);
-      }
-      return point;
+    { maximumAge: 0, timeout: 12000, enableHighAccuracy: true }));
+    const locations = Array.isArray(policy.snapshotLocations) ? policy.snapshotLocations : [];
+    if (!locations.length) throw new Error('管理端尚未設定快照可使用地點，請聯絡管理員。');
+    const allowed = locations.map(item => String(item.name || '').trim()).filter(Boolean).join('、');
+    const toRadians = degrees => degrees * Math.PI / 180;
+    const near = locations.some(location => {
+      const lat = Number(location.latitude), lon = Number(location.longitude), meters = Number(location.radiusMeters);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(meters)) return false;
+      const dLat = toRadians(point.latitude - lat), dLon = toRadians(point.longitude - lon);
+      const arc = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat)) * Math.cos(toRadians(point.latitude)) * Math.sin(dLon / 2) ** 2;
+      const distance = 2 * 6371000 * Math.asin(Math.sqrt(Math.min(1, arc)));
+      return distance <= meters && point.accuracy <= meters;
     });
+    if (!near) throw new Error(`目前不在快照指定地點「${allowed || '管理端設定的地點'}」範圍內，請抵達後重新定位。`);
+    return point;
+  }
+
+  async function snapshotLocation() {
+    const policy = await loadSnapshotPolicy();
+    // The backend revalidates the latest policy at prepare/finalize. A location
+    // may still be supplied for ticket-specific requirements when already held.
+    if (policy.snapshotLocationRequired !== true) return freshModeLocation();
+    return requestSnapshotGps(policy);
   }
 
   async function authorizeSnapshot(start = true) {
@@ -310,8 +330,9 @@
     setMessage('正在確認快照定位設定…');
     try {
       // Reuse the mode-entry fix if fresh; otherwise retry in this dialog.
-      const point = freshModeLocation() || await (modeLocationPending || beginSnapshotMode());
-      if (!point) return false;
+      const point = modeLocationRequired === false ? null
+        : freshModeLocation() || await (modeLocationPending || beginSnapshotMode());
+      if (modeLocationRequired === null || (modeLocationRequired === true && !point)) return false;
       if (generation !== state.photoGeneration || document.getElementById('bookingReceiptModal')?.classList.contains('hidden')) return false;
       state.location = point; state.snapshotReady = true;
       if (input) input.disabled = false;
