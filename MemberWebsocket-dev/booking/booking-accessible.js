@@ -121,7 +121,8 @@
       const details=document.createElement('details');details.className='member-booking-details';details.dataset.receiptId=String(row.receiptId || '');
       const summary=document.createElement('summary');summary.textContent=`${row.cancelled ? '已撤回' : row.dismissed ? '需重新提供收據' : row.status==='bound' ? '已登記' : '待審核'} · ${String(row.receiptId || '')}`;details.append(summary);
       const add=text=>{const p=document.createElement('p');p.textContent=text;details.append(p);};
-      add('送出時間：'+String(row.createdAt || '—'));
+      const submittedAt=new Date(row.createdAt || '');
+      add('送出時間：'+(Number.isFinite(submittedAt.getTime()) ? new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',dateStyle:'medium',timeStyle:'short'}).format(submittedAt) : '—'));
       const benefits=Array.isArray(row.requestedBenefits) ? row.requestedBenefits : [];
       add('本次登記票券：'+(benefits.map(x=>String(x.title || x.id || '票券')).join('、') || '未選用'));
       const settlement=Array.isArray(row.settlement) ? row.settlement[0] : row.settlement;

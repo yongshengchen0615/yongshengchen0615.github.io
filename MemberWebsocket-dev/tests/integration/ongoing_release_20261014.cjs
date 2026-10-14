@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const load=require('./fixtures/load-postgres-snapshot.cjs'),root=path.resolve(__dirname,'../..');
-const migration='20261014033652_booking_notifications_noshow_readable_audit.sql';
+const migration='20261014043730_booking_notifications_noshow_readable_audit.sql';
 test('no-show and readable audit retain PostgreSQL integrity and authorization',async t=>{
  const db=await load(),q=async(sql,args=[]) => (await db.query(sql,args)).rows,one=async(sql,args=[]) => (await q(sql,args))[0];
  try {

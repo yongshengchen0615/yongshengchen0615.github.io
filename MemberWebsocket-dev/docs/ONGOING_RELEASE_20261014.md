@@ -40,3 +40,7 @@ DOM 測試檢查一般明細初始收合、唯讀、多筆／外部ID、中文�
 程式回退可還原前端與 Edge；DB 相容擴充必須保留，不能將既有 no_show 資料改成取消或刪除稽核。誤判未到目前沒有無痕撤銷按鈕；需提交指定 booking 的人工更正，核對排程及票券再以具授權的更正交易處理，留下原狀態、新狀態、理由、操作者與時間的 BOOKING_NO_SHOW_CORRECTED 紀錄。不得直接刪除原 no_show 稽核或替會員自動扣點。
 
 資料庫 advisors 的既有 pg_net public-schema 警告與 service-role-only 表的「RLS 無 policy」提示為既有架構項目，不擴大本次 schema 變更；新 RPC 保持最小 grant。
+
+## 正式後端部署紀錄
+
+2026-10-14 已套用 `20261014043730_booking_notifications_noshow_readable_audit`，版本與正式 migration history 對齊。Edge Functions：api v84、booking-api v44、member-profile-api v29、booking-receipt-api v32、booking-line-notifications v17 均為 ACTIVE；維持原自訂認證。前端與 main 等待最新 CI 通過後發布。

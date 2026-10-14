@@ -1340,7 +1340,7 @@
           const reason = noShowUnavailableReason(booking);
           const noShow = actionButton('無故未到', 'button button-danger', () => openNoShow(booking, textarea.value));
           noShow.dataset.noShowId=bookingId; noShow.disabled = Boolean(reason); noShow.title = reason;
-          noShow.setAttribute('aria-label', reason ? `無故未到：${reason}` : '標記無故未到');
+          noShow.setAttribute('aria-label', reason ? `無故未到：${reason}` : '無故未到');
           actions.append(noShow);
           if (reason) { const hint = document.createElement('small'); hint.textContent = reason; actions.append(hint); }
           actions.append(
@@ -1745,7 +1745,7 @@
     for(const button of document.querySelectorAll('[data-no-show-id]')) {
       const booking=state.booking.bookings.find(b=>String(b.bookingId)===button.dataset.noShowId);
       if(!booking) continue;const reason=noShowUnavailableReason(booking);button.disabled=Boolean(reason)||state.busy;button.title=reason;
-      button.setAttribute('aria-label',reason ? `無故未到：${reason}` : '標記無故未到');
+      button.setAttribute('aria-label',reason ? `無故未到：${reason}` : '無故未到');
       const hint=button.nextElementSibling;if(hint?.tagName==='SMALL')hint.textContent=reason;
     }
   }

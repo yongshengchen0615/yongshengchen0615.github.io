@@ -133,6 +133,9 @@ jobs:
           npm test -- member-p2.spec.cjs --grep "membership pass actions stay grouped"
           npm test -- receipt-location.spec.cjs --grep "GPS permission denial"
         working-directory: MemberWebsocket-dev/tests/browser
+      - name: Fail fast on no-show confirmation and readable audit
+        run: npm test -- admin-human.spec.cjs --grep "BOOKING_NO_SHOW|AUDIT_QUERY"
+        working-directory: MemberWebsocket-dev/tests/browser
       - name: Run real-browser admin, member, receipt and location flows
         run: npm test
         working-directory: MemberWebsocket-dev/tests/browser
