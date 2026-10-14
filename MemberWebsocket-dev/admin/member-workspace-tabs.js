@@ -3,6 +3,7 @@
 
   const WORKSPACES = Object.freeze([
     { key: 'directory', tabId: 'memberDirectoryTab', panelId: 'memberDirectoryPanel' },
+    { key: 'usage', tabId: 'memberUsageTab', panelId: 'memberUsagePanel' },
     { key: 'tiers', tabId: 'memberTierSettingsTab', panelId: 'memberTierSettingsPanel' },
     { key: 'terms', tabId: 'memberTermsTab', panelId: 'memberTermsPanel' },
   ]);
@@ -26,7 +27,9 @@
         item.panel.classList.toggle('hidden', !selected);
         if (selected && focusTab) item.tab.focus();
       });
+      window.dispatchEvent(new CustomEvent('member-workspace-selected', { detail: { workspace: next } }));
     };
+    window.MemberWorkspaceTabs = Object.freeze({ select: (key) => selectWorkspace(key) });
 
     items.forEach((item, index) => {
       item.tab.addEventListener('click', () => selectWorkspace(item.key));

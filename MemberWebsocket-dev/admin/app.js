@@ -9,7 +9,7 @@
   const POINT_CARD_STYLE_KEYS = Object.freeze(['citrus', 'coral', 'lagoon', 'skyline', 'violet', 'berry', 'cocoa', 'lime', 'denim', 'peach']);
   const POINT_CARD_STYLE_LABELS = Object.freeze({ citrus: '柑橘氣泡', coral: '珊瑚蘇打', lagoon: '潟湖水光', skyline: '晴空城市', violet: '電光紫', berry: '莓果霓虹', cocoa: '可可拿鐵', lime: '萊姆汽水', denim: '丹寧晴藍', peach: '蜜桃冰沙' });
   const LEGACY_POINT_CARD_STYLE_MAP = Object.freeze({ forest: 'lagoon', midnight: 'skyline', ocean: 'denim', sunset: 'coral', lavender: 'violet', rose: 'berry', gold: 'citrus', platinum: 'cocoa', mint: 'lime', cherry: 'peach' });
-  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberKind: 'real', memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], bookingServices: [], eventTickets: [], calendarItems: [], messagePresets: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false, testMode: true }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false, memberRecords: { lineUserId: '', filter: 'all', data: null, member: null, requestVersion: 0 }, operationalBookings: [] };
+  const state = { config: null, idToken: '', members: [], memberPage: { page: 1, pageSize: 100, total: 0, totalPages: 1, query: '' }, memberKind: 'real', memberSearchTimer: null, memberRequestVersion: 0, tierSettings: [], cards: [], cardSortOriginalOrder: [], tickets: [], bookingServices: [], eventTickets: [], calendarItems: [], messagePresets: [], adminCalendarMonth: '', selectedCalendarDates: new Set(), selectedCalendarItemIds: new Set(), calendarBatchItems: [], calendarBatchNextKey: 1, stats: {}, activePanel: 'members', activeCardWorkspace: 'cards', loadedPanels: { members: true, cards: false, events: false, calendar: false, testMode: true }, panelLoads: Object.create(null), summaryLoaded: false, selectedCardId: '', selectedTicketId: '', selectedEventTicketId: '', selectedCalendarItemId: '', grantRequestId: '', grantSuccessTimer: null, editorModals: Object.create(null), cardSortBusy: false, cardSortDirty: false, cardSortDrag: null, suppressCardClick: false, writeConfirmationRequired: false, memberRecords: { lineUserId: '', filter: 'all', data: null, member: null, requestVersion: 0 }, memberUsage: { kind: 'real', page: 1, query: '', members: [], totalPages: 1, total: 0, requestVersion: 0, searchTimer: null, loaded: false }, operationalBookings: [] };
   const els = {};
   const LOGIN_PROGRESS_TICK_MS = 650;
   const MEMBER_PRESENCE_POLL_MS = 15_000;
@@ -38,7 +38,7 @@
       'newEventTicketButton', 'eventTicketResultCount', 'eventTicketListItems', 'eventTicketEmptyState', 'eventTicketEditorKicker', 'eventTicketEditorTitle', 'eventTicketEditorStatus', 'eventTicketForm', 'eventTicketId', 'eventTicketExpectedUpdatedAt', 'eventTicketTitle', 'eventTicketType', 'eventTicketDescription', 'eventTicketUsageMethod', 'eventTicketUsageInstructions', 'eventTicketStatus', 'eventTicketRequiredServiceMatchMode', 'eventTicketRequiredServiceIds', 'eventTicketStartsOn', 'eventTicketEndsOn', 'eventTicketDateRangeSummary', 'eventTicketDateRangeMessage', 'eventTicketQuota', 'eventTicketAccent', 'eventTicketAccentValue', 'eventTicketPrizeEditor', 'eventTicketPrizeRows', 'addEventTicketPrizeButton', 'balanceEventTicketPrizesButton', 'eventTicketPrizeTotal', 'eventTicketFormMessage', 'resetEventTicketButton', 'deleteEventTicketButton', 'saveEventTicketButton', 'eventTicketLocationRule', 'eventTicketRequiresLocation', 'eventTicketLatitude', 'eventTicketLongitude', 'eventTicketRadius',
       'newCalendarItemButton', 'adminCalendarPreviousMonthButton', 'adminCalendarNextMonthButton', 'adminCalendarTodayButton', 'adminCalendarMonthTitle', 'adminCalendarGrid', 'calendarItemEditorKicker', 'calendarItemEditorTitle', 'calendarItemEditorStatus', 'calendarItemForm', 'calendarItemId', 'calendarItemExpectedUpdatedAt', 'calendarItemTitle', 'calendarItemType', 'calendarItemDescription', 'calendarItemLinkLabel', 'calendarItemLinkUrl', 'calendarItemEventLinkFields', 'calendarItemStatus', 'calendarItemStartsOn', 'calendarItemEndsOn', 'calendarItemAccent', 'calendarItemAccentValue', 'calendarItemFormMessage', 'resetCalendarItemButton', 'deleteCalendarItemButton', 'saveCalendarItemButton', 'addCalendarBatchItemButton', 'queueSelectedCalendarItemsButton', 'deleteSelectedCalendarItemsButton', 'calendarBatchSummary', 'calendarBatchRows', 'calendarBatchMessage', 'clearCalendarBatchButton', 'saveCalendarBatchButton',
       'memberModal', 'closeMemberModal', 'memberForm', 'memberLineUserId', 'memberExpectedUpdatedAt', 'memberIsTestAccount', 'memberIdentity', 'memberTier', 'memberTestProfileFields', 'memberDisplayName', 'memberSurname', 'memberSalutation', 'memberBirthday', 'memberPhone', 'memberStatus', 'memberFormMessage', 'cancelMemberButton', 'saveMemberButton',
-      'memberRecordsModal', 'closeMemberRecordsModal', 'memberRecordsIdentity', 'memberRecordsOverview', 'memberRecordsSummary', 'memberRecordsTabs', 'memberRecordsList', 'memberRecordsEmpty', 'memberRecordsMessage',
+      'memberRecordsModal', 'closeMemberRecordsModal', 'memberRecordsIdentity', 'memberRecordsOverview', 'memberRecordsModalMessage', 'memberRecordsOpenUsage', 'memberUsagePanel', 'memberUsageKind', 'memberUsageSearch', 'memberUsageSelect', 'memberUsagePrev', 'memberUsageNext', 'memberUsagePageStatus', 'memberUsageRosterMessage', 'memberUsageIntro', 'memberUsageSelectedLabel', 'memberRecordsSummary', 'memberRecordsTabs', 'memberRecordsList', 'memberRecordsEmpty', 'memberRecordsMessage',
       'grantMode', 'grantServiceFields', 'grantServiceStatus', 'grantServiceList', 'previewServiceGrantButton', 'grantServicePreview', 'grantModal', 'closeGrantModal', 'grantForm', 'grantMemberId', 'grantMemberName', 'grantStampsEnabled', 'grantStampsFields', 'grantCardId', 'grantStampAmount', 'grantPointRows', 'addGrantPointButton', 'grantPointHint', 'grantServiceTimeEnabled', 'grantServiceTimeFields', 'grantServiceTimeMinutes', 'grantMessageSection', 'grantMessagePreset', 'grantMessagePreview', 'grantTestNotificationNote', 'manageGrantMessagesButton', 'grantFormMessage', 'cancelGrantButton', 'saveGrantButton', 'grantSuccessNotice',
       'messagePresetModal', 'closeMessagePresetModal', 'messagePresetForm', 'messagePresetList', 'messagePresetId', 'messagePresetExpectedUpdatedAt', 'messagePresetTitle', 'messagePresetBody', 'messagePresetStatus', 'messagePresetFormMessage', 'newMessagePresetButton', 'saveMessagePresetButton'
     ].forEach((id) => { els[id] = document.getElementById(id); });
@@ -173,6 +173,47 @@
     els.memberRecordsModal.addEventListener('click', (event) => { if (shouldDismissModalFromBackdrop(event, els.memberRecordsModal)) closeMemberRecordsModal(); });
     els.memberRecordsTabs.addEventListener('click', handleMemberRecordsTabClick);
     els.memberRecordsSummary.addEventListener('click', handleMemberRecordsSummaryClick);
+    els.memberRecordsOpenUsage.addEventListener('click', () => {
+      const member = state.memberRecords.member;
+      if (!member) return;
+      closeMemberRecordsModal();
+      state.memberUsage.kind = member.isTestAccount ? 'test' : 'real';
+      state.memberUsage.page = 1;
+      state.memberUsage.query = '';
+      state.memberUsage.loaded = false;
+      els.memberUsageKind.value = state.memberUsage.kind;
+      els.memberUsageSearch.value = '';
+      window.MemberWorkspaceTabs?.select('usage');
+    });
+    window.addEventListener('member-workspace-selected', (event) => {
+      if (event.detail?.workspace === 'usage' && state.idToken && !state.memberUsage.loaded) {
+        void loadMemberUsageRoster().catch(() => {});
+      }
+    });
+    els.memberUsageKind.addEventListener('change', () => {
+      state.memberUsage.kind = els.memberUsageKind.value === 'test' ? 'test' : 'real';
+      state.memberUsage.page = 1;
+      state.memberUsage.query = '';
+      els.memberUsageSearch.value = '';
+      clearMemberUsageHistory();
+      void loadMemberUsageRoster().catch(() => {});
+    });
+    els.memberUsageSearch.addEventListener('input', () => {
+      state.memberUsage.requestVersion++;
+      if (state.memberUsage.searchTimer) window.clearTimeout(state.memberUsage.searchTimer);
+      state.memberUsage.query = els.memberUsageSearch.value.trim().slice(0, 100);
+      state.memberUsage.page = 1;
+      clearMemberUsageHistory();
+      state.memberUsage.searchTimer = window.setTimeout(() => { void loadMemberUsageRoster().catch(() => {}); }, 300);
+    });
+    els.memberUsageSelect.addEventListener('change', () => {
+      const member = state.memberUsage.members.find((item) => item.lineUserId === els.memberUsageSelect.value)
+        || (state.memberRecords.member?.lineUserId === els.memberUsageSelect.value ? state.memberRecords.member : null);
+      if (member) void openMemberRecordsModal(member, false);
+      else clearMemberUsageHistory();
+    });
+    els.memberUsagePrev.addEventListener('click', () => { clearMemberUsageHistory(); state.memberUsage.page = Math.max(1, state.memberUsage.page - 1); void loadMemberUsageRoster().catch(() => {}); });
+    els.memberUsageNext.addEventListener('click', () => { clearMemberUsageHistory(); state.memberUsage.page = Math.min(state.memberUsage.totalPages, state.memberUsage.page + 1); void loadMemberUsageRoster().catch(() => {}); });
     els.grantForm.addEventListener('submit', saveGrant);
     els.grantMode.addEventListener('change', changeGrantMode);
     els.grantServiceList.addEventListener('change', invalidateServicePreview);
@@ -871,7 +912,7 @@
     ['testAutomation', '測試操作'],
   ]);
 
-  async function openMemberRecordsModal(member) {
+  async function openMemberRecordsModal(member, showModal = true) {
     const requestVersion = ++state.memberRecords.requestVersion;
     state.memberRecords.lineUserId = String(member.lineUserId || '');
     state.memberRecords.filter = 'all';
@@ -882,17 +923,22 @@
     els.memberRecordsList.replaceChildren();
     els.memberRecordsEmpty.classList.add('hidden');
     hideMessage(els.memberRecordsMessage);
+    hideMessage(els.memberRecordsModalMessage);
+    els.memberUsageIntro.classList.add('hidden');
+    els.memberUsageSelectedLabel.textContent = `${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`;
     const loading = document.createElement('div');
     loading.className = 'member-records-loading';
     loading.textContent = '正在讀取會員紀錄…';
     els.memberRecordsList.append(loading);
     renderMemberRecordTabs();
-    els.memberRecordsModal.classList.remove('hidden');
-    window.requestAnimationFrame(() => {
-      if (!els.memberRecordsModal.classList.contains('hidden')) {
-        try { els.closeMemberRecordsModal.focus({ preventScroll: true }); } catch (_) { els.closeMemberRecordsModal.focus(); }
-      }
-    });
+    if (showModal) {
+      els.memberRecordsModal.classList.remove('hidden');
+      window.requestAnimationFrame(() => {
+        if (!els.memberRecordsModal.classList.contains('hidden')) {
+          try { els.closeMemberRecordsModal.focus({ preventScroll: true }); } catch (_) { els.closeMemberRecordsModal.focus(); }
+        }
+      });
+    }
 
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-records.list', {
@@ -906,12 +952,13 @@
       els.memberRecordsList.replaceChildren();
       els.memberRecordsEmpty.classList.add('hidden');
       showMessage(els.memberRecordsMessage, error && error.message || '無法讀取會員紀錄，請稍後再試。');
+      if (showModal) showMessage(els.memberRecordsModalMessage, error && error.message || '無法讀取會員紀錄，請稍後再試。');
     }
   }
 
   async function refreshOpenMemberRecords() {
     const lineUserId = String(state.memberRecords.lineUserId || '');
-    if (!lineUserId || els.memberRecordsModal.classList.contains('hidden')) return;
+    if (!lineUserId || (els.memberRecordsModal.classList.contains('hidden') && els.memberUsagePanel.classList.contains('hidden'))) return;
     const requestVersion = ++state.memberRecords.requestVersion;
     try {
       const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member-records.list', { lineUserId });
@@ -921,14 +968,71 @@
     } catch (error) {
       if (requestVersion !== state.memberRecords.requestVersion || state.memberRecords.lineUserId !== lineUserId) return;
       showMessage(els.memberRecordsMessage, error && error.message || '會員紀錄即時同步失敗，將於下一次資料更新時重試。');
+      if (!els.memberRecordsModal.classList.contains('hidden')) showMessage(els.memberRecordsModalMessage, error && error.message || '會員紀錄即時同步失敗，將於下一次資料更新時重試。');
+    }
+  }
+
+  function clearMemberUsageHistory() {
+    state.memberRecords.requestVersion++;
+    state.memberRecords.lineUserId = '';
+    state.memberRecords.member = null;
+    state.memberRecords.data = null;
+    state.memberRecords.filter = 'all';
+    els.memberUsageSelect.value = '';
+    els.memberUsageSelectedLabel.textContent = '';
+    els.memberRecordsSummary.replaceChildren();
+    els.memberRecordsList.replaceChildren();
+    els.memberRecordsEmpty.classList.add('hidden');
+    els.memberUsageIntro.classList.remove('hidden');
+    hideMessage(els.memberRecordsMessage);
+    renderMemberRecordTabs();
+  }
+
+  async function loadMemberUsageRoster() {
+    if (!state.idToken) return;
+    const usage = state.memberUsage;
+    const requestVersion = ++usage.requestVersion;
+    usage.loaded = false;
+    hideMessage(els.memberUsageRosterMessage);
+    els.memberUsageSelect.disabled = true;
+    els.memberUsagePrev.disabled = true;
+    els.memberUsageNext.disabled = true;
+    els.memberUsagePageStatus.textContent = '載入會員清單中…';
+    const preferred = state.memberRecords.member;
+    try {
+      const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.members.list', {
+        memberPage: usage.page, memberPageSize: 100, memberQuery: usage.query, memberKind: usage.kind,
+      });
+      if (requestVersion !== usage.requestVersion) return;
+      const page = result.memberPage || {};
+      usage.members = Array.isArray(result.members) ? result.members : [];
+      usage.page = Number(page.page) || 1;
+      usage.totalPages = Math.max(1, Number(page.totalPages) || 1);
+      usage.total = Math.max(0, Number(page.total) || 0);
+      usage.loaded = true;
+      const options = [new Option('請選擇會員', '')];
+      usage.members.forEach((member) => {
+        options.push(new Option(`${member.displayName || 'LINE 使用者'} · ${member.memberCode || '尚未建立'}`, String(member.lineUserId || '')));
+      });
+      if (preferred && (preferred.isTestAccount ? 'test' : 'real') === usage.kind
+          && !options.some((option) => option.value === preferred.lineUserId)) {
+        options.push(new Option(`${preferred.displayName || 'LINE 使用者'} · ${preferred.memberCode || '尚未建立'}（目前選取）`, preferred.lineUserId));
+      }
+      els.memberUsageSelect.replaceChildren(...options);
+      els.memberUsageSelect.value = preferred && options.some((option) => option.value === preferred.lineUserId) ? preferred.lineUserId : '';
+      els.memberUsageSelect.disabled = false;
+      els.memberUsagePrev.disabled = usage.page <= 1;
+      els.memberUsageNext.disabled = usage.page >= usage.totalPages;
+      els.memberUsagePageStatus.textContent = `共 ${usage.total} 位會員 · 第 ${usage.page} / ${usage.totalPages} 頁`;
+      if (!usage.total && !preferred) els.memberUsagePageStatus.textContent = '沒有符合條件的會員';
+    } catch (error) {
+      if (requestVersion !== usage.requestVersion) return;
+      els.memberUsagePageStatus.textContent = '會員清單載入失敗';
+      showMessage(els.memberUsageRosterMessage, error?.message || '無法讀取會員清單，請重新切換分頁再試。');
     }
   }
 
   function closeMemberRecordsModal() {
-    state.memberRecords.requestVersion += 1;
-    state.memberRecords.lineUserId = '';
-    state.memberRecords.data = null;
-    state.memberRecords.member = null;
     els.memberRecordsModal.classList.add('hidden');
   }
 
@@ -1082,13 +1186,13 @@
     grantAction.addEventListener('click', async () => {
       state.memberRecords.childOpener = grantAction;
       grantAction.disabled = true;
-      hideMessage(els.memberRecordsMessage);
+      hideMessage(els.memberRecordsModalMessage);
       try {
         if (!state.loadedPanels.cards) await ensureAdminPanelData('cards');
         openGrantModal(member);
       } catch (error) {
         state.memberRecords.childOpener = null;
-        showMessage(els.memberRecordsMessage, error && error.message || '無法載入發放資料，請稍後再試。');
+        showMessage(els.memberRecordsModalMessage, error && error.message || '無法載入發放資料，請稍後再試。');
       } finally {
         grantAction.disabled = false;
       }
@@ -1098,15 +1202,15 @@
     removeAction.type = 'button'; removeAction.className = 'button button-outline'; removeAction.textContent = '移除會員全部資料';
     removeAction.addEventListener('click', async () => {
       const confirmed = window.prompt(`此操作不可復原。將移除 ${member.displayName || '會員'} 的個人資料、連線、收據、點數、票券及好友關聯；其他會員已取得的權益會保留。重新註冊不會復原舊資料。請輸入完整會員編號 ${member.memberCode} 確認：`);
-      if (confirmed !== member.memberCode) { if (confirmed !== null) showMessage(els.memberRecordsMessage, '會員編號不符，未開始移除。'); return; }
+      if (confirmed !== member.memberCode) { if (confirmed !== null) showMessage(els.memberRecordsModalMessage, '會員編號不符，未開始移除。'); return; }
       if (!window.confirm('確定永久移除此會員？已移除的資料無法復原。')) return;
       removeAction.disabled = true; statusAction.disabled = true; grantAction.disabled = true;
-      showMessage(els.memberRecordsMessage, '正在撤銷連線並清除會員資料…');
+      showMessage(els.memberRecordsModalMessage, '正在撤銷連線並清除會員資料…');
       try {
         const result = await window.MemberSystem.request(state.config, 'admin', state.idToken, 'admin.member.remove', { lineUserId: member.lineUserId, confirmMemberCode: confirmed });
         if (result.state !== 'complete') throw new Error('清理尚未完成，請重試移除。');
         closeMemberRecordsModal(); await loadMembersPage(state.memberPage.page, state.memberPage.query);
-      } catch (error) { showMessage(els.memberRecordsMessage, error.message || '移除尚未完成，請重試。'); }
+      } catch (error) { showMessage(els.memberRecordsModalMessage, error.message || '移除尚未完成，請重試。'); }
       finally { removeAction.disabled = false; statusAction.disabled = false; grantAction.disabled = false; }
     });
     actions.append(statusAction, grantAction, removeAction);
