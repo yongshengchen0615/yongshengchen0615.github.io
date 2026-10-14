@@ -11,3 +11,8 @@
 .booking-item.booking-history-collapsible.is-expanded>.member-booking-format-totals{margin-top:12px}
 @media(max-width:420px){.booking-item.booking-history-collapsible>.booking-item-top{padding-right:30px}.booking-item.booking-history-collapsible>.booking-item-top::after{right:0}}
 @media(prefers-reduced-motion:reduce){.booking-item.booking-history-collapsible,.booking-item.booking-history-collapsible>.booking-item-top::after{transition:none}}
+
+.booking-service-group-no_show .booking-service-group-count{background:#fff0eb;color:#a34832}
+.booking-service-group-no_show .booking-service-group-empty{background:#fffaf7}
+.booking-item.status-no_show{border-color:rgba(163,72,50,.26)}
+.booking-item .status-badge.status-no_show{background:#fff0eb;color:#a34832}
