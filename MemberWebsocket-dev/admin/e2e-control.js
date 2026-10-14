@@ -7321,7 +7321,7 @@
       uiLimit,
       matched: serverLimit === uiLimit,
       validRange: Number.isInteger(serverLimit) && serverLimit >= 0 && serverLimit <= 50,
-      labelUsesDailySemantics: /每日最多使用活動票券數/.test(String(input?.closest('label')?.textContent || ''))
+      labelUsesDailySemantics: /每日最多使用活動票券數/.test(String(input?.labels?.[0]?.textContent || input?.closest('label')?.textContent || ''))
     };
     return actual.input && actual.saveButton && actual.matched && actual.validRange && actual.labelUsesDailySemantics
       ? pass('管理端活動票券每日使用上限與 Server 設定一致，且 UI 使用「每日」語意而非單次勾選。', {
