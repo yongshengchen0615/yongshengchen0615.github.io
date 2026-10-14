@@ -12,9 +12,18 @@
     'admin.booking.status.update',
     'user.booking.receipt.prepare',
     'user.booking.receipt.finalize',
+    'user.booking.receipt.cancel',
   ]);
+  // Share only reads that are already safe to repeat. Never merge mutations or
+  // login status checks: a takeover during a check needs a fresh server result.
+  const SHARED_READ_ACTIONS = new Set([
+    'user.booking.bootstrap', 'user.booking.slots', 'user.booking.benefits',
+    'user.booking.receipt.list', 'user.booking.receipt.options', 'user.member.bootstrap',
+  ]);
+  const pendingReads = new Map();
+  const realtimeSubscriptions = new Map();
   let realtimeClient = null;
-  let realtimeChannel = null;
+  let realtimeClientKey = '';
   let publicNoticeClient = null;
   let publicNoticeSequence = 0;
   let presenceContext = null;
@@ -409,7 +418,24 @@
     return data && data.profile && typeof data.profile === 'object' ? data.profile : {};
   }
 
-  async function postJson(endpoint, config, body, serviceLabel, options = {}) {
+  function postJson(endpoint, config, body, serviceLabel, options = {}) {
+    if (isTerminatingAccess) return Promise.reject(clientError('SESSION_REVOKED', '連線已結束，請重新登入。'));
+    if (options.write === true) {
+      pendingReads.clear();
+      return sendJson(endpoint, config, body, serviceLabel, options).finally(() => pendingReads.clear());
+    }
+    if (!SHARED_READ_ACTIONS.has(body.action)) return sendJson(endpoint, config, body, serviceLabel, options);
+    // The serialized body includes the exact LINE/test identity and parameters.
+    const key = JSON.stringify([endpoint, config.supabasePublishableKey, body]);
+    if (pendingReads.has(key)) return pendingReads.get(key);
+    const pending = sendJson(endpoint, config, body, serviceLabel, options).finally(() => {
+      if (pendingReads.get(key) === pending) pendingReads.delete(key);
+    });
+    pendingReads.set(key, pending);
+    return pending;
+  }
+
+  async function sendJson(endpoint, config, body, serviceLabel, options = {}) {
     if (isTerminatingAccess) throw clientError('SESSION_REVOKED', '連線已結束，請重新登入。');
     const isWrite = options.write === true;
     const controller = new AbortController();
@@ -458,8 +484,13 @@
   function subscribeRealtime(config, onUpdate, scope = 'member', onBenefitsUpdate = null) {
     if (typeof onUpdate !== 'function') return () => {};
     const targetScope = scope === 'admin' ? 'admin' : 'member';
+    const subscriptionKey = JSON.stringify([config.supabaseUrl, config.supabasePublishableKey, targetScope]);
+    const existing = realtimeSubscriptions.get(subscriptionKey);
+    if (existing) return existing.unsubscribe;
 
     let disposed = false;
+    let channel = null;
+    let client = null;
     let resyncPending = false;
     let resyncQueued = false;
     let lastResyncAt = 0;
@@ -468,17 +499,23 @@
     let loginCheckTimer = null;
     let loginCheckPending = false;
     let loginCheckQueued = false;
-    const validateCurrentLogin = () => {
+    let loginCheckGeneration = 0;
+    let pendingLoginGeneration = 0;
+    const validateCurrentLogin = (queueIfPending = true) => {
       if (disposed || targetScope === 'admin' || isTerminatingAccess) return;
       // A takeover event may arrive while a status request is in flight.
       // Never drop that invalidation just because the previous read was pending.
-      if (loginCheckPending) { loginCheckQueued = true; return; }
+      if (loginCheckPending) {
+        if (queueIfPending || pendingLoginGeneration !== loginCheckGeneration) loginCheckQueued = true;
+        return;
+      }
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       // Test accounts have an independent revocation lifecycle.
       if (window.TestModeClient?.getSessionToken?.()) return;
       const session = getSession();
       if (!session?.idToken) return;
       loginCheckPending = true;
+      pendingLoginGeneration = loginCheckGeneration;
       void postJson(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/api',
         config, { action:'user.booking.session.status',clientType:'booking',idToken:session.idToken },
         '登入狀態', { write:false }).catch(() => {}).finally(() => {
@@ -513,7 +550,7 @@
       if (disposed) return;
       resyncQueued = true;
       if (shouldDeferResync()) return;
-      if (realtimeTimer !== null) return;
+      if (resyncPending || realtimeTimer !== null) return;
       realtimeTimer = window.setTimeout(() => {
         realtimeTimer = null;
         runResync();
@@ -541,7 +578,7 @@
       resyncQueued = false;
       lastResyncAt = now;
       resyncPending = true;
-      Promise.resolve().then(() => onUpdate()).catch(() => {}).finally(() => {
+      Promise.resolve().then(() => { if (!disposed) return onUpdate(); }).catch(() => {}).finally(() => {
         resyncPending = false;
         if (resyncQueued) schedule(0);
       });
@@ -549,22 +586,23 @@
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        validateCurrentLogin();
+        validateCurrentLogin(false);
         schedule(0);
-      }
+      } else loginCheckGeneration += 1;
     };
-    const onPageShow = () => {
-      validateCurrentLogin();
+    const onPageShow = (event) => {
+      if (event?.persisted) loginCheckGeneration += 1;
+      validateCurrentLogin(false);
       schedule(0);
     };
     const onOnline = () => {
-      validateCurrentLogin();
+      validateCurrentLogin(false);
       schedule(0);
     };
     // LINE WebViews may suspend and miss Realtime messages in the background.
     if (typeof window.setInterval === 'function') {
       loginCheckTimer = window.setInterval(() => {
-        if (!disposed && document.visibilityState !== 'hidden') validateCurrentLogin();
+        if (!disposed && document.visibilityState !== 'hidden') validateCurrentLogin(false);
       }, 30000);
     }
 
@@ -573,40 +611,42 @@
     window.addEventListener('online', onOnline);
 
     if (config.realtimeEnabled !== false && window.supabase && typeof window.supabase.createClient === 'function') {
-      if (!realtimeClient) {
+      const clientKey = JSON.stringify([config.supabaseUrl, config.supabasePublishableKey]);
+      if (!realtimeClient || realtimeClientKey !== clientKey) {
         realtimeClient = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, {
           auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
         });
+        realtimeClientKey = clientKey;
       }
 
-      if (!realtimeChannel) {
-        realtimeChannel = realtimeClient
-          .channel(`booking-${targetScope}-sync`)
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
-            const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
-            const scope = String(row.scope || '');
-            const eventType = String(row.event_type || '');
-            if (targetScope !== 'admin' && (scope === 'all' || scope === targetScope) && eventType === 'member.login.replaced') {
-              validateCurrentLogin();
-            } else if (scope === 'all' || scope === targetScope) schedule();
-            if (typeof onBenefitsUpdate === 'function' && ['all', 'member', 'points', 'event', 'calendar'].includes(scope)) {
-              onBenefitsUpdate({ scope, eventType });
-            }
-          })
-          .subscribe((status) => {
-            if (status !== 'SUBSCRIBED') return;
+      client = realtimeClient;
+      channel = client
+        .channel(`booking-${targetScope}-sync`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'realtime_events' }, (payload) => {
+          const row = payload && payload.new && typeof payload.new === 'object' ? payload.new : {};
+          const scope = String(row.scope || '');
+          const eventType = String(row.event_type || '');
+          if (disposed) return;
+          if (targetScope !== 'admin' && (scope === 'all' || scope === targetScope) && eventType === 'member.login.replaced') {
             validateCurrentLogin();
-            if (subscribedOnce) {
-              schedule(0);
-              if (typeof onBenefitsUpdate === 'function') onBenefitsUpdate({ scope: 'reconnect', eventType: 'realtime.reconnected' });
-            } else {
-              subscribedOnce = true;
-            }
-          });
-      }
+          } else if (scope === 'all' || scope === targetScope) schedule();
+          if (typeof onBenefitsUpdate === 'function' && ['all', 'member', 'points', 'event', 'calendar'].includes(scope)) {
+            onBenefitsUpdate({ scope, eventType });
+          }
+        })
+        .subscribe((status) => {
+          if (disposed || status !== 'SUBSCRIBED') return;
+          validateCurrentLogin(false);
+          if (subscribedOnce) {
+            schedule(0);
+            if (typeof onBenefitsUpdate === 'function') onBenefitsUpdate({ scope: 'reconnect', eventType: 'realtime.reconnected' });
+          } else {
+            subscribedOnce = true;
+          }
+        });
     }
 
-    return () => {
+    const unsubscribe = () => {
       if (disposed) return;
       disposed = true;
       document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -614,10 +654,11 @@
       window.removeEventListener('online', onOnline);
       clearScheduledResync();
       if (loginCheckTimer !== null) window.clearInterval(loginCheckTimer);
-      const channel = realtimeChannel;
-      realtimeChannel = null;
-      try { if (channel && realtimeClient) Promise.resolve(realtimeClient.removeChannel(channel)).catch(() => {}); } catch (_) {}
+      realtimeSubscriptions.delete(subscriptionKey);
+      try { if (channel && client) Promise.resolve(client.removeChannel(channel)).catch(() => {}); } catch (_) {}
     };
+    realtimeSubscriptions.set(subscriptionKey, { unsubscribe });
+    return unsubscribe;
   }
 
   function openMemberJoin(config) {
@@ -635,13 +676,14 @@
   function terminateAccessSession(code, message) {
     if (isTerminatingAccess) return;
     isTerminatingAccess = true;
+    pendingReads.clear();
     authenticatedSession = null;
     if (typeof window.CustomEvent === 'function' && typeof window.dispatchEvent === 'function') window.dispatchEvent(new window.CustomEvent('member:access-ended', { detail: { code } }));
     document.querySelectorAll?.('[role=dialog], #memberView, #pointsView, #eventView, #calendarView, #bookingView, #adminView').forEach(node => node.classList.add('hidden'));
     if (['SESSION_REPLACED', 'SESSION_REVOKED', 'MEMBER_REMOVED'].includes(code)) {
       try { window.localStorage.setItem(LOGIN_REGISTERED_KEY, 'replaced'); } catch (_) {}
     }
-    if (realtimeChannel) { try { realtimeChannel.unsubscribe(); } catch (_) {} }
+    for (const subscription of realtimeSubscriptions.values()) subscription.unsubscribe();
     clearPresenceHeartbeat();
     if (presenceContext) presenceContext.closed = true;
     presenceContext = null;

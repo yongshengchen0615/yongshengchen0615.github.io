@@ -108,7 +108,11 @@ for(const scope of ['points','event'])for(const limit of [0,2,50])test('LIMIT_'+
 for(const type of ['coupon','lottery'])test('POINT_TEMPLATE_'+type+' — create, edit, archive and reload',async({page:p},info)=>{
   await click(p,'cardsTab');await click(p,'ticketSettingsTab');await click(p,'newTicketButton');await fill(p,'ticketTitle','QA template');await select(p,'ticketType',type);await fill(p,'ticketDescription','QA description');await fill(p,'ticketUsageMethod','QA usage');await fill(p,'ticketUsageInstructions','QA instructions');await select(p,'ticketStatus','draft');
   if(type==='lottery'){await p.locator('#ticketPrizeRows [data-field="ticketPrizeTitle"]').first().fill('QA prize');}
-  await click(p,'saveTicketButton');await expect(p.locator('#ticketTemplateId')).not.toHaveValue('');await select(p,'ticketStatus','archived');await click(p,'saveTicketButton');await expect.poll(()=>info.fixture.tickets.find(t=>t.title==='QA template')?.status).toBe('archived');
+  await click(p,'saveTicketButton');await expect(p.locator('#ticketTemplateId')).not.toHaveValue('');
+  // The returned ID precedes the final bootstrap. Wait for the save to finish
+  // before editing again so that readback cannot replace the next draft.
+  await expect(p.locator('#saveTicketButton')).toBeEnabled();
+  await select(p,'ticketStatus','archived');await click(p,'saveTicketButton');await expect.poll(()=>info.fixture.tickets.find(t=>t.title==='QA template')?.status).toBe('archived');
 });
 test('POINT_TEMPLATE_DELETE — referenced template is blocked and unreferenced template is deletable',async({page:p},info)=>{
   await click(p,'cardsTab');await click(p,'ticketSettingsTab');

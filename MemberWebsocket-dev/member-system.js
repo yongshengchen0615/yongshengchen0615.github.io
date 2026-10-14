@@ -577,20 +577,27 @@
     if (config.realtimeEnabled === false || typeof onUpdate !== 'function') return () => {};
     const existing = realtimeSubscriptions.get(clientType);
     if (existing) return existing.unsubscribe;
+    let disposed = false;
     // Broadcast is only an invalidation hint; authorization is checked by the
     // server for the current user, never inferred from an untrusted event.
     let sessionCheckPending = false;
     let sessionCheckQueued = false;
-    const verifyCurrentLogin = () => {
-      if (clientType === 'admin' || isTerminatingAccess) return;
-      if (sessionCheckPending) { sessionCheckQueued = true; return; }
+    let sessionCheckGeneration = 0;
+    let pendingSessionGeneration = 0;
+    const verifyCurrentLogin = (queueIfPending = true) => {
+      if (disposed || clientType === 'admin' || isTerminatingAccess) return;
+      if (sessionCheckPending) {
+        if (queueIfPending || pendingSessionGeneration !== sessionCheckGeneration) sessionCheckQueued = true;
+        return;
+      }
       const active = sessions.get(clientType);
       if (!active || !active.idToken) return;
       sessionCheckPending = true;
+      pendingSessionGeneration = sessionCheckGeneration;
       void sendRequest(active.config, clientType, active.idToken,
         'user.' + clientType + '.session.status', {}).catch(() => {}).finally(() => {
         sessionCheckPending = false;
-        if (sessionCheckQueued && !isTerminatingAccess) {
+        if (sessionCheckQueued && !disposed && !isTerminatingAccess) {
           sessionCheckQueued = false;
           verifyCurrentLogin();
         }
@@ -600,20 +607,23 @@
     if (!client) {
       // When the Realtime SDK/CDN is unavailable, keep member data synchronized
       // through the existing authenticated bootstrap instead of requiring reload.
-      let disposed = false;
       let pending = false;
       const refresh = () => {
-        if (disposed || pending || document.visibilityState === 'hidden' ||
+        if (disposed || document.visibilityState === 'hidden' ||
           (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
-        verifyCurrentLogin();
+        verifyCurrentLogin(false);
+        if (pending) return;
         pending = true;
-        Promise.resolve().then(() => onUpdate({
-          clientType, eventTypes: [], reasons: ['periodic-reconcile']
-        })).catch(() => {}).finally(() => { pending = false; });
+        Promise.resolve().then(() => {
+          if (!disposed) return onUpdate({ clientType, eventTypes: [], reasons: ['periodic-reconcile'] });
+        }).catch(() => {}).finally(() => { pending = false; });
       };
       const interval = typeof window.setInterval === 'function'
         ? window.setInterval(refresh, 30000) : undefined;
-      const onResume = () => refresh();
+      const onResume = (event) => {
+        if (document.visibilityState === 'hidden' || event?.persisted) sessionCheckGeneration += 1;
+        refresh();
+      };
       document.addEventListener('visibilitychange', onResume);
       window.addEventListener('pageshow', onResume);
       window.addEventListener('online', onResume);
@@ -630,7 +640,6 @@
       return unsubscribe;
     }
 
-    let disposed = false;
     let timer;
     let pending = false;
     let queued = false;
@@ -689,16 +698,17 @@
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        verifyCurrentLogin();
+        verifyCurrentLogin(false);
         schedule(0, { reason: 'visibility' });
-      }
+      } else sessionCheckGeneration += 1;
     };
     const onPageShow = (event) => {
-      verifyCurrentLogin();
+      if (event?.persisted) sessionCheckGeneration += 1;
+      verifyCurrentLogin(false);
       schedule(0, { reason: event && event.persisted ? 'bfcache' : 'pageshow' });
     };
     const onOnline = () => {
-      verifyCurrentLogin();
+      verifyCurrentLogin(false);
       schedule(0, { reason: 'online' });
     };
     // Safety net for lost Realtime messages or a disconnected mobile WebSocket.
@@ -709,7 +719,7 @@
     if (typeof window.setInterval === 'function') {
       safetySyncTimer = window.setInterval(() => {
         if (!disposed && !isPaused()) {
-          verifyCurrentLogin();
+          verifyCurrentLogin(false);
           schedule(0, { reason: 'periodic-reconcile' });
         }
       }, SAFETY_SYNC_MS);
@@ -739,7 +749,7 @@
           return;
         }
         if (subscribedOnce) {
-          verifyCurrentLogin();
+          verifyCurrentLogin(false);
           schedule(0, { reason: 'reconnect' });
         } else subscribedOnce = true;
       });
