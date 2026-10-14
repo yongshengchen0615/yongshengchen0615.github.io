@@ -60,7 +60,8 @@
     host.replaceChildren();
     const tickets = (Array.isArray(items) ? items : []).filter(item =>
       ['points', 'event'].includes(item.kind)
-      && !item.reservedForBooking
+      // A future general reservation does not block a separate snapshot when
+      // the server confirms surplus points can cover both redemptions.
       && (item.selectable === true || (item.kind === 'event' && item.claimRequired === true)));
     tickets.forEach(item => {
       const card = document.createElement('article');
