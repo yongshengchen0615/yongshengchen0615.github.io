@@ -68,7 +68,9 @@ test('MEMBER_360 — status and grant actions, then history workspace member sel
   await select(p,'memberUsageKind','test');
   await expect(p.locator('#memberUsageSelect')).toBeEnabled();
   await expect.poll(()=>calls(info.fixture,'admin.members.list').some(c=>c.payload.memberKind==='test')).toBe(true);
-  await p.locator('#memberUsageSelect').selectOption({index:1});
+  const selectedMemberId=await p.locator('#memberUsageSelect').evaluate(el=>el.options[1]?.value||'');
+  expect(selectedMemberId).not.toBe('');
+  await select(p,'memberUsageSelect',selectedMemberId);
   await expect(p.locator('#memberUsageSelectedLabel')).not.toBeEmpty();
 });
 test('MEMBER_FORCE_LOGOUT — click revokes only the selected member and refreshes presence',async({page:p},info)=>{
