@@ -75,6 +75,10 @@ for (const width of [320, 390, 1280]) {
     for (const [key, count] of [['reserved', '3 筆'], ['completed', '1 筆'], ['cancelled', '2 筆'], ['no_show', '1 筆']]) {
       await expect(tabs.locator('[data-booking-tab="' + key + '"] .booking-history-tab-count')).toHaveText(count);
     }
+    // Reorganizing existing grouped markup must not silently drop bookings.
+    await page.evaluate(() => window.BookingMemberUI.organizeBookingHistory());
+    await expect(tabs.getByRole('tab')).toHaveCount(4);
+    await expect(page.locator('#bookingHistoryPanel-reserved .booking-item')).toHaveCount(3);
     await expect(page.locator('#bookingHistoryPanel-reserved')).toBeVisible();
     await expect(page.locator('#bookingHistoryPanel-no_show')).toBeHidden();
     await tabs.locator('[data-booking-tab="no_show"]').click();
