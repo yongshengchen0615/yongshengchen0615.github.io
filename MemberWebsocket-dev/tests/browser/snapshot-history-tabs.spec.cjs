@@ -104,6 +104,17 @@ test('snapshot receipt deep link opens its classification and expands the reques
   await expect(root.locator('#snapshotHistoryPanel-withdrawn .booking-detail-target')).toHaveAttribute('open', '');
 });
 
+test('switching member identity clears previous snapshot history', async ({ page }) => {
+  await page.goto(baseUrl + '/booking/');
+  const root = page.locator('#bookingSnapshotHistory');
+  await expect(root).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('booking:member-loaded', {detail:{profile:{lineUserId:'new-member'}}})));
+  await expect(root).toBeHidden();
+  await page.evaluate(() => window.__renderSnapshotRows([{receiptId:'new-only',status:'bound'}]));
+  await expect(root.locator('details')).toHaveCount(1);
+  await expect(root.locator('details').first()).toHaveAttribute('data-receipt-id', 'new-only');
+});
+
 test('empty status panels show zero and do not duplicate removed snapshots', async ({ page }) => {
   await page.goto(baseUrl + '/booking/');
   await page.evaluate(() => window.__renderSnapshotRows([{receiptId:'one',status:'bound'}]));
