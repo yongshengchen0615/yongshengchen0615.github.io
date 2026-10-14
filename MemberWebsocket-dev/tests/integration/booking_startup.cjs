@@ -80,6 +80,16 @@ async function fixture(mode) {
     }
     assert.equal(el('bookingView').classList.contains('hidden'), false);
     assert.equal(subscriptions, 1);
+    const bookingCard = el('bookingList').querySelector('.booking-item[data-booking-id]');
+    assert.ok(bookingCard, 'Booking history card should render');
+    assert.equal(bookingCard.querySelector('details.member-booking-details'), null, 'Booking history should not contain a second details toggle');
+    assert.match(bookingCard.querySelector('.booking-service-items, .group-history-summary')?.textContent || '', /腳底40/, 'Service details remain in individual or group booking cards');
+    const bookingHeader = bookingCard.querySelector(':scope > .booking-item-top');
+    assert.equal(bookingHeader?.getAttribute('aria-expanded'), 'false');
+    bookingHeader.click();
+    assert.equal(bookingHeader.getAttribute('aria-expanded'), 'true', 'Card header expands booking details directly');
+    bookingHeader.click();
+    assert.equal(bookingHeader.getAttribute('aria-expanded'), 'false', 'Card header collapses booking details');
     const date = w.document.querySelector('.calendar-day:not(:disabled)');
     assert.ok(date);
     date.click();

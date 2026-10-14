@@ -928,12 +928,6 @@
       item.appendChild(top);
       if(booking.serviceRecipientMemberCode){const recipient=document.createElement('p');recipient.className='service-info';recipient.textContent='代好友預約 · 受服務者：'+booking.serviceRecipientName+' · '+booking.serviceRecipientMemberCode;item.append(recipient);}
 
-      const detail = document.createElement('details');
-      detail.className = 'member-booking-details';
-      const summary = document.createElement('summary');
-      summary.textContent = '查看預約明細';
-      detail.appendChild(summary);
-      const detailStart = item.children.length;
       if (hasParticipantDetails) {
         window.BookingGroupUI?.renderBookingHistoryCard?.(item, booking);
       } else {
@@ -980,8 +974,6 @@
         item.appendChild(adminNote);
       }
 
-      [...item.children].slice(detailStart).forEach(child => detail.appendChild(child));
-      item.appendChild(detail);
       const requestedBooking = new URLSearchParams(window.location.search).get('bookingId');
       if (requestedBooking === String(booking.bookingId)) item.classList.add('booking-detail-target');
 

@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{JSDOM}=require('jsdom');
 const root=path.resolve(__dirname,'../..'),source=p=>fs.readFileSync(path.join(root,p),'utf8');
-test('member history details are collapsed, read-only and scoped to supplied owned bookings',()=>{
+test('member history renders inside the card without a nested details toggle and remains read-only',()=>{
  const dom=new JSDOM(source('booking/index.html'),{url:'https://example.test/booking/?bookingId=FOREIGN',runScripts:'outside-only'}),w=dom.window;
  const add=w.addEventListener.bind(w);w.addEventListener=(type,...args)=>{if(type!=='DOMContentLoaded')add(type,...args);};
  w.BookingSystem={formatDate:x=>x};w.BookingGroupUI={};
@@ -9,8 +9,8 @@ test('member history details are collapsed, read-only and scoped to supplied own
  const booking={bookingId:'OWNED',bookingDate:'2026-10-15',startTime:'10:00',endTime:'11:00',startAt:'2026-10-15T10:00',endAt:'2026-10-15T11:00',status:'cancelled',items:[{serviceTitle:'我的服務',quantity:1,unitDurationMinutes:60,unitPriceAmount:100}],benefits:[{kind:'points',title:'本次票券',status:'cancelled'}],totalDurationMinutes:60,totalAmount:100,memberNote:'我的備註'};
  state.data={bookings:[booking],settings:{}};state.config={bookingLiffId:'2010787602-sgiB0ETj'};
  try{
-  renderBookings();const item=w.document.querySelector('[data-booking-id="OWNED"]'),details=item.querySelector('details');assert.ok(details);assert.equal(details.open,false);assert.ok(details.textContent.includes('我的備註'));assert.equal(w.document.querySelector('[data-booking-id="FOREIGN"]'),null);
-  const before=JSON.stringify(state.data);details.open=true;details.open=false;assert.equal(JSON.stringify(state.data),before);
+  renderBookings();const item=w.document.querySelector('[data-booking-id="OWNED"]');assert.ok(item);assert.equal(item.querySelector('details.member-booking-details'),null);assert.match(item.querySelector('.booking-service-items')?.textContent || '',/我的服務/);assert.ok(item.textContent.includes('我的備註'));assert.equal(w.document.querySelector('[data-booking-id="FOREIGN"]'),null);
+  const before=JSON.stringify(state.data);assert.ok(item.querySelector('.member-booking-format-totals'));assert.equal(JSON.stringify(state.data),before);
   const chat=bookingMemberChatText(booking);assert.doesNotMatch(chat,/營業日|我的備註/);assert.match(chat,/預約日期：2026-10-15/);assert.match(chat,/10:00/);assert.match(chat,/查看預約明細/);
  }finally{dom.window.close();}
 });
