@@ -78,3 +78,32 @@ test('event snapshot endpoint restricts receipt ownership and updates only event
     /pendingSnapshotsByClaim/, /pendingSnapshots: snapshotByPointTicket\.get/, /!pendingSnapshots\.length/])
     assert.match(api, re);
 });
+
+test('standalone reservation selector stays on points but is absent on event tickets', () => {
+  function node() {
+    return {
+      children: [],
+      append(...children) { this.children.push(...children); },
+      replaceChildren(...children) { this.children = [...children]; },
+      setAttribute() {},
+      addEventListener() {}
+    };
+  }
+  const eventHost = node();
+  const pointsHost = node();
+  const document = {
+    getElementById(id) {
+      if (id === 'eventView') return eventHost;
+      if (id === 'pointsView') return pointsHost;
+      return null;
+    },
+    createElement: node
+  };
+  const window = {};
+  vm.runInNewContext(read('ticket-booking-selections.js'), { window, document });
+  window.TicketBookingSelections.render([], { surface: 'event', config: {}, idToken: 'test', refresh() {} });
+  assert.equal(eventHost.children.length, 0, 'event page must not mount the standalone reservation editor');
+  window.TicketBookingSelections.render([], { surface: 'points', config: {}, idToken: 'test', refresh() {} });
+  assert.equal(pointsHost.children.length, 1, 'points page must retain its reservation editor');
+  assert.equal(pointsHost.children[0].id, 'bookingSelectionPanel');
+});
