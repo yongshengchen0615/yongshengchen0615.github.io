@@ -5,7 +5,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const source = name => fs.readFileSync(path.join(root, name), 'utf8');
-const migration = source('supabase/migrations/20261014160000_snapshot_reserved_point_surplus.sql');
+const migration = source('supabase/migrations/20261014021208_snapshot_reserved_point_surplus.sql');
 const edge = source('supabase/functions/booking-receipt-api/index.ts');
 const overview = source('booking/booking-accessible.js');
 
