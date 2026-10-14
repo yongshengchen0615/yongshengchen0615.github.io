@@ -21,7 +21,7 @@ test('member directory exposes a records action beside existing actions', () => 
   assert.match(html, /id="memberRecordsModalTitle">會員 360</);
 });
 
-test('member records modal contains all requested activity categories', () => {
+test('member usage history contains all requested activity categories', () => {
   for (const filter of ['presence', 'pointCards', 'eventTickets', 'calendar', 'bookings', 'testAutomation']) {
     assert.ok(html.includes('data-record-filter="' + filter + '"'), filter);
   }
