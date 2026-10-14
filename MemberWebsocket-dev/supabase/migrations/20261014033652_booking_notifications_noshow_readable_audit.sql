@@ -93,7 +93,10 @@ begin
    answer:=answer||jsonb_build_object('amount',t.amount,'sender',(select left(member_code,3)||'…'||right(member_code,3) from public.members where id=t.sender_member_id),'receiver',(select left(member_code,3)||'…'||right(member_code,3) from public.members where id=t.receiver_member_id),'cardTitle',(select left(title,120) from public.point_cards where id=t.point_card_id));
   end if;
  end if;
- if p_type='booking' and p_action ~ '^(BOOKING_|SNAPSHOT_)' then
+ if p_action='BOOKING_BENEFITS_UPDATED' and jsonb_typeof(p_meta->'ticketTitles')='array' then
+  select string_agg(left(value#>>'{}',100),'、') into v_title from jsonb_array_elements(p_meta->'ticketTitles') x(value) where jsonb_typeof(value)='string';
+  if v_title is not null then answer:=answer||jsonb_build_object('ticketTitle',left(v_title,300)); end if;
+ elsif p_type='booking' and p_action ~ '^(BOOKING_|SNAPSHOT_)' then
   select string_agg(distinct left(s.title_snapshot,100),'、') into v_title from public.booking_benefit_selections s where booking_id::text=p_target and benefit_kind in ('points','event');
   if v_title is not null then answer:=answer||jsonb_build_object('ticketTitle',left(v_title,300)); end if;
  end if;
@@ -107,6 +110,11 @@ begin
   end if;
   if v_title is not null then answer:=answer||jsonb_build_object('ticketTitle',left(v_title,300)); end if;
  end if;
+ if p_action in ('SNAPSHOT_POINT_TICKET_CANCELLED','SNAPSHOT_EVENT_TICKET_CANCELLED') then
+  select left(ticket_title,120) into v_title from public.point_tickets where ticket_id=p_meta->>'ticketId';
+  if v_title is null then select left(ticket_title,120) into v_title from public.event_ticket_claims where claim_id=p_meta->>'ticketId'; end if;
+  if v_title is not null then answer:=answer||jsonb_build_object('ticketTitle',v_title); end if;
+ end if;
  if p_type in ('point_ticket','ticket','event_ticket_claim','event_claim') then
   select left(ticket_title,120) into v_title from public.point_tickets where ticket_id=p_target;
   if v_title is null then select left(ticket_title,120) into v_title from public.event_ticket_claims where claim_id=p_target; end if;
@@ -116,6 +124,90 @@ begin
 end $$;
 revoke all on function public.operation_audit_safe_detail(text,text,text,jsonb) from public,anon,authenticated;
 grant execute on function public.operation_audit_safe_detail(text,text,text,jsonb) to service_role;
+create or replace function public.member_update_booking_benefits_request(
+  p_line_user_id text,p_booking_id uuid,p_expected_updated_at timestamptz,
+  p_request_id text,p_benefits jsonb
+) returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare
+  b public.bookings%rowtype;
+  m public.members%rowtype;
+  replay public.booking_benefit_change_requests%rowtype;
+  normalized jsonb;
+  answer jsonb;
+  max_points int;
+  max_events int;
+begin
+  if p_request_id is null or p_request_id !~ '^BSEL-[A-Za-z0-9-]{8,95}$'
+    then raise exception 'INVALID_REQUEST_ID'; end if;
+  if p_benefits is null or jsonb_typeof(p_benefits)<>'array'
+    then raise exception 'INVALID_BOOKING_BENEFITS'; end if;
+  if jsonb_array_length(p_benefits)>20 or exists(
+    select 1 from jsonb_array_elements(p_benefits) v
+    where jsonb_typeof(v)<>'object' or coalesce(v->>'kind','') not in ('points','event')
+      or coalesce(length(v->>'id'),0) not between 1 and 160
+  ) then raise exception 'INVALID_BOOKING_BENEFITS'; end if;
+  select coalesce(jsonb_agg(jsonb_build_object('kind',v->>'kind','id',v->>'id') order by v->>'kind',v->>'id'),'[]')
+    into normalized from jsonb_array_elements(p_benefits) v;
+  if (select count(*) from (select distinct v->>'kind',v->>'id' from jsonb_array_elements(normalized) v) x)
+    <>jsonb_array_length(normalized) then raise exception 'INVALID_BOOKING_BENEFITS'; end if;
+
+  -- Same booking -> member lock order as final completion. Identity is supplied by
+  -- the authenticated Edge handler; browser roles cannot execute this RPC.
+  select * into b from public.bookings where id=p_booking_id for update;
+  if not found then raise exception 'BOOKING_NOT_OWNED'; end if;
+  select * into m from public.members where id=b.member_id and line_user_id=p_line_user_id for update;
+  if not found then raise exception 'BOOKING_NOT_OWNED'; end if;
+  if m.status<>'active' or m.membership_status<>'active' then raise exception 'MEMBERSHIP_REQUIRED'; end if;
+  select * into replay from public.booking_benefit_change_requests
+    where member_id=m.id and request_id=p_request_id;
+  if found then
+    if replay.booking_id<>p_booking_id or replay.selections<>normalized then raise exception 'REQUEST_ID_CONFLICT'; end if;
+    return replay.result || jsonb_build_object('alreadyApplied',true);
+  end if;
+  if b.status not in ('pending','confirmed') or b.completed_at is not null or b.receipt_submission_id is not null
+    then raise exception 'BOOKING_NOT_EDITABLE'; end if;
+  if b.cancellation_requested_at is not null and b.cancellation_reviewed_at is null
+    then raise exception 'BOOKING_CANCELLATION_PENDING'; end if;
+  if p_expected_updated_at is null or b.updated_at<>p_expected_updated_at
+    then raise exception 'BOOKING_CONFLICT'; end if;
+  -- Already redeemed benefits remain immutable; caller sends only pending intent.
+  if exists(select 1 from jsonb_array_elements(normalized) v
+    join public.booking_benefit_selections s on s.booking_id=b.id
+      and s.benefit_kind=v->>'kind' and s.benefit_ref=v->>'id'
+    where s.status in ('redeemed','applied')) then raise exception 'BOOKING_BENEFIT_ALREADY_USED'; end if;
+  select max_tickets_per_redemption into max_points from public.point_card_settings where id=1;
+  select max_tickets_per_day into max_events from public.event_ticket_settings where id=1;
+  if coalesce(max_points,1)>0 and
+    (select count(*) from jsonb_array_elements(normalized) v where v->>'kind'='points')+
+    (select count(*) from public.booking_benefit_selections where booking_id=b.id and benefit_kind='points' and status='redeemed')>coalesce(max_points,1)
+    then raise exception 'BOOKING_POINT_TICKET_LIMIT_EXCEEDED'; end if;
+  if coalesce(max_events,1)>0 and
+    (select count(*) from jsonb_array_elements(normalized) v where v->>'kind'='event')+
+    (select count(*) from public.booking_benefit_selections where booking_id=b.id and benefit_kind='event' and status='redeemed')>coalesce(max_events,1)
+    then raise exception 'BOOKING_EVENT_TICKET_LIMIT_EXCEEDED'; end if;
+  if exists(select 1 from jsonb_array_elements(normalized) v
+    where not public.booking_ticket_matches_services(b.id,m.id,v->>'kind',v->>'id'))
+    then raise exception 'BOOKING_BENEFIT_SERVICE_REQUIRED'; end if;
+  perform public.replace_booking_benefit_selections_request(b.id,m.id,normalized ||
+    coalesce((select jsonb_agg(jsonb_build_object('kind',benefit_kind,'id',benefit_ref))
+      from public.booking_benefit_selections where booking_id=b.id and benefit_kind='calendar' and status='pending'),'[]'));
+  -- Do not silently discard a stale/incompatible checkbox payload.
+  if (select count(*) from public.booking_benefit_selections where booking_id=b.id
+      and status='pending' and benefit_kind in ('points','event'))<>jsonb_array_length(normalized)
+    then raise exception 'BOOKING_BENEFIT_NOT_AVAILABLE'; end if;
+  update public.bookings set updated_at=clock_timestamp() where id=b.id returning * into b;
+  answer:=jsonb_build_object('bookingId',b.id,'updatedAt',b.updated_at,'requestId',p_request_id,'alreadyApplied',false);
+  insert into public.booking_benefit_change_requests(member_id,request_id,booking_id,selections,result)
+    values(m.id,p_request_id,b.id,normalized,answer);
+  -- Audit failure rolls back the selection change and replay entry together.
+  insert into public.booking_audit_events(actor_line_user_id,actor_role,action,target_type,target_id,result,metadata)
+    values(p_line_user_id,'member','BOOKING_BENEFITS_UPDATED','booking',b.id::text,'success',
+      jsonb_build_object('requestId',p_request_id,'selectedCount',jsonb_array_length(normalized),'ticketTitles',coalesce((select jsonb_agg(left(title_snapshot,100) order by benefit_kind,benefit_ref) from public.booking_benefit_selections where booking_id=b.id and status='pending' and benefit_kind in ('points','event')),'[]')));
+  return answer;
+end $$;
+revoke all on function public.member_update_booking_benefits_request(text,uuid,timestamptz,text,jsonb) from public,anon,authenticated;
+grant execute on function public.member_update_booking_benefits_request(text,uuid,timestamptz,text,jsonb) to service_role;
+
 create or replace function public.admin_query_operation_audit(
   p_actor text,p_from timestamptz,p_to timestamptz,p_member_code text default '',
   p_action text default '',p_result text default '',p_before_time timestamptz default null,

@@ -4,6 +4,7 @@ const migration='20261014033652_booking_notifications_noshow_readable_audit.sql'
 test('no-show and readable audit retain PostgreSQL integrity and authorization',async t=>{
  const db=await load(),q=async(sql,args=[]) => (await db.query(sql,args)).rows,one=async(sql,args=[]) => (await q(sql,args))[0];
  try {
+  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261006023020_booking_ticket_usage_consistency.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261013043627_member_booking_selections_and_audit_query.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',migration),'utf8'));
   await db.exec('select maintenance.ensure_required_system_baseline();select maintenance.ensure_event_ticket_settings_baseline();');
@@ -55,6 +56,14 @@ test('no-show and readable audit retain PostgreSQL integrity and authorization',
    await assert.rejects(mark(future),/BOOKING_NO_SHOW_NOT_ALLOWED/);
    await q("update bookings set request_id='BOOK-QA-NOSHOW-0002',status='confirmed' where id=$1",[future]);
    await assert.rejects(mark(future),/BOOKING_NO_SHOW_NOT_ALLOWED/);
+  });
+  await t.test('selection audit preserves the event ticket title after later reservation edits',async()=>{
+   const v=await version(future);
+   await q("select member_update_booking_benefits_request('QA:member',$1,$2,'BSEL-QA-AUDIT-TITLE','[{\"kind\":\"points\",\"id\":\"QA-TICKET-2\"}]')",[future,v]);
+   const event=await one("select metadata from booking_audit_events where action='BOOKING_BENEFITS_UPDATED' and target_id=$1",[future]);
+   await q("update booking_benefit_selections set title_snapshot='LATER-TITLE' where booking_id=$1",[future]);
+   const safe=await one("select operation_audit_safe_detail('BOOKING_BENEFITS_UPDATED','booking',$1,$2) detail",[future,JSON.stringify(event.metadata)]);
+   assert.equal(safe.detail.ticketTitle,'QA集點卡｜未來票券');
   });
   await t.test('card open deduplication and atomic profile audit never expose field values',async()=>{
    await q("select record_member_card_open('QA:member')");await q("select record_member_card_open('QA:member')");
