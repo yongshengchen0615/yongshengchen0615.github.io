@@ -91,6 +91,7 @@ for (const entry of ['admin']) {
       assert.ok(bookingTab);
       bookingTab.click();
       queue = w.document.getElementById('bookingAdminQueue');
+      load('booking-copy-text.js');
       load('booking-copy-format.js');
       load('booking-copy-format.js'); // Cached dynamic loader must not install twice.
       const button = await waitFor(() => queue.querySelector('.booking-copy-button'));

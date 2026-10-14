@@ -100,28 +100,11 @@
   }
 
   function buildCopyText(card, group) {
-    const lines = [];
-    const startDate = String(card.dataset.bookingStartAt || '').slice(0, 10) || card.dataset.bookingDate;
-    const endDate = String(card.dataset.bookingEndAt || '').slice(0, 10) || card.dataset.bookingDate;
-    const endTime = String(card.dataset.bookingEndTime || '').slice(0, 5);
-    const nextDay = endDate > startDate ? '（隔日）' : '';
-    lines.push(`營業日 ${card.dataset.bookingDate || '—'}｜${startTime(card)}–${endTime || '—'}${nextDay}`);
-    lines.push(contactName(card));
-    lines.push(`電話：${contactPhone(card)}`);
-
-    const participants = normalizedParticipants(card, group);
-    const partySize = Math.max(1, Number(group?.partySize || participants.length || 1));
-    lines.push(`預約人數：${partySize} 位`);
-    lines.push('');
-
-    participants.forEach((participant, index) => {
-      lines.push(participantLabel(index));
-      lines.push(`預約項目：${participantItems(participant.items)}`);
-      lines.push(`預約技師：${String(participant.technicianName || '現場安排').replace(/（主要技師）/g, '').trim() || '現場安排'}`);
-      if (index < participants.length - 1) lines.push('');
+    return window.BookingCopyText.format({
+      bookingDate:card.dataset.bookingDate,startAt:card.dataset.bookingStartAt,endAt:card.dataset.bookingEndAt,
+      startTime:startTime(card),endTime:card.dataset.bookingEndTime,name:contactName(card),phone:contactPhone(card),
+      partySize:group?.partySize,participants:normalizedParticipants(card,group),
     });
-
-    return lines.join('\n');
   }
 
   function normalizedParticipants(card, group) {

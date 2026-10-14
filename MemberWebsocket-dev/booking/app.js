@@ -30,6 +30,7 @@
     completed: '服務已完成',
     rejected: '未通過',
     cancelled: '已取消',
+    no_show: '無故未到',
     cancel_requested: '取消待確認',
   };
 
@@ -92,6 +93,7 @@
       els.memberProfileName.textContent = fallbackName;
       await refresh(false);
       showView('booking');
+      window.requestAnimationFrame(() => document.querySelector('.booking-detail-target')?.scrollIntoView?.({block:'center'}));
       window.dispatchEvent(new CustomEvent('user-tour:ready', { detail: { surface: 'booking', profile: state.profile } }));
       window.BookingBenefits?.setServiceContext?.(
         selectedServiceRows().map((item) => String(item.service?.serviceId || item.serviceId || '').trim()).filter(Boolean)
@@ -116,7 +118,7 @@
     const refreshSequence = ++state.refreshSequence;
     try {
       const [bookingData, profile] = await Promise.all([
-        window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.bootstrap'),
+        window.BookingSystem.request(state.config, 'member', state.idToken, 'user.booking.bootstrap',{bookingId:new URLSearchParams(window.location.search).get('bookingId') || ''}),
         window.BookingSystem.memberProfile(state.config, state.idToken),
       ]);
       // Realtime、手動刷新與 QA refresh 可能同時進行；只允許最後發出的 refresh
@@ -684,12 +686,12 @@
     const lines = [
       '【預約申請】',
       '狀態：等待管理員確認預約',
-      bookingDate ? `營業日：${window.BookingSystem.formatDate(bookingDate)}` : '',
+      startDate ? `預約日期：${window.BookingSystem.formatDate(startDate)}` : '',
       startTime ? `時段：${startDate} ${startTime}–${endDate} ${endTime}` : '',
       `預約項目：${bookingDisplayTitle(booking)}`,
     ];
     if (Number(booking?.partySize || 1) > 1) lines.push(`預約人數：${Number(booking.partySize)} 位`);
-    if (String(booking?.memberNote || '').trim()) lines.push(`備註：${String(booking.memberNote).trim()}`);
+    lines.push(`查看預約明細：https://liff.line.me/${encodeURIComponent(state.config?.bookingLiffId || '')}?bookingId=${encodeURIComponent(String(booking?.bookingId || ''))}`);
     return lines.filter(Boolean).join('\n');
   }
 
@@ -926,6 +928,12 @@
       item.appendChild(top);
       if(booking.serviceRecipientMemberCode){const recipient=document.createElement('p');recipient.className='service-info';recipient.textContent='代好友預約 · 受服務者：'+booking.serviceRecipientName+' · '+booking.serviceRecipientMemberCode;item.append(recipient);}
 
+      const detail = document.createElement('details');
+      detail.className = 'member-booking-details';
+      const summary = document.createElement('summary');
+      summary.textContent = '查看預約明細';
+      detail.appendChild(summary);
+      const detailStart = item.children.length;
       if (hasParticipantDetails) {
         window.BookingGroupUI?.renderBookingHistoryCard?.(item, booking);
       } else {
@@ -971,6 +979,11 @@
         adminNote.textContent = `管理端說明：${booking.adminNote}`;
         item.appendChild(adminNote);
       }
+
+      [...item.children].slice(detailStart).forEach(child => detail.appendChild(child));
+      item.appendChild(detail);
+      const requestedBooking = new URLSearchParams(window.location.search).get('bookingId');
+      if (requestedBooking === String(booking.bookingId)) item.classList.add('booking-detail-target');
 
       if (canCancel(booking)) {
         const actions = document.createElement('div');

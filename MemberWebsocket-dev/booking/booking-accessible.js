@@ -111,7 +111,27 @@
         : '目前沒有可登記或可領取的票券；仍可送出快照收據。';
     }
   }
+  function renderSnapshotHistory(submissions) {
+    const view=el('bookingView');if(!view)return;
+    let host=el('bookingSnapshotHistory');if(!host){host=document.createElement('section');host.id='bookingSnapshotHistory';host.className='booking-card';view.append(host);}
+    host.replaceChildren();const rows=Array.isArray(submissions) ? submissions : [];host.hidden=!rows.length;if(!rows.length)return;
+    const heading=document.createElement('h2');heading.textContent='快照預約明細';host.append(heading);
+    const requested=new URLSearchParams(window.location.search).get('receiptId');
+    for(const row of rows){
+      const details=document.createElement('details');details.className='member-booking-details';details.dataset.receiptId=String(row.receiptId || '');
+      const summary=document.createElement('summary');summary.textContent=`${row.cancelled ? '已撤回' : row.dismissed ? '需重新提供收據' : row.status==='bound' ? '已登記' : '待審核'} · ${String(row.receiptId || '')}`;details.append(summary);
+      const add=text=>{const p=document.createElement('p');p.textContent=text;details.append(p);};
+      add('送出時間：'+String(row.createdAt || '—'));
+      const benefits=Array.isArray(row.requestedBenefits) ? row.requestedBenefits : [];
+      add('本次登記票券：'+(benefits.map(x=>String(x.title || x.id || '票券')).join('、') || '未選用'));
+      const settlement=Array.isArray(row.settlement) ? row.settlement[0] : row.settlement;
+      if(settlement)add(`已核准服務時間：${Number(settlement.service_minutes || 0)} 分鐘`);
+      if(requested===String(row.receiptId)){details.classList.add('booking-detail-target');window.requestAnimationFrame(()=>details.scrollIntoView?.({block:'center'}));}
+      host.append(details);
+    }
+  }
   function renderStatus(submissions) {
+    renderSnapshotHistory(submissions);
     const status = el('bookingAccessibleStatus');
     if (!status) return;
     const latest = (Array.isArray(submissions) ? submissions : []).find(r => ['awaiting_review','bound'].includes(r.status) || r.dismissed || r.cancelled);

@@ -450,7 +450,7 @@
   }
 
   function request(config, clientType, idToken, action, payload = {}) {
-    const isWrite = action.endsWith('.session.claim') || action.endsWith('.session.logout') || WRITE_ACTIONS.includes(action) || ['admin.settings.copy','admin.ticket-visibility.save','member.friend.request','member.friend.accept','member.friend.remove','member.friend.block'].includes(action);
+    const isWrite = action === 'user.member.card.open' || action.endsWith('.session.claim') || action.endsWith('.session.logout') || WRITE_ACTIONS.includes(action) || ['admin.settings.copy','admin.ticket-visibility.save','member.friend.request','member.friend.accept','member.friend.remove','member.friend.block'].includes(action);
     if (isWrite) {
       pendingReads.clear();
       return sendRequest(config, clientType, idToken, action, payload).finally(() => pendingReads.clear());
@@ -473,7 +473,7 @@
     if (clientType === 'admin' && String(action || '').startsWith('admin.booking.receipt.')) {
       return String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/booking-receipt-api';
     }
-    if (clientType === 'member' && (action === 'user.member.bootstrap' || action === 'user.member.profile.save' || action === 'user.member.terms.accept')) {
+    if (clientType === 'member' && (action === 'user.member.bootstrap' || action === 'user.member.profile.save' || action === 'user.member.terms.accept' || action === 'user.member.card.open')) {
       return String(config.supabaseUrl || '').replace(/\/$/, '') + '/functions/v1/member-profile-api';
     }
     if (clientType === 'calendar' && (action === 'user.calendar.bootstrap' || action === 'user.calendar.date.details')) {

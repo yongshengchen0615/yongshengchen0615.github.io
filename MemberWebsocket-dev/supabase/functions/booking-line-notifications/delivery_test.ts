@@ -44,7 +44,7 @@ const sampleJob = {
 };
 
 Deno.test('booking notification builds a structured mobile-friendly Flex Message', () => {
-  const message = buildBookingFlexMessage(sampleJob);
+  const message = buildBookingFlexMessage({...sampleJob,channel:'admin'});
   assert(message.type === 'flex', 'notification must be a Flex Message');
   assert(message.altText.includes('預約確認'), 'altText must describe the booking event');
   assert(message.altText.includes('2026/09/15'), 'altText must include the booking date');
@@ -71,34 +71,12 @@ Deno.test('booking notification builds a structured mobile-friendly Flex Message
   assert(components.some((item) => item.text === 'Lumen Club 預約系統'), 'Flex footer must identify the booking system');
 });
 
-Deno.test('confirmed member notification renders current entitlement sections', () => {
-  const message = buildBookingFlexMessage({
-    ...sampleJob,
-    benefits: {
-      pointTickets: ['滿 10 點兌換券｜有效至 2026/10/31｜現場出示'],
-      eventTickets: [],
-      tierActivities: ['金級限定體驗日｜2026/10/05–2026/10/06'],
-      tierLabel: '金級會員',
-    },
-  });
-
-  const body = message.contents.body as Record<string, unknown>;
-  const cards = body.contents as Array<Record<string, unknown>>;
-  assert(cards.length === 6, 'booking confirmation should append three entitlement cards');
-
-  const components = collectComponents(message.contents);
-  assert(components.some((item) => item.text === '可用集點卡票券'),
-    'confirmation must include the point-ticket entitlement section');
-  assert(components.some((item) => item.text === '可用活動票券'),
-    'confirmation must include the event-ticket entitlement section');
-  assert(components.some((item) => item.text === '會員階級活動（金級會員）'),
-    'confirmation must identify the current membership tier');
-  assert(components.some((item) => item.text === '滿 10 點兌換券｜有效至 2026/10/31｜現場出示'),
-    'confirmation must render current usable point tickets');
-  assert(components.some((item) => item.text === '金級限定體驗日｜2026/10/05–2026/10/06'),
-    'confirmation must render tier-eligible activities');
-  assert(components.some((item) => item.text === '目前無可用項目'),
-    'an empty entitlement category must render the explicit empty state');
+Deno.test('confirmed member notification is concise and links authorized details', () => {
+  const message = buildBookingFlexMessage({ ...sampleJob, booking_id:'30000000-0000-4000-8000-000000000001', benefits:{pointTickets:['SECRET-OFFER'],eventTickets:[],tierActivities:[],tierLabel:'SECRET-TIER'} });
+  const serialized=JSON.stringify(message);
+  assert(!serialized.includes('SECRET-OFFER') && !serialized.includes('SECRET-TIER'),'offers and tier must not be rendered');
+  assert(serialized.includes('查看預約明細'),'authenticated LIFF details must be linked');
+  assert(serialized.includes('2010787602-sgiB0ETj'),'use existing booking LIFF app');
 });
 
 Deno.test('legacy aggregate service notification remains compatible', () => {

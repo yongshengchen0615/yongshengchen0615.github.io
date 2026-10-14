@@ -34,7 +34,7 @@ test('successful snapshot confirmation sends member-authored LINE text without s
   assert.match(sent[0], /等待管理員審核/);
   assert.match(sent[0], /快照編號：RCP-123/);
   assert.match(sent[0], /登記票券：2 張（待審核，尚未核銷）/);
-  assert.doesNotMatch(sent[0], /latitude|longitude|GPS|https:\/\/|收據圖片/);
+  assert.doesNotMatch(sent[0], /latitude|longitude|GPS|收據圖片/);
 });
 
 test('LINE failure or missing LIFF send hook does not throw or re-finalize the snapshot', async () => {

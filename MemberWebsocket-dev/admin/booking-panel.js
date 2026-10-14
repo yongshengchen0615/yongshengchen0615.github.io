@@ -13,7 +13,7 @@
 
   // Preserve compatibility with the retired /booking/admin/ route without
   // waiting for the visible admin UI and clicking a tab after first paint.
-  if (window.location.hash === '#booking') {
+  if (window.location.hash === '#booking' || /^[0-9a-f-]{36}$/i.test(new URLSearchParams(window.location.search).get('bookingId') || '')) {
     window.MemberAdminInitialPanel = 'booking';
     window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
   }
@@ -43,7 +43,7 @@
           console.error('booking admin extension preload failed', preloadExtensions[index][0], result.reason);
         }
       });
-      const result = load('booking-panel-core.js', 'booking-operations-split-20261003-1-ticket-source-20261004-1-ticket-card-ui-20261004-1-ticket-booking-20261006-1-booking-settings-20261006-2-ui-20261006-1-badge-20261009-1-snapshot-20261010-1-policy-entry-20261010-1-controls-20261010-2-snapshot-geofence-20261012-1');
+      const result = load('booking-panel-core.js', 'booking-operations-split-20261003-1-ticket-source-20261004-1-ticket-card-ui-20261004-1-ticket-booking-20261006-1-booking-settings-20261006-2-ui-20261006-1-badge-20261009-1-snapshot-20261010-1-policy-entry-20261010-1-controls-20261010-2-snapshot-geofence-20261012-1-release-20261014-1');
       // Compatibility marker for legacy architecture checks:
       // load('booking-panel-core.js', 'layout-stability-20261001-1')
       return result;

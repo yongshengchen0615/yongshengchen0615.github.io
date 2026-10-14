@@ -3,7 +3,7 @@
   "scope": "Seven admin workspaces, including operation audit; test-control workspace excluded",
   "evidence": "isolated Chromium UI with production handlers and explicit in-memory transport; not live Supabase/LINE delivery",
   "reviewedSources": {
-    "admin/index.html": "88a02fd0552e14439aa1ad21a3cbcf197e384091f6f1311d55b94a8dee15ef28",
+    "admin/index.html": "9b30ecc77b6abd20cb39c7d37060701587397f873f881be389f6ed4759bc25a8",
     "admin/app.js": "bae78524c57369191c5cc90d2a29ae1d3a1dcc04f4e5b1b5fbadabac516094a8",
     "admin/member-workspace-tabs.js": "311b8c88387ebf532a73dfe68b056457d729bc8938c0abdeba475f8376029a0b",
     "admin/terms.js": "b226af4cb0778e89739a5be51770e64a13c59d59da6924a21646a00f17824ea7",
@@ -15,15 +15,15 @@
     "admin/pointcard-redemption-limit.js": "a391a001602667e48e63ee5cb7353ac44596f4a39de36ac03b0084b88f0e2d2f",
     "admin/event-ticket-redemption-limit.js": "6391ce8e930503aae1291ce767da938204219f1b63f285b7425c19b1095de7d0",
     "admin/integration-hub.js": "696f38801b5e8755e706c3e0153aa023a1d47f01a3f68456dd8e5a7fec868b33",
-    "admin/booking-panel.js": "d73184a3fa3aa18d6fde280c7807749a7677f93d7c0873daefa636b65b3edb43",
-    "admin/booking-panel-core.js": "45279679c4a048b185b88d175968fc0c94da526574ceff57ba61daa7e6f9fb84",
+    "admin/booking-panel.js": "03948dabaec688dfb78d3c94e841e2486ac84ce9698de3ac4eaa9124d35b97ce",
+    "admin/booking-panel-core.js": "cac78e636972520502d9e486586bd2bec3c9c6a9a8a94ef1859250c7199438fd",
     "admin/booking-resources.js": "421534c24977f3e9756a150990dd7accb109fc7074a4986840ad22282ecb8542",
     "admin/booking-always-open.js": "9cb236902a7f3f36cf3fe4c3f13fbbac622f000c72d36ec34f7d4dde08e6e54a",
     "admin/booking-cancellation-sync.js": "a8367bb6565d054af976ec1ffdf950874a4e8f14a3917d2e036bc1744016db19",
     "admin/booking-receipt-admin.js": "b5873c2753c0f2f9c267d0d13583405c2205cc70c0f2103f5899f741a74cf920",
     "admin/booking-accessible-admin.js": "5947f0328b3b27ff891760f72615024899a96b77467f7601842056f908ce5526",
     "admin/ticket-visibility.js": "8d4c78f03a198b94fe5cf7eb305c7e2b9bfb67a07d367c73050349fab45802c2",
-    "admin/operation-audit.js": "163217db1ad579cb92fbf17e690033db330a680a54189304db068da444d65a59"
+    "admin/operation-audit.js": "2ecd1161e533d56b17a6f89d1907bef384e96a932f81027d6e6178bdcce5a96e"
   },
   "features": [
     {
@@ -547,6 +547,15 @@
       "name": "操作稽核篩選、分頁、詳情與權限",
       "cases": [
         "AUDIT_QUERY"
+      ]
+    },
+    {
+      "id": "booking.no-show",
+      "module": "booking",
+      "name": "待確認一般預約人工標記無故未到、二次確認、列表與待確認數量同步",
+      "cases": [
+        "BOOKING_NO_SHOW_390",
+        "BOOKING_NO_SHOW_1280"
       ]
     }
   ]
