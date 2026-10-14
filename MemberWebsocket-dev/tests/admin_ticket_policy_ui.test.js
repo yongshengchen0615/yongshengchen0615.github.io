@@ -35,7 +35,7 @@ test('global point and event limits retain independent backend operations and ze
     assert.match(src, /data-policy-limit="0"/);
     assert.match(src, /data-policy-limit="10"/);
     assert.match(src, /aria-pressed/);
-    assert.match(src, /data\.dirty/);
+    assert.match(src, /dataset\\.dirty/);
     assert.match(src, /有尚未儲存的變更/);
     assert.match(src, /仍須符合|不會改變/);
   }
