@@ -254,14 +254,6 @@ html[data-theme="dark"] .point-transfer-message{
   opacity:.48;
   cursor:not-allowed;
 }
-.point-transfer-copy-proxy{
-  position:fixed;
-  inset:auto auto 0 -9999px;
-  width:1px;
-  height:1px;
-  opacity:0;
-  pointer-events:none;
-}
 html[data-theme="dark"] .point-transfer-own-code{
   background:var(--theme-surface-muted);
   border-color:var(--theme-border-strong);
