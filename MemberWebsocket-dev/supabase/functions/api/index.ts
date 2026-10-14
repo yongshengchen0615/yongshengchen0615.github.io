@@ -224,6 +224,7 @@ function clientTypeForAction(action: string): ClientType {
   if (action.startsWith("user.pointcard.booking-selections.")) return "points";
   if (action === "user.pointcard.snapshot-ticket.cancel") return "points";
   if (action.startsWith("user.event.booking-selections.")) return "event";
+  if (action === "user.event.snapshot-ticket.cancel") return "event";
   const memberSession = /^user\.(member|points|event|calendar|booking)\.session\.(claim|logout|status)$/.exec(action);
   if (memberSession) return memberSession[1] as ClientType;
   if (action === "admin.session.claim" || action === "admin.session.logout") return "admin";
