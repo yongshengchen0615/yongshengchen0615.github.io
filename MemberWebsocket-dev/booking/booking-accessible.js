@@ -13,7 +13,6 @@
   ];
   let activeSnapshotHistoryGroup = 'pending';
   let snapshotHistoryTabSelected = false;
-  let snapshotHistoryInitialized = false;
   let lastScrolledSnapshotId = '';
   function snapshotChatFeedback(result) {
     if (result?.alreadyApplied === true) return '此快照先前已送出，不會重複傳送 LINE 訊息。';
@@ -270,10 +269,9 @@
 
     if (!snapshotHistoryTabSelected && targetDetails) {
       activeSnapshotHistoryGroup = snapshotHistoryGroup(rows.find(row => String(row.receiptId || '') === requestedId));
-    } else if (!snapshotHistoryInitialized && !groups.get(activeSnapshotHistoryGroup).length) {
+    } else if (!snapshotHistoryTabSelected && !groups.get(activeSnapshotHistoryGroup).length) {
       activeSnapshotHistoryGroup = SNAPSHOT_HISTORY_GROUPS.find(group => groups.get(group.key).length)?.key || 'pending';
     }
-    snapshotHistoryInitialized = true;
     host.append(heading, tabs, ...panels);
     activateSnapshotHistoryGroup(host, activeSnapshotHistoryGroup);
     if (targetDetails && !snapshotHistoryTabSelected && lastScrolledSnapshotId !== requestedId) {
