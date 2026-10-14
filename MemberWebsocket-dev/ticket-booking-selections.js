@@ -21,6 +21,11 @@
     // The event page uses per-ticket reservation disclosures, not the standalone editor.
     // Keep the shared context for event ticket cancellation and refresh callbacks.
     if (settings.surface !== 'points') return;
+    // Keep the shared cancellation context without showing the standalone booking editor.
+    if (settings.showStandaloneEditor === false) {
+      $('bookingSelectionPanel')?.remove();
+      return;
+    }
     if ($('bookingSelectionPanel')) return;
     const host = $(settings.surface === 'points' ? 'pointsView' : 'eventView'); if (!host) return;
     const panel = node('section', '', 'booking-selection-panel'); panel.id = 'bookingSelectionPanel';
