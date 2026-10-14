@@ -25,6 +25,8 @@
     ticketsLoading: false,
     busy: false,
     listLoading: false,
+    listGeneration: 0,
+    listMemberId: '',
   };
 
   // Snapshot-mode GPS stays in memory only; it is never stored in localStorage.
@@ -974,10 +976,21 @@
     });
   }
 
+  function invalidateReceiptList() {
+    state.listGeneration += 1;
+    state.listLoading = false;
+    state.metadataByBooking.clear();
+    document.querySelectorAll('[data-booking-receipt-control]').forEach(node => node.remove());
+    window.dispatchEvent(new CustomEvent('booking:receipts-updated', { detail: { submissions: [] } }));
+  }
+
   async function refreshListAndDecorate() {
     if (state.listLoading) return;
     const currentSession = session();
     if (!currentSession) return;
+    const generation = state.listGeneration;
+    const isCurrent = () => generation === state.listGeneration
+      && session()?.idToken === currentSession.idToken;
     state.listLoading = true;
     try {
       const data = await window.BookingSystem.request(
@@ -987,6 +1000,8 @@
         'user.booking.receipt.list',
         {receiptId:new URLSearchParams(window.location.search).get('receiptId') || ''}
       );
+      // A response from an ended or replaced session cannot update another member's UI.
+      if (!isCurrent()) return;
       state.metadataByBooking.clear();
       (Array.isArray(data.bookings) ? data.bookings : []).forEach((item) => {
         state.metadataByBooking.set(String(item.bookingId || ''), item);
@@ -994,11 +1009,12 @@
       decorateCards();
       window.dispatchEvent(new CustomEvent('booking:receipts-updated', { detail: { submissions: Array.isArray(data.submissions) ? data.submissions : [] } }));
     } catch (error) {
+      if (!isCurrent()) return;
       console.warn('booking receipt list failed', error);
       window.dispatchEvent(new CustomEvent('booking:receipt-load-error'));
 
     } finally {
-      state.listLoading = false;
+      if (generation === state.listGeneration) state.listLoading = false;
     }
   }
 
@@ -1023,8 +1039,16 @@
     if (!document.getElementById('bookingReceiptModal')?.classList.contains('hidden') && !state.busy) closeModal();
   });
   window.addEventListener('member:access-ended', () => {
+    state.listMemberId = '';
+    invalidateReceiptList();
     state.busy = false;
     closeModal();
+  });
+  window.addEventListener('booking:member-loaded', event => {
+    const memberId = String(event.detail?.profile?.lineUserId || '');
+    if (memberId === state.listMemberId) return;
+    state.listMemberId = memberId;
+    invalidateReceiptList();
   });
   window.addEventListener('booking:bookings-rendered', () => { void refreshListAndDecorate(); });
   window.addEventListener('pageshow', () => {

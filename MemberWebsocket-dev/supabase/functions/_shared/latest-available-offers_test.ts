@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { selectLatestEventOffers, selectLatestPointOffers } from "./latest-available-offers.ts";
 
 Deno.test("selectLatestPointOffers uses current reward/template definitions and hides historical duplicates", () => {
@@ -75,7 +75,33 @@ Deno.test("selectLatestEventOffers only returns unused claimed or still-claimabl
   );
 
   assertEquals(offers, [
-    { eventId:"event-claimed",title:"已領取未使用",claimed:true },
-    { eventId:"event-new",title:"尚未領取",claimed:false },
+    { eventId:"event-claimed",title:"已領取未使用",claimed:true,requiredServiceIds:[],requiredServiceMatchMode:"any" },
+    { eventId:"event-new",title:"尚未領取",claimed:false,requiredServiceIds:[],requiredServiceMatchMode:"any" },
   ]);
+});
+
+Deno.test("event offers preserve the owned claim, GPS and current service restrictions", () => {
+  const offers = selectLatestEventOffers(
+    [{id:"event-a",title:"服務限定票券",quota:1,requires_location:true,
+      required_service_ids:[" service-a ","service-b",""],required_service_match_mode:"all"}],
+    [{event_ticket_id:"event-a",member_id:"other",claim_id:"foreign",status:"used"},
+      {event_ticket_id:"event-a",member_id:"member-a",claim_id:"owned",status:"available"}],
+    "member-a",
+  );
+  assertEquals(offers, [{eventId:"event-a",title:"服務限定票券",claimed:true,claimId:"owned",
+    requiresLocation:true,requiredServiceIds:["service-a","service-b"],requiredServiceMatchMode:"all"}]);
+  assertEquals(selectLatestEventOffers(
+    [{id:"event-a",quota:1}],
+    [{event_ticket_id:"event-a",member_id:"other",claim_id:"foreign",status:"available"}],
+    "member-a",
+  ), []);
+});
+
+Deno.test("unclaimed fixed and membership tickets stay hidden and cancelled claims consume quota", () => {
+  const events = [{id:"fixed",fixed_ticket_template_id:"template-a",quota:0},
+    {id:"referral",ticket_type:"referral",quota:0},
+    {id:"join",ticket_type:"membership_join",quota:0},
+    {id:"full",quota:1}];
+  const claims = [{event_ticket_id:"full",member_id:"other",status:"cancelled"}];
+  assertEquals(selectLatestEventOffers(events,claims,"member-a"), []);
 });

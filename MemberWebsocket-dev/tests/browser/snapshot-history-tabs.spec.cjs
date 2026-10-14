@@ -126,3 +126,32 @@ test('empty status panels show zero and do not duplicate removed snapshots', asy
   await page.evaluate(() => window.__renderSnapshotRows([]));
   await expect(root).toBeHidden();
 });
+
+test('receipt refresh preserves expanded details and keyboard focus without stealing outside focus', async ({ page }) => {
+  await page.goto(baseUrl + '/booking/');
+  const root = page.locator('#bookingSnapshotHistory');
+  const tab = root.locator('#snapshotHistoryTab-pending');
+  const row = root.locator('[data-receipt-id="pending-1"]');
+  await row.locator('summary').click();
+  await tab.focus();
+  await page.evaluate(() => window.__renderSnapshotRows(window.__snapshotRows));
+  await expect(row).toHaveAttribute('open', '');
+  await expect(tab).toBeFocused();
+  await row.locator('summary').focus();
+  await page.evaluate(() => window.__renderSnapshotRows(window.__snapshotRows.map(receipt =>
+    receipt.receiptId === 'pending-1' ? {...receipt, requestedBenefits:[{title:'更新後票券'}]} : receipt)));
+  await expect(row.locator('summary')).toBeFocused();
+  await expect(row).toContainText('更新後票券');
+  await page.locator('#bookingAccessibleToggle').focus();
+  await page.evaluate(() => window.__renderSnapshotRows(window.__snapshotRows));
+  await expect(page.locator('#bookingAccessibleToggle')).toBeFocused();
+});
+
+test('a receipt deep link respects manual collapse after subsequent updates', async ({ page }) => {
+  await page.goto(baseUrl + '/booking/?receiptId=withdrawn-1');
+  const row = page.locator('#bookingSnapshotHistory [data-receipt-id="withdrawn-1"]');
+  await expect(row).toHaveAttribute('open', '');
+  await row.locator('summary').click();
+  await page.evaluate(() => window.__renderSnapshotRows(window.__snapshotRows));
+  await expect(row).not.toHaveAttribute('open', '');
+});

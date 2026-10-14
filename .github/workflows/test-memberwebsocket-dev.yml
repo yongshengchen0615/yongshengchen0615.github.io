@@ -96,6 +96,7 @@ jobs:
             MemberWebsocket-dev/tests/integration/qr_modal_lifecycle.cjs \
             MemberWebsocket-dev/tests/integration/snapshot_location.cjs \
             MemberWebsocket-dev/tests/integration/snapshot_completion_controls.cjs \
+            MemberWebsocket-dev/tests/integration/receipt_refresh_state.cjs \
             MemberWebsocket-dev/tests/integration/friend_qr_scanner.cjs
           node --max-old-space-size=1024 --test MemberWebsocket-dev/tests/integration/admin_human_journeys.cjs
           node --test MemberWebsocket-dev/tests/integration/ongoing_release_20261014.cjs MemberWebsocket-dev/tests/integration/ongoing_release_ui.cjs
@@ -259,6 +260,11 @@ jobs:
             MemberWebsocket-dev/supabase/functions/calendar-system-api/index.ts \
             MemberWebsocket-dev/supabase/functions/calendar-member-api/index.ts \
             MemberWebsocket-dev/supabase/functions/point-ticket-batch-api/index.ts
+      - name: Test Edge Function business logic and LINE delivery
+        run: |
+          deno test \
+            MemberWebsocket-dev/supabase/functions/_shared/*_test.ts \
+            MemberWebsocket-dev/supabase/functions/booking-line-notifications/delivery_test.ts
 
   wiring:
     name: Static wiring and architecture checks

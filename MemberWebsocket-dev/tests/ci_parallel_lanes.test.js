@@ -21,3 +21,9 @@ test('MemberWebsocket CI separates expensive test lanes and preserves aggregate 
   assert.match(workflow, /test "\$REGRESSION" = success/);
   assert.match(workflow, /test "\$EDGE_FUNCTIONS" = success/);
 });
+
+test('main CI executes Edge unit tests and receipt refresh race regressions', () => {
+  assert.match(workflow, /deno test \\\n\s+MemberWebsocket-dev\/supabase\/functions\/_shared\/\*_test\.ts/);
+  assert.match(workflow, /MemberWebsocket-dev\/supabase\/functions\/booking-line-notifications\/delivery_test\.ts/);
+  assert.match(workflow, /MemberWebsocket-dev\/tests\/integration\/receipt_refresh_state\.cjs/);
+});

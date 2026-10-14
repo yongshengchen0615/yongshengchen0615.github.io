@@ -186,6 +186,12 @@
       view.append(host);
     }
     installSnapshotHistoryTabs(host);
+    const existingDetails = new Map([...host.querySelectorAll('details[data-receipt-id]')]
+      .map(details => [details.dataset.receiptId, details.open]));
+    const focused = host.contains(document.activeElement) ? document.activeElement : null;
+    const focusedTab = focused?.dataset.snapshotHistoryTab;
+    const focusedReceiptId = focused?.matches('summary')
+      ? focused.closest('details')?.dataset.receiptId : '';
     const rows = Array.isArray(submissions) ? submissions : [];
     host.hidden = !rows.length;
     host.replaceChildren();
@@ -203,6 +209,7 @@
       const details = document.createElement('details');
       details.className = 'member-booking-details';
       details.dataset.receiptId = String(row.receiptId || '');
+      details.open = existingDetails.get(details.dataset.receiptId) === true;
       const summary = document.createElement('summary');
       summary.textContent = snapshotHistoryStatusLabel(row) + ' · ' + String(row.receiptId || '');
       details.append(summary);
@@ -221,7 +228,7 @@
       if (settlement) add('已核准服務時間：' + Number(settlement.service_minutes || 0) + ' 分鐘');
       if (requestedId && requestedId === details.dataset.receiptId) {
         details.classList.add('booking-detail-target');
-        details.open = true;
+        if (!existingDetails.has(details.dataset.receiptId)) details.open = true;
         targetDetails = details;
       }
       groups.get(snapshotHistoryGroup(row)).push(details);
@@ -274,6 +281,12 @@
     }
     host.append(heading, tabs, ...panels);
     activateSnapshotHistoryGroup(host, activeSnapshotHistoryGroup);
+    const focusTarget = focusedTab
+      ? [...tabs.children].find(tab => tab.dataset.snapshotHistoryTab === focusedTab)
+      : focusedReceiptId
+        ? [...host.querySelectorAll('details')].find(details => details.dataset.receiptId === focusedReceiptId)?.querySelector('summary')
+        : null;
+    if (focusTarget && !focusTarget.closest('[hidden]')) focusTarget.focus({ preventScroll: true });
     if (targetDetails && !snapshotHistoryTabSelected && lastScrolledSnapshotId !== requestedId) {
       lastScrolledSnapshotId = requestedId;
       window.requestAnimationFrame(() => {
