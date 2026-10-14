@@ -124,6 +124,21 @@ test('snapshot positioning policy blocks denied GPS and successful retries send 
  expect(state.prepare[0].location).toMatchObject({latitude:25.033964,longitude:121.564472,accuracy:10});
  expect(state.finalize[0].location.timestamp).toBeGreaterThan(Date.now()-120000);
 });
+test('snapshot policy OFF permits receipt upload with location permission unavailable',async({page})=>{
+  const run='snapshot-location-optional';
+  await open(page,run);
+  await expect(page.locator('#bookingReceiptCapture')).toHaveText('拍攝收據');
+  await expect(page.locator('#bookingReceiptFile')).toBeEnabled();
+  await capture(page);
+  await page.locator('#bookingReceiptSubmit').click();
+  await expect(page.locator('#bookingReceiptModal')).toBeHidden();
+  const state=runs.get(run);
+  expect(state.prepare).toHaveLength(1);
+  expect(state.finalize).toHaveLength(1);
+  expect(state.prepare[0].location).toBeNull();
+  expect(state.finalize[0].location).toBeNull();
+});
+
 async function capture(page,{screenSnapshot=false}={}) {
   let snapshotSize=0;
   await expect(page.locator('#bookingReceiptCapture')).toHaveText('拍攝收據');
