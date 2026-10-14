@@ -1117,6 +1117,7 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
   // The snapshot cost is not yet deducted from the point balance.
   const snapshotReservedStampsByCard = new Map<string,number>();
   for (const ticket of availableTickets) {
+    if (ticket.status !== "available") continue;
     const snapshots = snapshotByPointTicket.get(String(ticket.ticket_id || "")) || [];
     if (!snapshots.length) continue;
     const pointCardId = String(ticket.point_card_id || "");
