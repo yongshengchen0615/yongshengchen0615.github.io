@@ -75,7 +75,9 @@
 
     function notifyError(error) {
       const message = errorMessage(error);
-      if (typeof onError === 'function') onError(message);
+      // Pass the original browser error as an optional second argument so
+      // admin location pickers can recover from POSITION_UNAVAILABLE (code 2).
+      if (typeof onError === 'function') onError(message, error);
       if (error?.code === 1) {
         // A denied watch does not resume after the user grants permission.
         // Discard it so the next user attempt starts a fresh browser watch.
