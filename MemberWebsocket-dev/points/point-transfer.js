@@ -105,7 +105,6 @@
             <span>我的會員編號</span>
             <strong id="pointTransferOwnMemberCode">讀取中…</strong>
           </div>
-          <button id="pointTransferCopyOwnCode" class="point-transfer-copy-button" type="button" disabled>複製會員編號</button>
           <button id="pointTransferShowOwnQr" class="point-transfer-copy-button" type="button" aria-haspopup="dialog" disabled>顯示 QR Code</button>
         </section>
         <form id="pointTransferForm" class="point-transfer-form">
@@ -146,7 +145,6 @@
 
     document.body.append(modal);
     modal.querySelector('#pointTransferClose').addEventListener('click', closeModal);
-    modal.querySelector('#pointTransferCopyOwnCode').addEventListener('click', copyOwnMemberCode);
     modal.querySelector('#pointTransferShowOwnQr').addEventListener('click', event => {
       window.QRDisplayDialog?.show({ memberCode: state.memberCode, title: '我的會員 QR Code', opener: event.currentTarget });
     });
@@ -267,43 +265,9 @@
 
   function updateOwnMemberCode() {
     const output = document.getElementById('pointTransferOwnMemberCode');
-    const button = document.getElementById('pointTransferCopyOwnCode');
     if (output) output.textContent = state.memberCode || '尚未取得會員編號';
-    if (button) button.disabled = !state.memberCode;
     const qrButton = document.getElementById('pointTransferShowOwnQr');
     if (qrButton) qrButton.disabled = !state.memberCode;
-  }
-
-  async function copyOwnMemberCode() {
-    const code = String(state.memberCode || '').trim();
-    if (!code) return;
-
-    const button = document.getElementById('pointTransferCopyOwnCode');
-    let copied = false;
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(code);
-        copied = true;
-      }
-    } catch (_) {}
-
-    if (!copied) {
-      const proxy = document.createElement('textarea');
-      proxy.className = 'point-transfer-copy-proxy';
-      proxy.value = code;
-      proxy.setAttribute('readonly', '');
-      document.body.append(proxy);
-      proxy.select();
-      try { copied = document.execCommand('copy'); } catch (_) {}
-      proxy.remove();
-    }
-
-    if (!button) return;
-    const original = '複製會員編號';
-    button.textContent = copied ? '已複製' : '複製失敗';
-    window.setTimeout(() => {
-      button.textContent = original;
-    }, 1600);
   }
 
   function currentCardId() {
