@@ -336,6 +336,16 @@
   window.addEventListener('booking:member-loaded', event => {
     const nextId = String(event.detail?.profile?.lineUserId || '');
     if (nextId === memberId) return;
+    // Never display the previous member's receipt history while a new identity loads.
+    activeSnapshotHistoryGroup = 'pending';
+    snapshotHistoryTabSelected = false;
+    lastScrolledSnapshotId = '';
+    const history = el('bookingSnapshotHistory');
+    if (history) {
+      history.replaceChildren();
+      history.hidden = true;
+    }
+    if (el('bookingAccessibleStatus')) el('bookingAccessibleStatus').textContent = '正在載入收據狀態…';
     memberId = nextId;
     let preferred = false;
     if (el('bookingModePreference')) el('bookingModePreference').textContent = '切換後會記住此會員在本裝置的偏好。';
