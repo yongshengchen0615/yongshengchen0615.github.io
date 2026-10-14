@@ -392,7 +392,7 @@ for(const kind of ['card','ticket','event','fixed'])test('SETTINGS_COPY_'+kind+'
  expect(calls(info.fixture,'admin.settings.copy')).toHaveLength(1);
 });
 test('TICKET_VISIBILITY — save both policies and reload persisted setting',async({page:p},info)=>{
- await click(p,'eventsTab');await expect(p.locator('#saveTicketVisibility')).toBeEnabled();await select(p,'ticketVisibilityPolicy','higher_preview');await click(p,'saveTicketVisibility');await expect(p.locator('#ticketVisibilityStatus')).toContainText('已儲存');await p.reload();await click(p,'eventsTab');await expect(p.locator('#ticketVisibilityPolicy')).toHaveValue('higher_preview');await select(p,'ticketVisibilityPolicy','eligible_only');await click(p,'saveTicketVisibility');await expect.poll(()=>info.fixture.visibilityPolicy).toBe('eligible_only');
+ await click(p,'eventsTab');await expect(p.locator('#ticketVisibilityPolicy')).toBeEnabled();await expect(p.locator('#saveTicketVisibility')).toBeDisabled();await select(p,'ticketVisibilityPolicy','higher_preview');await expect(p.locator('#saveTicketVisibility')).toBeEnabled();await click(p,'saveTicketVisibility');await expect(p.locator('#ticketVisibilityStatus')).toContainText('已儲存');await p.reload();await click(p,'eventsTab');await expect(p.locator('#ticketVisibilityPolicy')).toHaveValue('higher_preview');await select(p,'ticketVisibilityPolicy','eligible_only');await click(p,'saveTicketVisibility');await expect.poll(()=>info.fixture.visibilityPolicy).toBe('eligible_only');
 });
 
 test('MEMBER_REMOVE — cancelled or mismatched confirmation has no effects; confirmed removal refreshes directory',async({page:p},info)=>{
