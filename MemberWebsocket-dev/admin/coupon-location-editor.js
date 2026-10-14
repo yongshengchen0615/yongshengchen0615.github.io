@@ -46,6 +46,7 @@
     let gpsPlaceName = '';
     let gpsNameFix = null;
     let gpsGeneration = 0;
+    let gpsFallbackPending = false;
     const geocodeCache = new Map();
 
     const byId = (id) => document.getElementById(id);
@@ -363,38 +364,89 @@
       gpsGeneration += 1;
       gpsTracker?.stop();
       gpsTracker = null;
+      gpsFallbackPending = false;
       gpsPlaceName = '';
       gpsNameFix = null;
       const button = byId(config.currentButtonId);
       if (button) button.textContent = '使用即時 GPS 選點';
     }
 
+    function gpsAlternativeHelp(reason) {
+      return (reason || '瀏覽器目前無法取得 GPS 位置。') +
+        ' 可確認裝置定位服務與瀏覽器的位置權限，或直接使用「地址搜尋」／點選地圖設定地點。';
+    }
+
+    function trySingleGpsFix(generation) {
+      // Some desktop browsers cannot supply an ongoing position watch but can
+      // return a genuine one-shot fix. Never synthesize coordinates.
+      const previousTracker = gpsTracker;
+      gpsTracker = null;
+      gpsFallbackPending = true;
+      previousTracker?.stop();
+      const button = byId(config.currentButtonId);
+      if (button) button.textContent = '取消單次 GPS 定位';
+      setStatus('即時 GPS 暫時無法取得位置，正在嘗試瀏覽器單次定位…');
+      try {
+        navigator.geolocation.getCurrentPosition((position) => {
+          if (generation !== gpsGeneration || !gpsFallbackPending || !checkbox()?.checked) return;
+          const latitude = Number(position?.coords?.latitude);
+          const longitude = Number(position?.coords?.longitude);
+          const accuracy = Number(position?.coords?.accuracy);
+          const timestamp = Number(position?.timestamp);
+          stopGPS();
+          if (!validCoordinate(latitude, longitude) || !Number.isFinite(accuracy) ||
+              accuracy <= 0 || accuracy > 100 || !Number.isFinite(timestamp) ||
+              timestamp < Date.now() - 20000 || timestamp > Date.now() + 30000) {
+            setStatus(gpsAlternativeHelp('GPS 定位精度不足或位置已過期，無法作為目前位置。'), true);
+            return;
+          }
+          if (setDraft(latitude, longitude, '目前 GPS 位置', { fromGps: true })) {
+            setStatus(`已取得瀏覽器單次 GPS 位置（精度約 ±${Math.round(accuracy)} 公尺）。請確認名稱與範圍，再新增地點。`);
+          }
+        }, (error) => {
+          if (generation !== gpsGeneration || !gpsFallbackPending) return;
+          stopGPS();
+          const reason = error?.code === 1 ? '瀏覽器拒絕位置權限。'
+            : error?.code === 3 ? '瀏覽器 GPS 定位逾時。'
+            : '瀏覽器無法判定目前位置。';
+          setStatus(gpsAlternativeHelp(reason), true);
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
+      } catch (_) {
+        if (generation !== gpsGeneration) return;
+        stopGPS();
+        setStatus(gpsAlternativeHelp('瀏覽器無法啟動單次 GPS 定位。'), true);
+      }
+    }
+
     function useCurrentLocation() {
-      if (gpsTracker) {
+      if (gpsTracker || gpsFallbackPending) {
         stopGPS();
         return setStatus('已停止即時 GPS，現有候選地點保留；請確認後儲存。');
       }
-      if (!navigator.geolocation) return setStatus('此瀏覽器不支援 GPS 定位。', true);
+      if (!navigator.geolocation) return setStatus(gpsAlternativeHelp('此瀏覽器不支援 GPS 定位。'), true);
       const generation = gpsGeneration;
       const button = byId(config.currentButtonId);
       if (!window.TicketLiveLocation) {
-        // Compatibility fallback; deployed clients normally use watchPosition, not getCurrentPosition.
+        // Compatibility fallback for deployments where the shared watch helper is unavailable.
         navigator.geolocation.getCurrentPosition((position) => {
+          if (generation !== gpsGeneration || !checkbox()?.checked) return;
           setDraft(position.coords.latitude, position.coords.longitude, '目前 GPS 位置');
           setStatus('已定位一次，請確認地點名稱。');
-        }, () => setStatus('GPS 暫時無法定位。', true), { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
+        }, () => {
+          if (generation === gpsGeneration) setStatus(gpsAlternativeHelp('GPS 暫時無法定位。'), true);
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
         return;
       }
       setStatus('正在啟動即時 GPS，請允許位置權限…');
       let firstGPSFix = true;
       gpsTracker = window.TicketLiveLocation.create({
         onUpdate(fix, fresh) {
+          if (generation !== gpsGeneration || !checkbox()?.checked || !gpsTracker) return;
           if (firstGPSFix && draft) {
             draft.name = '目前 GPS 位置';
             if (draftName()) draftName().value = draft.name;
           }
           firstGPSFix = false;
-          if (generation !== gpsGeneration || !checkbox()?.checked) return;
           if (gpsNameFix && window.TicketLiveLocation.distanceMeters(gpsNameFix, fix) > 120) {
             gpsPlaceName = '';
             gpsNameFix = null;
@@ -415,12 +467,22 @@
           }
           setStatus(`${fresh ? '即時 GPS 已同步' : 'GPS 精度不足或座標已過期'}（精度約 ±${Math.round(fix.accuracy)} 公尺）。${gpsPlaceName ? '附近「' + gpsPlaceName + '」' : '地點名稱待確認'}；停止定位後可調整並儲存。`);
         },
-        onError(message) { setStatus(message, true); }
+        onError(message, error) {
+          if (generation !== gpsGeneration) return;
+          if (error?.code === 2 && !gpsFallbackPending &&
+              typeof navigator.geolocation?.getCurrentPosition === 'function') {
+            trySingleGpsFix(generation);
+            return;
+          }
+          stopGPS();
+          setStatus(gpsAlternativeHelp(message), true);
+        }
       });
       try {
-        gpsTracker.start();
-        if (button) button.textContent = '停止即時 GPS 更新';
         const tracker = gpsTracker;
+        tracker.start();
+        if (tracker !== gpsTracker || generation !== gpsGeneration) return;
+        if (button) button.textContent = '停止即時 GPS 更新';
         tracker.read().then(async (fix) => {
           try {
             const name = await window.TicketLiveLocation.placeName(fix);
@@ -434,14 +496,16 @@
             }
             setStatus(`GPS 約定位於「${name}」，精度約 ±${Math.round(fix.accuracy)} 公尺。請確認名稱與半徑，選好後停止即時更新並儲存。`);
           } catch (_) {
-            if (generation === gpsGeneration) setStatus('GPS 持續更新中；無法取得地點名稱，請手動輸入後儲存。', true);
+            if (generation === gpsGeneration && tracker === gpsTracker)
+              setStatus('GPS 持續更新中；無法取得地點名稱，請手動輸入後儲存。', true);
           }
         }).catch((error) => {
-          if (generation === gpsGeneration) setStatus(error.message || 'GPS 定位失敗。', true);
+          if (generation === gpsGeneration && tracker === gpsTracker)
+            setStatus(gpsAlternativeHelp(error.message || 'GPS 定位失敗。'), true);
         });
       } catch (error) {
         stopGPS();
-        setStatus(error.message || 'GPS 啟動失敗。', true);
+        setStatus(gpsAlternativeHelp(error.message || 'GPS 啟動失敗。'), true);
       }
     }
 
