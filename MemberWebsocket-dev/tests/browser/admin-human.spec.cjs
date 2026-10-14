@@ -452,11 +452,23 @@ for(const width of [390,1280])test('BOOKING_CANCELLATION_COPY_'+width+' — actu
 });
 
 test('AUDIT_QUERY — filter, detail, cursor, empty state and authorization errors',async({page:p},info)=>{
- await click(p,'operationAuditTab');await expect(p.locator('#operationAuditList')).toContainText('BOOKING_BENEFITS_UPDATED');
- await p.locator('#operationAuditList summary').click();await expect(p.locator('#operationAuditList pre')).toContainText('selectedCount');
+ await click(p,'operationAuditTab');await expect(p.locator('#operationAuditList')).toContainText('修改預約選用票券');
+ await p.locator('#operationAuditList summary').click();await expect(p.locator('#operationAuditList dl')).toContainText('預選數量');await expect(p.locator('#operationAuditList pre')).toHaveCount(0);
  await fill(p,'auditMemberCode','QA-MEMBER');await fill(p,'auditAction','BOOKING_BENEFITS_UPDATED');await select(p,'auditResult','success');await click(p,'auditSearch');
  expect(calls(info.fixture,'admin.audit.query').at(-1).payload.memberCode).toBe('QA-MEMBER');
  await click(p,'auditNext');await expect(p.locator('#operationAuditStatus')).toContainText('沒有紀錄');expect(calls(info.fixture,'admin.audit.query').at(-1).payload.cursor.id).toBe('booking:1');
  info.fixture.fault={action:'admin.audit.query',code:'ADMIN_REQUIRED',message:'您沒有查詢權限'};await click(p,'auditSearch');await expect(p.locator('#operationAuditStatus')).toContainText('您沒有查詢權限');await expect(p.locator('#operationAuditList')).toHaveText('');
  await click(p,'membersTab');await expect(p.locator('#operationAuditPanel')).toBeHidden();await expect(p.locator('#operationAuditTab')).toHaveAttribute('aria-selected','false');
+});
+
+for(const width of [390,1280])test('BOOKING_NO_SHOW_'+width+' — explicit confirmation, no debit and pending count readback',async({page:p},info)=>{
+ if(typeof p.setViewportSize==='function')await p.setViewportSize({width,height:900});seedBooking(info.fixture);
+ info.fixture.bookings[0].startAt='2000-01-01T10:00:00+08:00';info.fixture.bookings[0].endAt='2000-01-01T10:30:00+08:00';
+ await booking(p,'bookingAdminQueueSubtab');const row=p.locator('[data-booking-id="booking-1"]');
+ await row.getByRole('button',{name:'無故未到',exact:true}).click();await expect(p.locator('#bookingAdminCrudModal')).toContainText('不核銷票券、不扣點');
+ await p.locator('#bookingAdminCrudModal button[type="submit"]').click();expect(calls(info.fixture,'admin.booking.status.update')).toHaveLength(0);
+ await p.locator('#bookingAdminCrudModal input[type="checkbox"]').check();await p.locator('#bookingAdminCrudModal button[type="submit"]').click();
+ await expect(p.locator('#bookingAdminCrudModal')).toBeHidden();expect(info.fixture.bookings[0].status).toBe('no_show');expect(calls(info.fixture,'admin.booking.status.update')).toHaveLength(1);
+ expect(calls(info.fixture,'admin.booking.status.complete')).toHaveLength(0);await expect(p.locator('#bookingAdminPendingCount')).toHaveText('0');
+ await p.locator('[data-booking-filter="all"]').click();await expect(p.locator('#bookingAdminQueue')).toContainText('無故未到');
 });

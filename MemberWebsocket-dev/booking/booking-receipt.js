@@ -803,6 +803,7 @@
       receiptId ? `快照編號：${receiptId}` : '',
       `登記票券：${ticketCount} 張（待審核，尚未核銷）`,
       '管理員核對服務後才會登記服務時間、點數及票券核銷。',
+      receiptId ? `查看預約明細：https://liff.line.me/2010787602-sgiB0ETj?receiptId=${encodeURIComponent(receiptId)}` : '',
     ].filter(Boolean).join('\n');
   }
 
@@ -983,7 +984,8 @@
         currentSession.config,
         'booking',
         currentSession.idToken,
-        'user.booking.receipt.list'
+        'user.booking.receipt.list',
+        {receiptId:new URLSearchParams(window.location.search).get('receiptId') || ''}
       );
       state.metadataByBooking.clear();
       (Array.isArray(data.bookings) ? data.bookings : []).forEach((item) => {

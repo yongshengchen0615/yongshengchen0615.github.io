@@ -4,14 +4,14 @@
   const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
   const PRIMARY_TAB_IDS = ['membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'testModeTab'];
   const PRIMARY_PANEL_IDS = ['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'testModePanel'];
-  const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', completed: '服務已完成', rejected: '未通過', cancelled: '已取消' };
+  const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', completed: '服務已完成', rejected: '未通過', cancelled: '已取消', no_show: '無故未到' };
   const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
   const state = {
     config: null,
     booking: { settings: {}, bookings: [], groups: {}, technicians: [], primaryTechnicianId: '' },
     catalog: { serviceTypes: [], services: [], pointCards: [] },
-    filter: 'pending',
-    subtab: 'technicians',
+    filter: new URLSearchParams(window.location.search).has('bookingId') ? 'all' : 'pending',
+    subtab: new URLSearchParams(window.location.search).has('bookingId') ? 'queue' : 'technicians',
     queueMode: 'standard',
     selected: new Set(),
     loading: false,
@@ -230,7 +230,8 @@
 
     cacheElements();
     bindEvents();
-    setSubtab('technicians');
+    setSubtab(state.subtab);
+    window.addEventListener('focus', updateNoShowButtons);
     startBookingBadgeSync();
     openInitialBookingPanel();
   }
@@ -503,7 +504,7 @@
     setSyncStatus('同步預約資料中…');
     try {
       const [booking, catalog, resources] = await Promise.all([
-        bookingRequest('admin.booking.bootstrap'),
+        bookingRequest('admin.booking.bootstrap',{bookingId:new URLSearchParams(window.location.search).get('bookingId') || ''}),
         manageRequest('admin.booking.manage.bootstrap'),
         resourceRequest('admin.booking.resources.bootstrap'),
       ]);
@@ -569,6 +570,7 @@
         renderBookings();
         publishOperationalBookingSnapshot();
       }
+      updateNoShowButtons();
       setupRealtime();
       if (markNotificationsRead && !els.bookingPanel?.classList.contains('hidden')) {
         await markBookingNotificationsRead();
@@ -924,7 +926,7 @@
     state.busy = true;
     const message = els.bookingAdminCrudModalBody.querySelector('[data-modal-message]');
     try { await fn(); els.bookingAdminCrudModal.classList.add('hidden'); state.selected.clear(); await refreshAll(true); }
-    catch (error) { showMessage(message, error?.message || '操作失敗。', 'error'); }
+    catch (error) { if (['BOOKING_CONFLICT','BOOKING_NO_SHOW_NOT_ALLOWED'].includes(error?.code)) await refreshAll(false); showMessage(message, error?.message || '操作失敗。', 'error'); }
     finally { state.busy = false; }
   }
 
@@ -1269,6 +1271,10 @@
       const card = document.createElement('article');
       card.className = 'booking-admin-booking booking-summary-normalized';
       card.dataset.bookingId = bookingId;
+      if (new URLSearchParams(window.location.search).get('bookingId') === bookingId) {
+        card.classList.add('booking-detail-target');
+        const hint=document.createElement('p'); hint.textContent='已載入 LINE 通知對應預約，請核對最新狀態後操作。'; card.append(hint);
+      }
       card.dataset.bookingMemberCode = String(booking.memberCode || '');
       card.dataset.bookingMemberName = String(booking.memberDisplayName || '');
       card.dataset.bookingDate = String(booking.bookingDate || '');
@@ -1331,6 +1337,12 @@
         }
         actions.append(actionButton('修改預約票券', 'button button-outline', () => openBookingBenefitsModal(booking)));
         if (booking.status === 'pending') {
+          const reason = noShowUnavailableReason(booking);
+          const noShow = actionButton('無故未到', 'button button-danger', () => openNoShow(booking, textarea.value));
+          noShow.dataset.noShowId=bookingId; noShow.disabled = Boolean(reason); noShow.title = reason;
+          noShow.setAttribute('aria-label', reason ? `無故未到：${reason}` : '無故未到');
+          actions.append(noShow);
+          if (reason) { const hint = document.createElement('small'); hint.textContent = reason; actions.append(hint); }
           actions.append(
             actionButton('不通過', 'button button-outline', () => updateBookingStatus(booking, 'rejected', textarea.value)),
             actionButton('確認預約', 'button button-dark', () => updateBookingStatus(booking, 'confirmed', textarea.value)),
@@ -1725,6 +1737,43 @@
         expectedUpdatedAt: booking.updatedAt,
         adminNote,
       }, true));
+    });
+    showModal();
+  }
+
+  function updateNoShowButtons() {
+    for(const button of document.querySelectorAll('[data-no-show-id]')) {
+      const booking=state.booking.bookings.find(b=>String(b.bookingId)===button.dataset.noShowId);
+      if(!booking) continue;const reason=noShowUnavailableReason(booking);button.disabled=Boolean(reason)||state.busy;button.title=reason;
+      button.setAttribute('aria-label',reason ? `無故未到：${reason}` : '無故未到');
+      const hint=button.nextElementSibling;if(hint?.tagName==='SMALL')hint.textContent=reason;
+    }
+  }
+
+  function noShowUnavailableReason(booking) {
+    if (booking.receiptSubmissionId || String(booking.requestId || '').startsWith('receipt-register:')) return '快照請使用獨立審核流程。';
+    if (booking.status !== 'pending') return '只有待確認的一般預約可標記。';
+    if (booking.cancellationRequestedAt && !booking.cancellationReviewedAt) return '請先處理取消申請。';
+    const raw = String(booking.endAt || '');
+    const end = Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : `${raw}+08:00`);
+    if (!raw || !Number.isFinite(end)) return '缺少有效服務結束時間，請先核對排程。';
+    return end >= Date.now() ? '服務結束後才能標記無故未到。' : '';
+  }
+
+  function openNoShow(booking, adminNote) {
+    const reason = noShowUnavailableReason(booking);
+    if (reason) { showMessage(els.bookingAdminServiceMessage, reason, 'error'); return; }
+    els.bookingAdminCrudModalTitle.textContent = '確認標記無故未到';
+    els.bookingAdminCrudModalBody.innerHTML = `<form class="booking-admin-form"><p>${escapeHtml(booking.memberDisplayName || '會員')} · ${escapeHtml(booking.memberCode || '')}</p><p>${escapeHtml(booking.startAt || '')}–${escapeHtml(booking.endAt || '')}</p><p>目前仍待確認。確認此會員未到場？此操作不核銷票券、不扣點、不計入違規；僅解除本筆未使用票券的保留。</p><label><input type="checkbox" required> 我已人工核對，確認這筆仍待確認的預約無故未到。</label><div data-modal-message class="form-message hidden"></div><div class="booking-admin-modal-actions"><button data-cancel type="button" class="button button-outline">返回</button><button type="submit" class="button button-danger">確認標記無故未到</button></div></form>`;
+    const form = els.bookingAdminCrudModalBody.querySelector('form');
+    form.querySelector('[data-cancel]').addEventListener('click', closeModal);
+    form.addEventListener('submit', async e => {
+      e.preventDefault(); if (!form.reportValidity() || state.busy) return;
+      const submit=form.querySelector('[type=submit]'); submit.disabled=true; submit.textContent='正在標記…';
+      await runModalAction(() => bookingRequest('admin.booking.status.update', {
+        bookingId:booking.bookingId,expectedUpdatedAt:booking.updatedAt,status:'no_show',adminNote,
+      }, true));
+      submit.disabled=false; submit.textContent='確認標記無故未到';
     });
     showModal();
   }

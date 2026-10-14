@@ -58,6 +58,7 @@ test('member page initializes and shows the latest terms to members who must rec
     const get = (id) => w.document.getElementById(id);
     assert.equal(get('termsRenewView').classList.contains('hidden'), false);
     assert.equal(get('memberView').classList.contains('hidden'), true);
+    assert.equal(calls.filter(call=>call.action==='user.member.card.open').length,0);
     assert.match(get('renewTermsSummary').textContent, /2026-10-v2/);
     assert.equal(get('renewTermsBody').textContent, '完整條款內容');
 
@@ -68,11 +69,12 @@ test('member page initializes and shows the latest terms to members who must rec
     get('renewTermsAccepted').checked = true;
     get('renewTermsForm').dispatchEvent(new w.Event('submit', { cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), {
+    assert.deepEqual(JSON.parse(JSON.stringify(calls.find(call=>call.action==='user.member.terms.accept'))), {
       action: 'user.member.terms.accept',
       payload: { termsId: 'terms-2', termsVersion: '2026-10-v2', accepted: true },
     });
     assert.equal(get('memberView').classList.contains('hidden'), false);
+    assert.equal(calls.filter(call=>call.action==='user.member.card.open').length,1);
   } finally { dom.window.close(); }
 });
 

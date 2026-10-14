@@ -98,6 +98,7 @@ jobs:
             MemberWebsocket-dev/tests/integration/snapshot_completion_controls.cjs \
             MemberWebsocket-dev/tests/integration/friend_qr_scanner.cjs
           node --max-old-space-size=1024 --test MemberWebsocket-dev/tests/integration/admin_human_journeys.cjs
+          node --test MemberWebsocket-dev/tests/integration/ongoing_release_20261014.cjs MemberWebsocket-dev/tests/integration/ongoing_release_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_ui.cjs
           node MemberWebsocket-dev/tests/integration/booking_sql.cjs
           node MemberWebsocket-dev/tests/integration/event_coupon_sql.cjs
@@ -131,6 +132,9 @@ jobs:
         run: |
           npm test -- member-p2.spec.cjs --grep "membership pass actions stay grouped"
           npm test -- receipt-location.spec.cjs --grep "GPS permission denial"
+        working-directory: MemberWebsocket-dev/tests/browser
+      - name: Fail fast on no-show confirmation and readable audit
+        run: npm test -- admin-human.spec.cjs --grep "BOOKING_NO_SHOW|AUDIT_QUERY"
         working-directory: MemberWebsocket-dev/tests/browser
       - name: Run real-browser admin, member, receipt and location flows
         run: npm test

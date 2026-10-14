@@ -1,3 +1,4 @@
+import { bookingDetailUri } from "./booking-actions.ts";
 export type BookingBenefits = {
   pointTickets: string[];
   eventTickets: string[];
@@ -14,6 +15,8 @@ export type Job = {
   booking_id?: string;
   event_key?: string;
   benefits?: BookingBenefits;
+  copyText?: string;
+  bookingStatus?: string;
 };
 export type Delivery = { accepted: boolean; retryable: boolean; status: number | null; lineRequestId: string };
 
@@ -425,16 +428,27 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
   else if (services) bodyContents.push(services);
   if (!bodyContents.length) bodyContents.push(fallbackCard(parsed.fallbackText));
 
-  if (parsed.title === '預約確認' && job.channel === 'member' && job.benefits) {
-    bodyContents.push(
-      entitlementCard('可用集點卡票券', job.benefits.pointTickets, style.color),
-      entitlementCard('可用活動票券', job.benefits.eventTickets, style.color),
-      entitlementCard(
-        job.benefits.tierLabel ? `會員階級活動（${job.benefits.tierLabel}）` : '會員階級活動',
-        job.benefits.tierActivities,
-        style.color,
-      ),
-    );
+  const footerActions: Array<Record<string, unknown>> = [];
+  if (job.channel === 'member' && parsed.title === '預約確認') {
+    // LINE has no native accordion. Keep only the summary and an authenticated LIFF link.
+    bodyContents.length = 0;
+    if (schedule) bodyContents.push(schedule);
+    const summary = [...parsed.services,...parsed.participants.flatMap(p => p.items)];
+    if (summary.length) bodyContents.push(servicesCard([truncate(summary.join('、'),500)],style.color)!);
+    if (!bodyContents.length) bodyContents.push(fallbackCard('預約已確認，請開啟明細查看最新資訊。'));
+  }
+  if (job.booking_id) {
+    if (job.channel === 'admin' && parsed.title === '預約') {
+      const copy=String(job.copyText || '');
+      footerActions.push({type:'button',height:'sm',action:copy && Array.from(copy).length<=1000
+        ? {type:'clipboard',label:'複製預約內容',clipboardText:copy}
+        : {type:'uri',label:'複製預約內容',uri:bookingDetailUri(job.booking_id,true,'copy')}});
+      if (!job.bookingStatus || job.bookingStatus==='pending') footerActions.push({type:'button',height:'sm',action:{type:'uri',label:'確認預約',uri:bookingDetailUri(job.booking_id,true,'confirm')}});
+      else footerActions.push({type:'text',text:'預約狀態已更新，請至管理端查看。',size:'xs',wrap:true});
+      footerActions.push({type:'button',height:'sm',action:{type:'uri',label:'開啟管理端／複製',uri:bookingDetailUri(job.booking_id,true,'copy')}});
+    } else if (job.channel==='member' && parsed.title==='預約確認') {
+      footerActions.push({type:'button',height:'sm',action:{type:'uri',label:'查看預約明細',uri:bookingDetailUri(job.booking_id)}});
+    }
   }
 
   const headerContents: FlexText[] = [
@@ -488,6 +502,7 @@ export function buildBookingFlexMessage(job: Job): LineFlexMessage {
         paddingAll: '12px',
         backgroundColor: SURFACE_COLOR,
         contents: [
+          ...footerActions,
           {
             type: 'text',
             text: 'Lumen Club 預約系統',

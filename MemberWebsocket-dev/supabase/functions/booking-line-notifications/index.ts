@@ -1,3 +1,4 @@
+import { loadAdminCopyText } from "./booking-actions.ts";
 import { completionSummary } from "./completion-summary.ts";
 import { createClient } from 'npm:@supabase/supabase-js@2.57.0';
 import { buildBookingFlexMessage, deliver, secureEqual } from './delivery.ts';
@@ -53,7 +54,7 @@ Deno.serve(async (request: Request) => {
           productionMember: true,
           flexType: flex.type,
           altTextPresent: Boolean(flex.altText),
-          entitlementSectionCount: Math.max(0, bodyContents.length - 3),
+          entitlementSectionCount: 0,
           pointTicketCount: benefits.pointTickets.length,
           eventTicketCount: benefits.eventTickets.length,
           tierActivityCount: benefits.tierActivities.length,
@@ -139,7 +140,7 @@ Deno.serve(async (request: Request) => {
             tierActivityCount: benefits.tierActivities.length,
             tierLabel: benefits.tierLabel,
           },
-          emptyEntitlements: { emptyStateSections: emptyStateMatches, passed: emptyStateMatches === 3 },
+          emptyEntitlements: { emptyStateSections: emptyStateMatches, passed: emptyStateMatches === 0 },
           expiredExclusion: { pointTicketPassed: expiredPointExcluded, eventTicketPassed: expiredEventExcluded, passed: expiredPointExcluded && expiredEventExcluded },
           retrySemantics: {
             firstRetryable: failed.accepted === false && failed.retryable === true && failed.status === 500,
@@ -206,16 +207,11 @@ Deno.serve(async (request: Request) => {
             deliveryJob = { ...job, message_text: `${base.slice(0, maxBaseLength)}\n${suffix}` };
           }
         }
-        if (job.channel === 'member' && String(job.event_key || '').includes(':confirmed:') && job.booking_id) {
+        if (job.channel === 'admin' && String(job.event_key || '').endsWith(':created') && job.booking_id) {
           try {
-            const benefits = await loadBookingConfirmationBenefits(db, job);
-            deliveryJob = { ...deliveryJob, benefits };
-          } catch {
-            // Booking is already committed. Keep the leased notification retryable instead of
-            // sending a confirmation whose entitlement sections may be stale or incomplete.
-            failed++;
-            return;
-          }
+            const current = await loadAdminCopyText(db, job.booking_id);
+            deliveryJob = {...deliveryJob,...current,bookingStatus:current.status};
+          } catch { failed++; return; }
         }
 
         const result = await deliver(deliveryJob, token || '');

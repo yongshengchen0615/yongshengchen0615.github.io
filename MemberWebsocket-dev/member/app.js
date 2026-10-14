@@ -4,6 +4,7 @@
   const MEMBER_TIER_STYLE_KEYS = Object.freeze(['forest', 'midnight', 'ocean', 'sunset', 'lavender', 'rose', 'gold', 'platinum', 'mint', 'cherry']);
   const state = { config: null, idToken: '', profile: null, lineProfile: null, profileSaveLocked: false, terms: null, termsCheckPromise: null, birthdayPicker: { opener: null } };
   const els = {};
+  let cardOpenRecorded = false;
   const LOGIN_PROGRESS_TICK_MS = 650;
   let loginProgressTimer = null;
   let loginProgressValue = 8;
@@ -540,6 +541,10 @@
   function safeTierStyle(value) { const styleKey = String(value || '').trim(); return MEMBER_TIER_STYLE_KEYS.includes(styleKey) ? styleKey : 'forest'; }
 
   function setView(view) {
+    if (view === 'member' && !cardOpenRecorded && document.visibilityState !== 'hidden') {
+      cardOpenRecorded = true;
+      void window.MemberSystem.request(state.config,'member',state.idToken,'user.member.card.open').catch(() => { cardOpenRecorded = false; });
+    }
     els.loadingView.classList.toggle('hidden', view !== 'loading');
     els.errorView.classList.toggle('hidden', view !== 'error');
     els.profileSetupView.classList.toggle('hidden', view !== 'profileSetup');

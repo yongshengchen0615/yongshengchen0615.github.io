@@ -235,7 +235,7 @@ Deno.serve(async (request: Request) => {
     const body = await readJsonObject(request, MAX_REQUEST_BYTES, ApiError);
 
     const action = asText(body.action, 80);
-    if (!["user.member.bootstrap", "user.member.profile.save", "user.member.terms.accept"].includes(action) || asText(body.clientType, 20) !== "member") throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
+    if (!["user.member.bootstrap", "user.member.profile.save", "user.member.terms.accept", "user.member.card.open"].includes(action) || asText(body.clientType, 20) !== "member") throw new ApiError(403, "CLIENT_ACTION_MISMATCH", "操作端與功能不相符。");
     const supabase = dbClient();
     let identity: Identity;
     try {
@@ -249,6 +249,11 @@ Deno.serve(async (request: Request) => {
     }
     await consumeRateLimit(supabase, identity, action !== "user.member.bootstrap");
     const member = await ensureMember(supabase, identity);
+    if (action === "user.member.card.open") {
+      const logged = await supabase.rpc("record_member_card_open", {p_actor:identity.lineUserId});
+      if (logged.error) throw new ApiError(503,"AUDIT_UNAVAILABLE","會員卡開啟紀錄暫時無法儲存。");
+      return response(origin,{ok:true,status:200,data:{recorded:true}});
+    }
     if (action === "user.member.bootstrap") return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, member), ...await termsForMember(supabase, member) } });
     if (action === "user.member.terms.accept") {
       if (member.membership_status !== "active") throw new ApiError(403, "MEMBERSHIP_REQUIRED", "請先完成會員申請。");
@@ -331,10 +336,13 @@ Deno.serve(async (request: Request) => {
       if (refreshed.error) throw new ApiError(500, "DATABASE_ERROR", "會員資料暫時無法讀取。");
       return response(origin, { ok: true, status: 200, data: { profile: await profileFor(supabase, refreshed.data) } });
     }
-    const updated = await supabase.from("members").update(patch).eq("id", member.id).select("*").single();
-    if (updated.error) throw new ApiError(500, "DATABASE_ERROR", "會員資料暫時無法儲存。");
-    await supabase.from("audit_logs").insert({ audit_id: "AUD-" + crypto.randomUUID().replaceAll("-", ""), actor_line_user_id: identity.lineUserId, actor_role:"member", action, target_type:"member", target_id:identity.lineUserId, result:"success", detail:{ profileFields } });
+    const updated = await supabase.rpc("save_member_profile_audited", {
+      p_actor:identity.lineUserId,p_expected_updated_at:member.updated_at,
+      p_fields:Object.fromEntries(profileFields.map(field => [field,patch[field]])),
+    });
+    if (updated.error) throw new ApiError(409,"PROFILE_CONFLICT","會員資料已更新或暫時無法儲存，請重新載入後再試。");
     return response(origin, { ok:true, status:200, data:{ profile:await profileFor(supabase,updated.data) } });
+
   } catch (error) {
     const e = error instanceof ApiError ? error : new ApiError(500, "INTERNAL_ERROR", "會員資料服務暫時無法完成操作。");
     return response(origin, { ok: false, status: e.status, error: { code: e.code, message: e.message, details: e.details } }, e.status);

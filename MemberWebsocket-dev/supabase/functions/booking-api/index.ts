@@ -1,3 +1,4 @@
+import { linkedBooking } from "../_shared/linked-booking.ts";
 import { hasCurrentTermsConsent } from "../_shared/membership-terms.ts";
 import { readJsonObject } from "../_shared/request-body.ts";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
@@ -79,6 +80,11 @@ function mapDatabaseError(error: unknown): ApiError {
   const raw = error as { message?: string; details?: string; code?: string };
   const message = `${raw?.message || ""} ${raw?.details || ""}`;
   const rules: Array<[string, number, string, string]> = [
+    ["INVALID_BOOKING_ID",400,"INVALID_BOOKING_ID","預約識別格式不正確。"],
+    ["BOOKING_NO_SHOW_TOO_EARLY",409,"BOOKING_NO_SHOW_TOO_EARLY","服務結束後才能標記無故未到。"],
+    ["BOOKING_NO_SHOW_NOT_ALLOWED",409,"BOOKING_NO_SHOW_NOT_ALLOWED","只有待確認的一般預約可標記無故未到，請重新整理。"],
+    ["BOOKING_NOT_FOUND",404,"BOOKING_NOT_FOUND","找不到這筆預約。"],
+    ["ADMIN_REQUIRED",403,"ADMIN_REQUIRED","目前沒有管理員權限。"],
     ["BOOKING_CONFLICT", 409, "BOOKING_CONFLICT", "預約已被更新，請重新整理後再操作。"],
     ["BOOKING_NOT_EDITABLE", 409, "BOOKING_NOT_EDITABLE", "這筆預約已開始或狀態已變更，無法修改。"],
     ["BOOKING_CANCELLATION_PENDING", 409, "BOOKING_CANCELLATION_PENDING", "這筆預約已有待確認的取消申請，請先完成取消審核後再變更預約。"],
@@ -397,6 +403,8 @@ function bookingClient(row: any, items: any[] = [], benefits: any[] = []): Json 
     memberNote: row.member_note || "",
     adminNote: row.admin_note || "",
     completedAt: row.completed_at || null,
+    receiptSubmissionId:row.receipt_submission_id || null,
+    noShowAt:row.no_show_at || null,
     confirmedAt: row.confirmed_at,
     rejectedAt: row.rejected_at,
     cancelledAt: row.cancelled_at,
@@ -639,7 +647,7 @@ async function audit(supabase: SupabaseClient, identity: Identity, role: "member
   if (result.error) console.error("booking audit insert failed", result.error.message);
 }
 
-async function userBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
+async function userBootstrap(supabase: SupabaseClient, member: any, body:Json={}): Promise<Json> {
   const [settings, services, serviceTypeRewards, bookingResult] = await Promise.all([
     bookingSettings(supabase),
     activeServices(supabase),
@@ -652,6 +660,8 @@ async function userBootstrap(supabase: SupabaseClient, member: any): Promise<Jso
       .limit(50),
   ]);
   if ((bookingResult as any).error) throw mapDatabaseError((bookingResult as any).error);
+  const target=await linkedBooking(supabase,asText(body.bookingId,60),String(member.id));
+  if(target && !(bookingResult.data || []).some((b:any)=>b.id===target.id)) bookingResult.data!.unshift(target);
   return {
     serverNow: new Date().toISOString(),
     today: currentBusinessDate(taipeiDate(), taipeiMinutes(), settings.work_start_time, settings.work_end_time),
@@ -950,7 +960,7 @@ async function adminMarkBookingNotificationsRead(supabase: SupabaseClient, ident
   return result.data && typeof result.data === "object" ? result.data as Json : {};
 }
 
-async function adminBootstrap(supabase: SupabaseClient): Promise<Json> {
+async function adminBootstrap(supabase: SupabaseClient, body:Json={}): Promise<Json> {
   const [settings, servicesResult, bookings, serviceTypes] = await Promise.all([
     bookingSettings(supabase),
     supabase.from("booking_services").select("*").order("created_at", { ascending: true }),
@@ -958,6 +968,8 @@ async function adminBootstrap(supabase: SupabaseClient): Promise<Json> {
     bookingServiceTypes(supabase),
   ]);
   if ((servicesResult as any).error) throw mapDatabaseError((servicesResult as any).error);
+  const target=await linkedBooking(supabase,asText(body.bookingId,60),null);
+  if(target && !bookings.some((b:any)=>b.bookingId===target.id)) bookings.unshift(...await hydrateBookings(supabase,[target]));
   return {
     today: taipeiDate(),
     settings: { ...settingsClient(settings), serviceTypes },
@@ -971,6 +983,16 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
   const nextStatus = asText(body.status, 20);
   if (nextStatus === "completed") {
     throw new ApiError(409, "BOOKING_COMPLETION_CANONICAL_REQUIRED", "完成預約必須使用結算流程，請重新整理後再試。");
+  }
+  if (nextStatus === "no_show") {
+    const result = await supabase.rpc("admin_mark_booking_no_show", {
+      p_actor:identity.lineUserId,p_booking_id:bookingId,
+      p_expected_updated_at:asText(body.expectedUpdatedAt,80) || null,p_note:asText(body.adminNote,500),
+    });
+    if (result.error) throw mapDatabaseError(result.error);
+    const row = await supabase.from("bookings").select("*, members!bookings_member_id_fkey(display_name, member_code)").eq("id",bookingId).single();
+    if (row.error) throw mapDatabaseError(row.error);
+    return { booking:(await hydrateBookings(supabase,[row.data]))[0],alreadyApplied:result.data?.alreadyApplied === true };
   }
   if (!["confirmed", "rejected", "cancelled"].includes(nextStatus)) {
     throw new ApiError(400, "INVALID_BOOKING_STATUS", "不支援的預約狀態。");
@@ -1017,7 +1039,7 @@ async function adminStatusUpdate(supabase: SupabaseClient, identity: Identity, b
 async function route(supabase: SupabaseClient, identity: Identity, clientType: ClientType, action: string, body: Json): Promise<Json> {
   if (clientType === "member") {
     const member = await requireJoinedMember(supabase, identity);
-    if (action === "user.booking.bootstrap") return await userBootstrap(supabase, member);
+    if (action === "user.booking.bootstrap") return await userBootstrap(supabase, member, body);
     if (action === "user.booking.slots") return await generateSlots(supabase, body, member);
     if (action === "user.booking.create") return await userCreate(supabase, identity, member, body);
     if (action === "user.booking.update") return await userUpdate(supabase, identity, member, body);
@@ -1028,7 +1050,7 @@ async function route(supabase: SupabaseClient, identity: Identity, clientType: C
   await authorizeAdmin(supabase, identity);
   if (action === "admin.booking.summary") return await adminBookingSummary(supabase, identity);
   if (action === "admin.booking.notifications.read") return await adminMarkBookingNotificationsRead(supabase, identity, body);
-  if (action === "admin.booking.bootstrap") return await adminBootstrap(supabase);
+  if (action === "admin.booking.bootstrap") return await adminBootstrap(supabase,body);
   if (action === "admin.booking.settings.save") return await adminSettingsSave(supabase, identity, body);
   if (action === "admin.booking.service.save") return await adminServiceSave(supabase, identity, body);
   if (action === "admin.booking.status.update") return await adminStatusUpdate(supabase, identity, body);

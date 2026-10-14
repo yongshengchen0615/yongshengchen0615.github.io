@@ -198,7 +198,7 @@ function localTaipeiNowMs():number{
   const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
   return Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}+08:00`);
 }
-async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
+async function memberList(supabase:SupabaseClient,member:any,body:Json={}):Promise<Json>{
   const result=await supabase.from("bookings")
     .select("id,status,updated_at,end_at,booking_date,end_time,starts_next_day,cancellation_requested_at,cancellation_reviewed_at,booking_receipts!booking_receipts_booking_id_fkey(receipt_id,status,created_at,bound_at,failure_reason)")
     .eq("member_id",member.id)
@@ -236,6 +236,14 @@ async function memberList(supabase:SupabaseClient,member:any):Promise<Json>{
     .eq("member_id",member.id).eq("submission_mode","accessible").in("status",["awaiting_review","bound","failed"])
     .order("updated_at",{ascending:false}).limit(10);
   if(submissions.error) throw new ApiError(500,"DATABASE_ERROR","收據登記狀態暫時無法讀取。");
+  const targetId=String(body.receiptId || '').trim();
+  if(targetId){
+    if(!/^BR-[a-f0-9]{32}$/i.test(targetId))throw new ApiError(400,"INVALID_RECEIPT_ID","快照識別格式不正確。");
+    const target=await supabase.from("booking_receipts").select("receipt_id,booking_id,status,created_at,updated_at,failure_reason,requested_benefits,requested_booking_id,booking_completion_settlements:bookings!booking_receipts_booking_id_fkey(booking_completion_settlements(service_minutes,reward_details),booking_completion_adjustments(after_settlement,created_at,id))").eq("receipt_id",targetId).eq("member_id",member.id).eq("submission_mode","accessible").in("status",["awaiting_review","bound","failed"]).maybeSingle();
+    if(target.error)throw new ApiError(500,"DATABASE_ERROR","快照明細暫時無法讀取。");
+    if(!target.data)throw new ApiError(404,"RECEIPT_NOT_FOUND","找不到可查看的快照明細。");
+    if(!(submissions.data || []).some((r:any)=>r.receipt_id===targetId))submissions.data!.unshift(target.data);
+  }
   const settings = await supabase.from("booking_settings").select("snapshot_location_required,snapshot_locations").eq("id",1).single();
   if(settings.error) throw new ApiError(503,"SNAPSHOT_POLICY_UNAVAILABLE","目前無法確認快照定位政策，請稍後重試。");
   return {snapshotLocationRequired:settings.data.snapshot_location_required===true,
@@ -971,7 +979,7 @@ Deno.serve(async(request:Request)=>{
       const identity=await resolveUserIdentity(supabase,body);
       await consumeRateLimit(supabase,identity,action!=="user.booking.receipt.list"&&action!=="user.booking.receipt.options");
       const member=await requireMember(supabase,identity);
-      if(action==="user.booking.receipt.list") data=await memberList(supabase,member);
+      if(action==="user.booking.receipt.list") data=await memberList(supabase,member,body);
       else if(action==="user.booking.receipt.options") {
         const catalog=await accessibleBenefitCatalog(supabase,member,"",body.location??null);
         // Snapshot receipts register member-held tickets without an advance reservation.

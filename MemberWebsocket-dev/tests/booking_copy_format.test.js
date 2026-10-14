@@ -12,11 +12,11 @@ test('participant-aware booking copy formatter is valid and wired', () => {
   assert.doesNotThrow(() => new Function(source));
   assert.match(loader, /booking-copy-format\.js/);
   assert.match(source, /booking-group-details-api/);
-  assert.match(source, /預約人數：\$\{partySize\} 位/);
-  assert.match(source, /預約項目：\$\{participantItems\(participant\.items\)\}/);
-  assert.match(source, /預約技師：/);
-  assert.match(source, /return `\$\{month\}\/\$\{day\}（\$\{weekday\}）`/);
-  assert.match(source, /return lines\.join\('\\n'\)/);
+  const vm = require('node:vm'), context = {};
+  vm.runInNewContext(fs.readFileSync(path.join(root,'booking-copy-text.js'),'utf8'),context);
+  assert.match(source,/window\.BookingCopyText\.format/);
+  assert.equal(context.BookingCopyText.format({bookingDate:'2026-10-14',startTime:'10:00',endTime:'11:00',name:'王先生',phone:'0912-345-678',partySize:1,participants:[{items:[{serviceTitle:'肩頸',quantity:2}],technicianName:'甲（主要技師）'}]}),
+    '營業日 2026-10-14｜10:00–11:00\n王先生\n電話：0912345678\n預約人數：1 位\n\n第一位預約\n預約項目：肩頸 × 2\n預約技師：甲');
 });
 
 test('LINE notification enablement is committed as a migration', () => {

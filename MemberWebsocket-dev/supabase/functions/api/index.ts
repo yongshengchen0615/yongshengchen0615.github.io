@@ -2681,7 +2681,7 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
       target_type:"member",
       target_id:updated.data.line_user_id,
       result:"success",
-      detail:{ status,isTestAccount:updated.data.is_test_account === true,profileUpdated:Boolean(profile && updated.data.is_test_account === true) },
+      detail:{ status,profileFields:Object.keys(patch).filter(key=>key!=="updated_at" && current.data[key]!==updated.data[key]),isTestAccount:updated.data.is_test_account === true,profileUpdated:Boolean(profile && updated.data.is_test_account === true) },
     });
     const settings = await tierSettings(supabase);
     const totals = await serviceMinutesForMembers(supabase,[updated.data.id]);
