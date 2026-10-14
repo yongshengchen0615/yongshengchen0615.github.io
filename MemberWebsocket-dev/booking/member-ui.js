@@ -308,6 +308,11 @@
     normalizeBookingUi(bookingList);
 
     const directItems = [...bookingList.children].filter((node) => node.classList?.contains('booking-item'));
+    // Repeated calls must not replace already grouped cards with empty tab panels.
+    if (!directItems.length && [...bookingList.children].some((node) => node.classList?.contains('booking-history-tabs'))) {
+      syncBookingAccordionState(bookingList);
+      return;
+    }
     const grouped = new Map(BOOKING_GROUPS.map((group) => [group.key, []]));
     directItems.forEach((item) => grouped.get(bookingGroupKey(item)).push(item));
 
