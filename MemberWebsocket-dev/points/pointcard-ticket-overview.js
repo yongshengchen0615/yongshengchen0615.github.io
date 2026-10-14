@@ -20,6 +20,7 @@
   let selectionHint = null;
   let useButton = null;
   let groups = null;
+  const expandedReservationTickets = new Set();
   let locationTracker = null;
 
   function extensionUrl() {
@@ -292,6 +293,7 @@
           redemptionLocations: Array.isArray(ticket?.redemptionLocations) ? ticket.redemptionLocations : [],
           reservedForBooking,
           pendingSnapshot,
+          pendingSnapshots: Array.isArray(ticket?.pendingSnapshots) ? ticket.pendingSnapshots : pendingSnapshot ? [pendingSnapshot] : [],
           bookingSelections: Array.isArray(ticket?.bookingSelections) ? ticket.bookingSelections : [],
           eligibleBookings: Array.isArray(ticket?.eligibleBookings) ? ticket.eligibleBookings : [],
           shortage,
@@ -527,65 +529,52 @@
         item.append(type, name, description, method);
         const prizeOpportunities = createLotteryPrizeOpportunities(offer);
         if (prizeOpportunities) item.append(prizeOpportunities);
-        for (const context of offer.bookingSelections || []) item.append(Object.assign(document.createElement('p'), {className:'booking-selection-context',textContent:window.TicketBookingSelections?.label(context) || ''}));
         item.append(cost, footer);
-        const cancellableReservation = offer.reservedForBooking
-          ? offer.bookingSelections.find(context => context.status === 'pending' && context.editable && context.bookingId)
-          : null;
-        if (cancellableReservation) {
-          const cancelReservation = document.createElement('button');
-          cancelReservation.type = 'button';
-          cancelReservation.className = 'ticket-reservation-cancel';
-          cancelReservation.textContent = '取消預約使用';
-          cancelReservation.disabled = state.busy;
-          cancelReservation.setAttribute('aria-label', `取消「${offer.ticketTitle}」的預約票券選用`);
-          cancelReservation.addEventListener('click', async () => {
+        const reservationDetails = window.TicketBookingSelections?.createTicketReservationDisclosure({
+          title: offer.ticketTitle,
+          bookingSelections: offer.bookingSelections,
+          pendingSnapshots: offer.pendingSnapshots,
+          expanded: expandedReservationTickets.has(offer.ticketId),
+          onToggle: (open) => {
+            if (open) expandedReservationTickets.add(offer.ticketId);
+            else expandedReservationTickets.delete(offer.ticketId);
+          },
+          onCancelBooking: async (context) => {
             if (state.busy) return;
             state.busy = true;
-            render();
             try {
-              await window.TicketBookingSelections.cancelPointTicket(cancellableReservation.bookingId, offer.ticketId);
+              await window.TicketBookingSelections.cancelPointTicket(context.bookingId, offer.ticketId);
             } catch (error) {
-              overviewError(error?.message || '取消預約使用失敗，請更新後再試。');
+              overviewError(error?.message || '取消一般預約票券失敗，請更新後再試。');
             } finally {
               state.busy = false;
               render();
             }
-          });
-          item.append(cancelReservation);
-        }
-        if (offer.pendingSnapshot) {
-          const cancelSnapshot = document.createElement('button');
-          cancelSnapshot.type = 'button';
-          cancelSnapshot.className = 'ticket-reservation-cancel';
-          cancelSnapshot.textContent = '取消快照票券';
-          cancelSnapshot.disabled = state.busy;
-          cancelSnapshot.setAttribute('aria-label', `取消「${offer.ticketTitle}」的快照待審核票券`);
-          cancelSnapshot.addEventListener('click', async () => {
+          },
+          onCancelSnapshot: async (snapshot) => {
             if (state.busy) return;
-            if (!window.confirm(`確定取消「${offer.ticketTitle}」的快照票券使用意願？收據與其他待審核票券仍會保留。`)) return;
+            if (!window.confirm(`確定取消「${offer.ticketTitle}」於這筆快照的票券使用意願？收據與其他待審核票券仍會保留。`)) return;
             state.busy = true;
-            render();
             try {
               await window.MemberSystem.request(
                 state.config, 'points', state.idToken,
                 'user.pointcard.snapshot-ticket.cancel', {
-                  receiptId: offer.pendingSnapshot.receiptId,
+                  receiptId: snapshot.receiptId,
                   ticketId: offer.ticketId,
-                  expectedUpdatedAt: offer.pendingSnapshot.updatedAt
+                  expectedUpdatedAt: snapshot.updatedAt
                 }
               );
               await state.refreshData();
-              overviewError('已取消這張快照票券；收據及其他待審核票券保留。');
+              overviewError('已取消這筆快照的票券使用；其他預約與票券保持不變。');
             } catch (error) {
               overviewError(error?.message || '無法取消快照票券，請更新資料後再試。');
             } finally {
               state.busy = false;
               render();
             }
-          });
-          item.append(cancelSnapshot);
-        }
+          }
+        });
+        if (reservationDetails) item.append(reservationDetails);
         section.append(item);
       });
 
