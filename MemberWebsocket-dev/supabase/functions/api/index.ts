@@ -1112,6 +1112,18 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       Number(reservedStampsByCard.get(pointCardId) || 0) + Math.max(0, Number(ticket.threshold_stamps || 0)),
     );
   }
+  // Every awaiting-review snapshot counts as a separate planned use, even
+  // when the same issued ticket is reserved for a later general booking.
+  // The snapshot cost is not yet deducted from the point balance.
+  const snapshotReservedStampsByCard = new Map<string,number>();
+  for (const ticket of availableTickets) {
+    const snapshots = snapshotByPointTicket.get(String(ticket.ticket_id || "")) || [];
+    if (!snapshots.length) continue;
+    const pointCardId = String(ticket.point_card_id || "");
+    const amount = Math.max(0, Number(ticket.threshold_stamps || 0)) * snapshots.length;
+    snapshotReservedStampsByCard.set(pointCardId,
+      Number(snapshotReservedStampsByCard.get(pointCardId) || 0) + amount);
+  }
   const cardIdByUuid = new Map((rawCards.data || []).map((row:any) => [row.id,row.card_id]));
   const ticketByCard = new Map<string,any[]>();
   for (const ticket of availableTickets) {
@@ -1125,12 +1137,16 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     const pointCardId = String(idByCard.get(card.cardId) || "");
     const balance = balanceById.get(pointCardId);
     const totalStamps = Math.max(0, Number(balance?.stamps || 0));
-    const reservedStamps = Math.max(0, Number(reservedStampsByCard.get(pointCardId) || 0));
+    const generalReservedStamps = Math.max(0, Number(reservedStampsByCard.get(pointCardId) || 0));
+    const snapshotReservedStamps = Math.max(0, Number(snapshotReservedStampsByCard.get(pointCardId) || 0));
+    const reservedStamps = generalReservedStamps + snapshotReservedStamps;
     const availableStamps = Math.max(0, totalStamps - reservedStamps);
     return {
       ...card,
       stamps: totalStamps,
       totalStamps,
+      generalReservedStamps,
+      snapshotReservedStamps,
       reservedStamps,
       availableStamps,
       updatedAt: balance?.updated_at || card.updatedAt,
