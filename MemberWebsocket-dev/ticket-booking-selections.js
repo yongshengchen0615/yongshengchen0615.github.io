@@ -141,15 +141,15 @@
   }
   // Release only one pending point ticket. The existing transactional member RPC
   // checks booking ownership, status and version, and preserves unrelated selections.
-  async function cancelPointTicket(bookingId, ticketId) {
-    if (settings?.surface !== 'points') throw new Error('請從集點卡頁面操作。');
+  async function cancelTicket(bookingId, kind, ticketId) {
+    if (!['points', 'event'].includes(kind) || settings?.surface !== kind) throw new Error('請從對應的票券頁面操作。');
     const id = String(bookingId || '');
     const ref = String(ticketId || '');
     if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(id) || !ref || ref.length > 120)
       throw new Error('預約或票券識別不正確，請重新整理。');
     if (busy) return false;
     if (dirty) throw new Error('請先儲存或關閉目前的票券調整表單。');
-    if (!window.confirm('確定取消這張集點卡票券的預約使用？\n預約本身會保留，其他預選票券不受影響，也不會扣除點數。')) return false;
+    if (!window.confirm(`確定取消這張${kind === 'points' ? '集點卡' : '活動'}票券的預約使用？\n預約本身與其他票券均不受影響。`)) return false;
 
     busy = true;
     message('正在取消票券預約使用…');
@@ -160,11 +160,11 @@
       const booking = detail?.booking;
       if (!booking?.editable) throw new Error(booking?.disabledReason || '此預約已不能調整票券。');
       const selections = Array.isArray(booking.selections) ? booking.selections : [];
-      const selected = selections.some(s => s.kind === 'points' && s.id === ref && s.status === 'pending');
+      const selected = selections.some(s => s.kind === kind && s.id === ref && s.status === 'pending');
       if (selected) {
         const benefits = selections.filter(s =>
           s.status === 'pending' && ['points', 'event'].includes(s.kind)
-          && !(s.kind === 'points' && s.id === ref)
+          && !(s.kind === kind && s.id === ref)
         ).map(s => ({ kind: s.kind, id: s.id }));
         await request('update', {
           bookingId: id, expectedUpdatedAt: booking.updatedAt,
@@ -191,5 +191,70 @@
     }
   }
 
-  window.TicketBookingSelections = Object.freeze({ render, label, cancelPointTicket });
+
+  function cancelPointTicket(bookingId, ticketId) {
+    return cancelTicket(bookingId, 'points', ticketId);
+  }
+
+  // Native details/summary lets users reveal every independent booking intent.
+  function createTicketReservationDisclosure({
+    title = '票券', bookingSelections = [], pendingSnapshots = [],
+    expanded = false, onToggle, onCancelBooking, onCancelSnapshot
+  } = {}) {
+    const contexts = (Array.isArray(bookingSelections) ? bookingSelections : [])
+      .filter(c => c && c.bookingId && ['pending', 'redeemed', 'applied'].includes(c.status));
+    const seen = new Set();
+    const snapshots = (Array.isArray(pendingSnapshots) ? pendingSnapshots : []).filter(s => {
+      const id = String(s?.receiptId || '');
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    if (!contexts.length && !snapshots.length) return null;
+    const details = node('details', '', 'ticket-reservation-disclosure');
+    details.open = Boolean(expanded);
+    const summary = node('summary', `預約使用明細（${contexts.length + snapshots.length} 筆）`, 'ticket-reservation-summary');
+    summary.setAttribute('aria-label', `展開或收合「${title}」的預約票券使用明細`);
+    details.append(summary);
+    const list = node('div', '', 'ticket-reservation-list');
+    function addCancel(row, caption, name, onClick) {
+      if (typeof onClick !== 'function') return;
+      const button = node('button', caption, 'ticket-reservation-cancel');
+      button.type = 'button';
+      button.setAttribute('aria-label', name);
+      button.addEventListener('click', async () => {
+        if (button.disabled) return;
+        button.disabled = true;
+        try { await onClick(); } finally { button.disabled = false; }
+      });
+      row.append(button);
+    }
+    for (const context of contexts) {
+      const row = node('div', '', 'ticket-reservation-row');
+      row.append(node('strong', '一般預約', 'ticket-reservation-kind'));
+      row.append(node('span', label(context), 'ticket-reservation-detail'));
+      if (context.status === 'pending' && context.editable) {
+        addCancel(row, '取消此一般預約票券', `取消「${title}」於 ${times(context)} 的一般預約票券`,
+          () => onCancelBooking?.(context));
+      } else {
+        row.append(node('small', context.status === 'pending'
+          ? context.disabledReason || '目前不能調整此預約'
+          : '此票券已核銷，無法取消', 'ticket-reservation-reason'));
+      }
+      list.append(row);
+    }
+    for (const snapshot of snapshots) {
+      const row = node('div', '', 'ticket-reservation-row');
+      row.append(node('strong', '快照預約・待審核', 'ticket-reservation-kind'));
+      row.append(node('span', `快照編號 ${String(snapshot.receiptId).slice(0, 14)}…`, 'ticket-reservation-detail'));
+      addCancel(row, '取消此快照票券', `取消「${title}」於快照 ${snapshot.receiptId} 的票券`,
+        () => onCancelSnapshot?.(snapshot));
+      list.append(row);
+    }
+    details.append(list);
+    if (typeof onToggle === 'function') details.addEventListener('toggle', () => onToggle(details.open));
+    return details;
+  }
+
+  window.TicketBookingSelections = Object.freeze({ render, label, cancelPointTicket, cancelTicket, createTicketReservationDisclosure });
 })();
