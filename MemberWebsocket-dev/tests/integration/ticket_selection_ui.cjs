@@ -35,7 +35,10 @@ async function combinedTicketPage({booking=true,snapshot=true,editable=true,conf
  w.confirm=()=>confirm;
  w.MemberUI={pointTicketDetails:()=>w.document.createElement('p')};
  w.fetch=async()=>({ok:true,json:async()=>({ok:true,data:{maxTicketsPerRedemption:2}})});
+ w.eval(source);
+ const createTicketReservationDisclosure=w.TicketBookingSelections.createTicketReservationDisclosure;
  w.TicketBookingSelections={
+  createTicketReservationDisclosure,
   label:()=> '一般預約狀態',
   cancelPointTicket:async(id,ticket)=>{bookings.push({id,ticket});hasBooking=false;w.PointCardTicketOverview.renderSnapshot(pointTicket());return true;}
  };
@@ -56,7 +59,7 @@ async function combinedTicketPage({booking=true,snapshot=true,editable=true,conf
 test('point ticket offers two independent cancellation buttons when both reservation and snapshot are pending',async()=>{
  const p=await combinedTicketPage();
  try{
-  assert.deepEqual(p.labels(),['取消預約使用','取消快照票券']);
+  assert.deepEqual(p.labels(),['取消此一般預約票券','取消此快照票券']);
   const card=p.w.document.querySelector('.member-ticket');
   assert.match(card.textContent,/已預約使用・快照待審核/);
   assert.match(card.textContent,/預約與快照待審核/);
@@ -73,7 +76,7 @@ test('cancelling a booking reservation preserves snapshot action and does not ca
   await tick();
   assert.deepEqual(p.bookings,[{id:p.bookingId,ticket:p.ticketId}]);
   assert.equal(p.requests.length,0);
-  assert.deepEqual(p.labels(),['取消快照票券']);
+  assert.deepEqual(p.labels(),['取消此快照票券']);
   assert.match(p.w.document.querySelector('.member-ticket').textContent,/快照待審核/);
  }finally{p.dom.window.close();}
 });
@@ -87,7 +90,7 @@ test('cancelling a snapshot preserves the booking reservation and sends the corr
   assert.deepEqual(JSON.parse(JSON.stringify(p.requests)),[{surface:'points',action:'user.pointcard.snapshot-ticket.cancel',body:{
    receiptId:p.receiptId,ticketId:p.ticketId,expectedUpdatedAt:'2026-10-13T10:00:00Z'
   }}]);
-  assert.deepEqual(p.labels(),['取消預約使用']);
+  assert.deepEqual(p.labels(),['取消此一般預約票券']);
   assert.match(p.w.document.querySelector('.member-ticket').textContent,/已預約使用/);
  }finally{p.dom.window.close();}
 });
@@ -98,12 +101,12 @@ test('each ticket source can be cancelled independently even when booking cannot
  const lockedBooking=await combinedTicketPage({editable:false});
  const declined=await combinedTicketPage({confirm:false});
  try{
-  assert.deepEqual(onlyBooking.labels(),['取消預約使用']);
-  assert.deepEqual(onlySnapshot.labels(),['取消快照票券']);
-  assert.deepEqual(lockedBooking.labels(),['取消快照票券']);
+  assert.deepEqual(onlyBooking.labels(),['取消此一般預約票券']);
+  assert.deepEqual(onlySnapshot.labels(),['取消此快照票券']);
+  assert.deepEqual(lockedBooking.labels(),['取消此快照票券']);
   declined.buttons()[1].click();
   await tick();
-  assert.deepEqual(declined.labels(),['取消預約使用','取消快照票券']);
+  assert.deepEqual(declined.labels(),['取消此一般預約票券','取消此快照票券']);
   assert.equal(declined.requests.length,0);
  }finally{
   onlyBooking.dom.window.close();onlySnapshot.dom.window.close();
