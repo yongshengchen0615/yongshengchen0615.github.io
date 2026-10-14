@@ -119,8 +119,8 @@ Deno.test('member confirmation shows each participant with its own services and 
 });
 
 Deno.test('member confirmation supports single and additional participants', () => {
-  const firstOnly = sampleJob.message_text.split('\\n\\n第二位預約')[0].replace('預約人數：2 位', '預約人數：1 位');
-  const threePeople = sampleJob.message_text + '\\n\\n第三位預約\\n預約項目：精油按摩60\\n預約技師：小林';
+  const firstOnly = sampleJob.message_text.split('\n\n第二位預約')[0].replace('預約人數：2 位', '預約人數：1 位');
+  const threePeople = sampleJob.message_text + '\n\n第三位預約\n預約項目：精油按摩60\n預約技師：小林';
   for (const [messageText, expectedLabels] of [
     [firstOnly, ['第一位']],
     [threePeople, ['第一位', '第二位', '第三位']],
@@ -143,7 +143,7 @@ Deno.test('member confirmation supports single and additional participants', () 
 Deno.test('member legacy confirmation without participant sections retains service details', () => {
   const message = buildBookingFlexMessage({
     ...sampleJob,
-    message_text: ['【預約確認】', '日期：2026/09/15', '時段：10:00–11:00', '預約項目：', '腳底40'].join('\\n'),
+    message_text: ['【預約確認】', '日期：2026/09/15', '時段：10:00–11:00', '預約項目：', '腳底40'].join('\n'),
   });
   assert(JSON.stringify(message.contents).includes('腳底40'), 'legacy confirmation must not lose services');
 });
