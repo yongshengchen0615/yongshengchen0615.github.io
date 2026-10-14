@@ -113,6 +113,99 @@ async function run() {
   assert.equal($('ticketLocationRows').textContent.includes('緯度'), false);
   assert.equal($('ticketLocationRows').textContent.includes('經度'), false);
 
+  // Real-browser fallback: watchPosition can fail with POSITION_UNAVAILABLE
+  // even when getCurrentPosition still returns a valid device location.
+  const browserDom = new JSDOM(readFileSync(join(root, 'admin/index.html'), 'utf8'), {
+    url: 'https://example.test/admin/', runScripts: 'outside-only',
+  });
+  const browser = browserDom.window;
+  // The snapshot editor is rendered dynamically by booking-panel-core.js in
+  // production. Supply only its DOM controls for this isolated picker test.
+  browser.document.body.insertAdjacentHTML('beforeend', `
+    <input type="checkbox" id="bookingAdminSnapshotLocationRequired">
+    <div id="bookingAdminSnapshotLocationControls" class="hidden">
+      <div id="bookingAdminSnapshotLocationRows"></div>
+      <span id="bookingAdminSnapshotLocationCount"></span>
+      <p id="bookingAdminSnapshotMapStatus"></p>
+      <div id="bookingAdminSnapshotLocationMap"></div>
+      <div id="bookingAdminSnapshotLocationDraft" class="hidden">
+        <input id="bookingAdminSnapshotLocationDraftName">
+        <input id="bookingAdminSnapshotLocationDraftRadius" value="100">
+        <button id="addBookingAdminSnapshotLocationButton" type="button">新增地點</button>
+        <button id="clearBookingAdminSnapshotLocationDraftButton" type="button">取消</button>
+      </div>
+      <button id="bookingAdminSnapshotUseCurrentLocationButton" type="button">使用即時 GPS 選點</button>
+      <input id="bookingAdminSnapshotAddressSearch">
+      <button id="bookingAdminSnapshotAddressSearchButton" type="button">搜尋</button>
+      <div id="bookingAdminSnapshotAddressResults"></div>
+    </div>`);
+  try {
+    Object.defineProperty(browser, 'isSecureContext', { configurable: true, value: true });
+    const watches = [];
+    const cleared = [];
+    const oneShots = [];
+    Object.defineProperty(browser.navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        watchPosition(_onFix, onError, options) {
+          watches.push({ onError, options });
+          return watches.length - 1;
+        },
+        clearWatch(id) { cleared.push(id); },
+        getCurrentPosition(onFix, onError, options) { oneShots.push({ onFix, onError, options }); },
+      }
+    });
+    browser.eval(readFileSync(join(root, 'ticket-live-location.js'), 'utf8'));
+    browser.eval(readFileSync(join(root, 'admin/coupon-location-editor.js'), 'utf8'));
+    const snapshot = browser.TicketLocationEditors.snapshot;
+    const get = id => browser.document.getElementById(id);
+    snapshot.init();
+    get('bookingAdminSnapshotLocationRequired').checked = true;
+    get('bookingAdminSnapshotLocationRequired').dispatchEvent(new browser.Event('change'));
+    get('bookingAdminSnapshotUseCurrentLocationButton').click();
+    assert.equal(watches.length, 1);
+    watches[0].onError({ code: 2 });
+    assert.deepEqual(cleared, [0], 'the failed live GPS watch must be stopped');
+    assert.equal(oneShots.length, 1, 'retry unavailable watch with one real single GPS fix');
+    assert.equal(oneShots[0].options.enableHighAccuracy, true);
+    assert.match(get('bookingAdminSnapshotMapStatus').textContent, /單次定位/);
+    assert.equal(snapshot.get().length, 0, 'no location may be saved before confirmation');
+    oneShots[0].onFix({
+      coords: { latitude: 22.997, longitude: 120.212, accuracy: 15 },
+      timestamp: Date.now(),
+    });
+    assert.equal(get('bookingAdminSnapshotLocationDraft').classList.contains('hidden'), false);
+    assert.equal(get('bookingAdminSnapshotLocationDraftName').value, '目前 GPS 位置');
+    assert.equal(snapshot.get().length, 0);
+    get('addBookingAdminSnapshotLocationButton').click();
+    assert.equal(snapshot.get().length, 1);
+    assert.equal(snapshot.get()[0].latitude, 22.997);
+
+    // If both browser APIs fail, map and address alternatives are available;
+    // retries must not reuse a failed watch or accept stale callbacks.
+    snapshot.set([]);
+    get('bookingAdminSnapshotUseCurrentLocationButton').click();
+    watches[1].onError({ code: 2 });
+    assert.equal(oneShots.length, 2);
+    oneShots[1].onError({ code: 2 });
+    assert.match(get('bookingAdminSnapshotMapStatus').textContent, /地址搜尋.*地圖/);
+    assert.equal(get('bookingAdminSnapshotUseCurrentLocationButton').textContent, '使用即時 GPS 選點');
+    get('bookingAdminSnapshotUseCurrentLocationButton').click();
+    assert.equal(watches.length, 3, 'a fresh click must start a new watch');
+    watches[2].onError({ code: 2 });
+    assert.equal(oneShots.length, 3);
+    get('bookingAdminSnapshotUseCurrentLocationButton').click(); // cancel pending fallback
+    oneShots[2].onFix({
+      coords: { latitude: 22.99, longitude: 120.21, accuracy: 15 },
+      timestamp: Date.now(),
+    });
+    assert.equal(snapshot.get().length, 0);
+    assert.equal(get('bookingAdminSnapshotLocationDraft').classList.contains('hidden'), true,
+      'late cancelled GPS must not reopen a location draft');
+  } finally {
+    browser.close();
+  }
+
   console.log('all-ticket location editor: passed');
 }
 
