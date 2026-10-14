@@ -3745,7 +3745,7 @@
       await syncBookingBenefitsForE2E();
       await window.BookingReceipts?.refresh?.();
       const items = window.BookingBenefits?.getItems?.() || [];
-      const available = items.filter(item => ['points','event'].includes(item.kind) && item.selectable === true && !item.reservedForBooking);
+      const available = items.filter(item => ['points','event'].includes(item.kind) && (item.selectable === true || (item.kind === 'event' && item.claimRequired === true)));
       actual.ticketCountMatched = document.querySelectorAll('#bookingAccessibleTickets article').length === available.length;
       const config = await loadConfig();
       const data = await window.BookingSystem.request(config, 'booking', '', 'user.booking.receipt.list', {});
