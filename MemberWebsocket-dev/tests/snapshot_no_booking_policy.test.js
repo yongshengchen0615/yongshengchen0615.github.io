@@ -41,9 +41,9 @@ test('snapshot receipt sends intent without booking ID while standard redemption
 test('snapshot and booking settings explicitly document the independent booking policy', () => {
  const admin = read('admin/booking-panel-core.js');
  const member = read('booking/booking-receipt.js');
- assert.match(admin, /使用票券必須有有效預約/);
- assert.match(admin, /僅限制一般票券核銷/);
- assert.match(admin, /快照模式不需要事先有有效預約/);
+ assert.doesNotMatch(admin, /使用票券必須有有效預約|bookingAdminTicketBookingRequired/);
+ assert.match(admin, /快照前必須取得定位/);
+ assert.match(read('admin/index.html'), /快照模式維持原規則/);
  assert.doesNotMatch(admin, /也適用快照登記/);
  assert.match(member, /快照模式不需要事先有有效預約/);
 });
