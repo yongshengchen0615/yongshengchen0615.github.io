@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const core = fs.readFileSync(path.join(root, 'admin/booking-panel-core.js'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'supabase/migrations/20261014083341_allow_confirmed_booking_no_show.sql'), 'utf8');
@@ -27,4 +28,32 @@ test('server-side no-show transition remains privileged, time-gated and audited'
   assert.match(migration, /insert into public\.booking_audit_events/);
   assert.match(migration, /revoke all on function public\.admin_mark_booking_no_show/);
   assert.match(migration, /grant execute on function public\.admin_mark_booking_no_show\(text,uuid,timestamptz,text\) to service_role/);
+});
+
+test('before-end no-show remains disabled without rendering its time warning', () => {
+  const marker = '服務結束後才能標記無故未到。';
+  const helperStart = core.indexOf('  function noShowDisplayReason(reason) {');
+  const helperEnd = core.indexOf('  function openNoShow(', helperStart);
+  assert.ok(helperStart > 0 && helperEnd > helperStart);
+  const context = vm.createContext({ Date });
+  vm.runInContext(
+    `const NO_SHOW_EARLY_REASON = ${JSON.stringify(marker)};\n` + core.slice(helperStart, helperEnd),
+    context,
+  );
+  assert.equal(context.noShowDisplayReason(marker), '');
+  assert.equal(context.noShowDisplayReason('請先處理取消申請。'), '請先處理取消申請。');
+  assert.equal(context.noShowDisplayReason(''), '');
+  assert.equal(context.noShowUnavailableReason({ status: 'confirmed', endAt: '2099-01-01T10:00:00' }), marker);
+  assert.equal(context.noShowUnavailableReason({ status: 'pending', endAt: '2000-01-01T10:00:00' }), '');
+
+  assert.match(core, /noShow\.disabled = Boolean\(reason\); noShow\.title = visibleReason/);
+  assert.match(core, /noShow\.setAttribute\('aria-label', visibleReason \?/);
+  assert.match(core, /if \(visibleReason\) \{ const hint/);
+  assert.match(core, /button\.disabled=Boolean\(reason\)\|\|state\.busy;button\.title=visibleReason/);
+  assert.match(core, /hint\.textContent=visibleReason; hint\.hidden=!visibleReason/);
+
+  const loader = fs.readFileSync(path.join(root, 'admin/booking-panel.js'), 'utf8');
+  const html = fs.readFileSync(path.join(root, 'admin/index.html'), 'utf8');
+  assert.match(loader, /no-show-history-20261014-1-hide-early-hint-20261015-1/);
+  assert.match(html, /no-show-history-20261014-1-hide-early-hint-20261015-1/);
 });

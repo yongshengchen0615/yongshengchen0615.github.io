@@ -4,6 +4,7 @@
   const STORE_SERVICE_ID = '00000000-0000-4000-8000-000000000010';
   const PRIMARY_TAB_IDS = ['membersTab', 'cardsTab', 'eventsTab', 'calendarTab', 'testModeTab'];
   const PRIMARY_PANEL_IDS = ['membersPanel', 'cardsPanel', 'eventsPanel', 'calendarPanel', 'testModePanel'];
+  const NO_SHOW_EARLY_REASON = '服務結束後才能標記無故未到。';
   const STATUS_LABELS = { pending: '待確認', confirmed: '已確認', completed: '服務已完成', rejected: '未通過', cancelled: '已取消', no_show: '無故未到' };
   const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
   const state = {
@@ -1339,11 +1340,12 @@
         actions.append(actionButton('修改預約票券', 'button button-outline', () => openBookingBenefitsModal(booking)));
         if (booking.status === 'pending' || booking.status === 'confirmed') {
           const reason = noShowUnavailableReason(booking);
+          const visibleReason = noShowDisplayReason(reason);
           const noShow = actionButton('無故未到', 'button button-danger', () => openNoShow(booking, textarea.value));
-          noShow.dataset.noShowId=bookingId; noShow.disabled = Boolean(reason); noShow.title = reason;
-          noShow.setAttribute('aria-label', reason ? `無故未到：${reason}` : '無故未到');
+          noShow.dataset.noShowId=bookingId; noShow.disabled = Boolean(reason); noShow.title = visibleReason;
+          noShow.setAttribute('aria-label', visibleReason ? `無故未到：${visibleReason}` : '無故未到');
           actions.append(noShow);
-          if (reason) { const hint = document.createElement('small'); hint.textContent = reason; actions.append(hint); }
+          if (visibleReason) { const hint = document.createElement('small'); hint.textContent = visibleReason; actions.append(hint); }
         }
         if (booking.status === 'pending') {
           actions.append(
@@ -1747,10 +1749,18 @@
   function updateNoShowButtons() {
     for(const button of document.querySelectorAll('[data-no-show-id]')) {
       const booking=state.booking.bookings.find(b=>String(b.bookingId)===button.dataset.noShowId);
-      if(!booking) continue;const reason=noShowUnavailableReason(booking);button.disabled=Boolean(reason)||state.busy;button.title=reason;
-      button.setAttribute('aria-label',reason ? `無故未到：${reason}` : '無故未到');
-      const hint=button.nextElementSibling;if(hint?.tagName==='SMALL')hint.textContent=reason;
+      if(!booking) continue;
+      const reason=noShowUnavailableReason(booking);
+      const visibleReason=noShowDisplayReason(reason);
+      button.disabled=Boolean(reason)||state.busy;button.title=visibleReason;
+      button.setAttribute('aria-label',visibleReason ? `無故未到：${visibleReason}` : '無故未到');
+      const hint=button.nextElementSibling;
+      if(hint?.tagName==='SMALL') { hint.textContent=visibleReason; hint.hidden=!visibleReason; }
     }
+  }
+
+  function noShowDisplayReason(reason) {
+    return reason === NO_SHOW_EARLY_REASON ? '' : reason;
   }
 
   function noShowUnavailableReason(booking) {
@@ -1760,7 +1770,7 @@
     const raw = String(booking.endAt || '');
     const end = Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : `${raw}+08:00`);
     if (!raw || !Number.isFinite(end)) return '缺少有效服務結束時間，請先核對排程。';
-    return end >= Date.now() ? '服務結束後才能標記無故未到。' : '';
+    return end >= Date.now() ? NO_SHOW_EARLY_REASON : '';
   }
 
   function openNoShow(booking, adminNote) {
