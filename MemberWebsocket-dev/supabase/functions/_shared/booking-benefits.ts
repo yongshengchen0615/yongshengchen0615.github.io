@@ -6,7 +6,7 @@ import { isEligibleTierActivity } from './activity-eligibility.ts';
 export async function loadBookingBenefits(db: SupabaseClient, member: any, tier: string, today: string, currentBookingId = '') {
   // Member and tier are resolved by the authenticated handler, never the body.
   // Fixed-size batched reads; no ticket issuance, claim or redemption occurs here.
-  const [points, events, calendar, eventSettings, pointSettings, pendingPointSelections] = await Promise.all([
+  const [points, events, calendar, eventSettings, pointSettings, pendingPointSelections, pendingSnapshotReceipts] = await Promise.all([
     loadLatestPointOffers(db, String(member.id), true),
     loadLatestEventOffers(db, String(member.id), tier, true, true),
     db.from('calendar_items')
@@ -26,11 +26,23 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
       .select('booking_id,benefit_kind,benefit_ref')
       .eq('member_id', String(member.id))
       .eq('status', 'pending'),
+    db.from('booking_receipts')
+      .select('requested_benefits')
+      .eq('member_id', String(member.id))
+      .eq('submission_mode', 'accessible')
+      .in('status', ['pending_upload', 'awaiting_review']),
   ]);
   if (calendar.error) throw calendar.error;
   if (eventSettings.error) throw eventSettings.error;
   if (pointSettings.error) throw pointSettings.error;
   if (pendingPointSelections.error) throw pendingPointSelections.error;
+  if (pendingSnapshotReceipts.error) throw pendingSnapshotReceipts.error;
+  const eventClaimsInSnapshots = new Set<string>(
+    (pendingSnapshotReceipts.data || []).flatMap((receipt: any) =>
+      Array.isArray(receipt.requested_benefits) ? receipt.requested_benefits : []
+    ).filter((selection: any) => selection?.kind === 'event')
+      .map((selection: any) => String(selection.id || '')).filter(Boolean)
+  );
   const rawEventLimit = Number(eventSettings.data?.max_tickets_per_day ?? 1);
   const eventTicketMaxPerDay = Number.isInteger(rawEventLimit) && rawEventLimit >= 0 && rawEventLimit <= 50 ? rawEventLimit : 1;
   const rawPointLimit = Number(pointSettings.data?.max_tickets_per_redemption ?? 1);
@@ -207,6 +219,7 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
       ...visibleEvents.map((offer) => {
         const reserved = (pendingPointSelections.data || []).find((row: any) => row.benefit_kind === 'event' && row.benefit_ref === offer.claimId);
         const reservedForOtherBooking = Boolean(reserved && reserved.booking_id !== currentBookingId);
+        const reservedInSnapshot = Boolean(offer.claimId && eventClaimsInSnapshots.has(String(offer.claimId)));
         const visibility=tierVisibility(offer.allowedTierKeys,tier,visibilityPolicy);
         const requiredServiceIds = Array.isArray(offer.requiredServiceIds) ? offer.requiredServiceIds : [];
         const requiredServiceMatchMode = offer.requiredServiceMatchMode === 'all' ? 'all' : 'any';
@@ -217,15 +230,16 @@ export async function loadBookingBenefits(db: SupabaseClient, member: any, tier:
           description: offer.description, accent: offer.accent, ticketType: offer.ticketType, quota: offer.quota, claimedCount: offer.claimedCount,
           allowedTierKeys: offer.allowedTierKeys, fixedTicketTemplateId: offer.fixedTicketTemplateId,
           subtitle: visibility.locked ? visibility.lockReason : offer.claimed ? '已領取，尚未使用' : '尚未領取；勾選即代表領取',
-          statusLabel: visibility.locked ? '需升級' : offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
+          statusLabel: visibility.locked ? '需升級' : reservedForOtherBooking ? '已預約使用，不能重複登記' : reservedInSnapshot ? '快照待審核，不能重複登記' : offer.claimed ? '可使用' : '可勾選並領取', startsOn: offer.startsOn, endsOn: offer.endsOn,
           requiresLocation: offer.requiresLocation === true,
-          selectable: visibility.tierEligible && !reservedForOtherBooking,
+          selectable: visibility.tierEligible && !reservedForOtherBooking && !reservedInSnapshot,
+          reservedForBooking: Boolean(reserved), reservedForCurrentBooking: Boolean(reserved && !reservedForOtherBooking), reservedInSnapshot,
           locked:visibility.locked,
           selectionId: offer.claimId || '',
           claimRequired: visibility.tierEligible && !offer.claimed,
           requiredServiceIds, requiredServiceMatchMode, requiredServiceTitles, requiredServiceRequirementLabel,
           conditionLabel: `${eventTicketMaxPerDay === 0 ? '每日使用張數不限' : `每日最多使用 ${eventTicketMaxPerDay} 張`} · ${requiredServiceRequirementLabel ? `預約項目限制：${requiredServiceRequirementLabel}` : '預約項目限制：不限'}${offer.requiresLocation === true ? ' · 現場單獨使用需 GPS 定位' : ''}`,
-          disabledReason: visibility.locked ? visibility.lockReason : reservedForOtherBooking ? '此票券已選入另一筆預約' : '',
+          disabledReason: visibility.locked ? visibility.lockReason : reservedForOtherBooking ? '此票券已在一般預約登記，不能重複登記。' : reservedInSnapshot ? '此票券已在快照模式登記，待審核期間不能重複登記。' : '',
         };
       }),
       ...activities.map((item: any) => ({
