@@ -220,18 +220,17 @@ test('FIXED_NOTIFICATION_TIME — Taipei time, off switch and persisted reload',
   await fill(p,'fixedTicketNotifyTime','00:00');await p.locator('#fixedTicketNotifyLine').check();await click(p,'saveEventTicketButton');
   await expect.poll(()=>info.fixture.templates[0].notifyTime).toBe('00:00');expect(info.fixture.templates[0].notifyLine).toBe(true);
 });
-test('TICKET_BOOKING_POLICY_ENTRY — point and event ticket views lead to the shared rule',async({page:p})=>{
+test('TICKET_BOOKING_POLICY_ENTRY — point and event views explain service-specific booking requirement',async({page:p})=>{
   await click(p,'cardsTab');await click(p,'ticketSettingsTab');
-  await p.locator('#ticketSettingsPanel [data-open-ticket-booking-policy]').click();
-  await expect(p.locator('#bookingAdminSettingsPanel')).toBeVisible();
-  await expect(p.locator('#bookingAdminTicketBookingRequired')).toBeChecked();
+  await expect(p.locator('#ticketSettingsPanel .ticket-policy-entry')).toContainText('指定適用服務項目');
   await click(p,'eventsTab');
-  await p.locator('#eventsPanel [data-open-ticket-booking-policy]').click();
-  await expect(p.locator('#bookingAdminSettingsPanel')).toBeVisible();
-  await expect(p.locator('#bookingAdminTicketBookingRequired')).toBeChecked();
+  await expect(p.locator('#eventsPanel .ticket-policy-entry')).toContainText('指定適用服務項目');
+  await booking(p,'bookingAdminSettingsSubtab');
+  await expect(p.locator('#bookingAdminTicketBookingRequired')).toHaveCount(0);
+  await expect(p.locator('#bookingAdminSnapshotLocationRequired')).toBeVisible();
 });
 test('BOOKING_SHARED_SETTINGS — overnight hours, advance window, common time and reminder',async({page:p},info)=>{
-  await booking(p,'bookingAdminSettingsSubtab');await fill(p,'bookingAdminStartTime','20:00');await fill(p,'bookingAdminEndTime','02:00');await fill(p,'bookingAdminSlotInterval','15');await fill(p,'bookingAdminAdvanceDays','1');await fill(p,'bookingAdminMaxAdvanceDays','30');await fill(p,'bookingAdminStoreServiceMinutes','15');await p.locator('#bookingAdminSnapshotLocationRequired').check();await p.evaluate(() => window.TicketLocationEditors.snapshot.set([{name:'QA 指定門市',latitude:25.033964,longitude:121.564468,radiusMeters:100}]));await p.locator('#bookingAdminTicketBookingRequired').uncheck();await p.locator('#bookingAdminReminderEnabled').check();await fill(p,'bookingAdminReminderTime','17:30');await fill(p,'bookingAdminNotice','QA line 1\nQA line 2');await click(p,'bookingAdminSaveSettingsButton');await expect.poll(()=>calls(info.fixture,'admin.booking.settings.save').length).toBe(1);await expect(p.locator('#bookingAdminSettingsMessage')).toContainText('儲存');expect(info.fixture.settings.workEndTime).toBe('02:00');expect(info.fixture.settings.snapshotLocationRequired).toBe(true);expect(info.fixture.settings.ticketBookingRequired).toBe(false);await p.reload();await booking(p,'bookingAdminSettingsSubtab');await expect(p.locator('#bookingAdminSnapshotLocationRequired')).toBeChecked();await expect(p.locator('#bookingAdminTicketBookingRequired')).not.toBeChecked();await p.locator('#bookingAdminSnapshotLocationRequired').uncheck();await click(p,'bookingAdminSaveSettingsButton');await expect.poll(()=>info.fixture.settings.snapshotLocationRequired).toBe(false);
+  await booking(p,'bookingAdminSettingsSubtab');await fill(p,'bookingAdminStartTime','20:00');await fill(p,'bookingAdminEndTime','02:00');await fill(p,'bookingAdminSlotInterval','15');await fill(p,'bookingAdminAdvanceDays','1');await fill(p,'bookingAdminMaxAdvanceDays','30');await fill(p,'bookingAdminStoreServiceMinutes','15');await p.locator('#bookingAdminSnapshotLocationRequired').check();await p.evaluate(() => window.TicketLocationEditors.snapshot.set([{name:'QA 指定門市',latitude:25.033964,longitude:121.564468,radiusMeters:100}]));await p.locator('#bookingAdminReminderEnabled').check();await fill(p,'bookingAdminReminderTime','17:30');await fill(p,'bookingAdminNotice','QA line 1\nQA line 2');await click(p,'bookingAdminSaveSettingsButton');await expect.poll(()=>calls(info.fixture,'admin.booking.settings.save').length).toBe(1);await expect(p.locator('#bookingAdminSettingsMessage')).toContainText('儲存');expect(info.fixture.settings.workEndTime).toBe('02:00');expect(info.fixture.settings.snapshotLocationRequired).toBe(true);await p.reload();await booking(p,'bookingAdminSettingsSubtab');await expect(p.locator('#bookingAdminSnapshotLocationRequired')).toBeChecked();await p.locator('#bookingAdminSnapshotLocationRequired').uncheck();await click(p,'bookingAdminSaveSettingsButton');await expect.poll(()=>info.fixture.settings.snapshotLocationRequired).toBe(false);
 });
 function seedBooking(s,status='pending'){
   s.bookings=[{bookingId:'booking-1',memberId:'member-1',memberDisplayName:'QA booking member',contactSurname:'QA',contactSalutation:'mr',contactPhone:'+886912345678',memberCode:'TEST1',bookingDate:today(),startTime:'10:00',endTime:'10:30',status,totalDurationMinutes:30,updatedAt:version,createdAt:version,items:[{serviceId:'service-1',serviceTitle:'QA service',quantity:1,unitDurationMinutes:30,subtotalMinutes:30,serviceType:'Body'}],benefits:[]}];

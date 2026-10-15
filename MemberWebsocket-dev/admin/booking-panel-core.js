@@ -154,10 +154,6 @@
                 </label>
               </section>
 
-              <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminTicketPolicyHeading">
-                <div class="booking-admin-settings-block-heading"><div><span class="booking-admin-settings-eyebrow">全域票券政策</span><h4 id="bookingAdminTicketPolicyHeading">票券使用規則</h4></div><span class="booking-admin-settings-badge">集點卡與活動票券共用</span></div>
-                <label class="booking-admin-toggle"><input id="bookingAdminTicketBookingRequired" type="checkbox" checked><span><strong>使用票券必須有有效預約</strong><small>僅限制一般票券核銷（集點卡與活動票券）。快照模式不需要事先有有效預約，管理員審核時會依實際服務項目核對票券資格並結算；票券效期、定位及使用限制仍照常檢查。</small></span></label>
-              </section>
               <section class="booking-admin-settings-block booking-admin-settings-rule" aria-labelledby="bookingAdminSnapshotHeading">
                 <div class="booking-admin-settings-block-heading"><h4 id="bookingAdminSnapshotHeading">快照模式</h4></div>
                 <label class="booking-admin-toggle"><input id="bookingAdminSnapshotLocationRequired" type="checkbox"><span><strong>快照前必須取得定位</strong><small>啟用後，會員拍攝及送出快照前必須位於下方任一指定地點的範圍內；請先新增至少一個地點。一般預約與票券的獨立定位規則不受影響。</small></span></label><div id="bookingAdminSnapshotLocationControls" class="coupon-location-controls hidden"><div class="coupon-map-search"><label for="bookingAdminSnapshotAddressSearch">地址搜尋</label><div><input id="bookingAdminSnapshotAddressSearch" type="search" maxlength="240" autocomplete="street-address" placeholder="輸入地址或地標，例如：台南火車站"><button id="bookingAdminSnapshotAddressSearchButton" type="button" class="button button-outline">搜尋地址</button><button id="bookingAdminSnapshotUseCurrentLocationButton" type="button" class="button button-outline">使用目前 GPS 選點</button></div><div id="bookingAdminSnapshotAddressResults" class="coupon-map-results" aria-live="polite"></div></div><div id="bookingAdminSnapshotLocationMap" class="coupon-location-map" role="region" aria-label="使用地點地圖，點選可選擇候選位置"></div><p id="bookingAdminSnapshotMapStatus" class="field-help" aria-live="polite">先用地址搜尋、目前 GPS 或地圖點選位置；找不到精確地址時會自動顯示附近／近似候選，再確認地點與半徑範圍後新增。</p><section id="bookingAdminSnapshotLocationDraft" class="coupon-location-draft hidden" aria-label="待確認使用地點"><div class="coupon-location-draft-heading"><div><strong>待確認位置</strong><small>地圖圓圈即快照半徑範圍，可拖曳地圖標記微調位置。</small></div><span>尚未加入</span></div><div class="coupon-location-draft-fields"><label>地點名稱<input id="bookingAdminSnapshotLocationDraftName" type="text" maxlength="100" placeholder="例如：台南門市"></label><label>快照半徑（公尺）<input id="bookingAdminSnapshotLocationDraftRadius" type="number" min="50" max="2000" step="10" value="100"></label></div><div class="coupon-location-draft-actions"><button id="clearBookingAdminSnapshotLocationDraftButton" class="button button-outline" type="button">取消選點</button><button id="addBookingAdminSnapshotLocationButton" class="button button-dark" type="button">＋ 新增地點</button></div></section><div class="coupon-location-heading"><strong>允許快照地點</strong><span id="bookingAdminSnapshotLocationCount">0 / 20 個使用地點</span></div><div id="bookingAdminSnapshotLocationRows" class="coupon-location-rows"></div><p class="field-help">符合任一地點的快照半徑即可使用。座標只在背景保存供快照判斷，不在管理介面顯示。地圖與地址搜尋資料由 OpenStreetMap 提供。</p></div>
@@ -252,7 +248,7 @@
 
   function cacheElements() {
     [
-      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminReminderEnabled','bookingAdminSnapshotLocationRequired','bookingAdminTicketBookingRequired','bookingAdminReminderTime','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
+      'bookingTab','bookingPanel','bookingAdminSyncStatus','bookingAdminSettingsForm','bookingAdminStartTime','bookingAdminEndTime','bookingAdminSlotInterval','bookingAdminHoursPreview','bookingAdminAdvanceDays','bookingAdminMaxAdvanceDays','bookingAdminStoreServiceMinutes','bookingAdminReminderEnabled','bookingAdminSnapshotLocationRequired','bookingAdminReminderTime','bookingAdminNotice','bookingAdminSettingsMessage','bookingAdminSaveSettingsButton',
       'bookingAdminNewTypeButton','bookingAdminTypeMessage','bookingAdminTypeList','bookingAdminTypeEmpty','bookingAdminServiceCount','bookingAdminPendingCount','bookingAdminAccessiblePendingCount','bookingAdminConfirmedCount',
       'bookingAdminTechniciansSubtab','bookingAdminServicesSubtab','bookingAdminSettingsSubtab','bookingAdminQueueSubtab','bookingAdminQueueSubtabCount','bookingAdminTechniciansPanel','bookingAdminServicesPanel','bookingAdminSettingsPanel','bookingAdminQueuePanel','bookingAdminStandardMode','bookingAdminAccessibleMode','bookingAdminStandardModeCount','bookingAdminAccessibleModeCount','bookingAdminStandardQueueView','bookingAdminNewServiceButton','bookingAdminBatchAddButton','bookingAdminBatchEditButton','bookingAdminBatchDeleteButton','bookingAdminServiceMessage','bookingAdminServiceList','bookingAdminServiceEmpty','bookingAdminQueue','bookingAdminQueueEmpty',
       'bookingAdminCrudModal','bookingAdminCrudModalTitle','bookingAdminCrudModalBody','bookingAdminCrudModalClose'
@@ -270,7 +266,6 @@
     els.bookingAdminServicesSubtab.addEventListener('click', () => setSubtab('services'));
     els.bookingAdminSettingsSubtab.addEventListener('click', () => setSubtab('settings'));
     els.bookingAdminQueueSubtab.addEventListener('click', () => setSubtab('queue'));
-    document.addEventListener('click', handleTicketBookingPolicyNavigation);
     els.bookingAdminStandardMode.addEventListener('click', () => setQueueMode('standard'));
     els.bookingAdminAccessibleMode.addEventListener('click', () => setQueueMode('accessible'));
     els.bookingAdminNewServiceButton.addEventListener('click', () => openServiceModal(null));
@@ -286,17 +281,6 @@
     window.addEventListener('member-admin:booking-snapshot-request', handleOperationalSnapshotRequest);
     window.addEventListener('member-admin:booking-focus', handleOperationalBookingFocus);
     window.addEventListener('admin:accessible-receipts-updated', handleAccessibleReceiptsUpdated);
-  }
-
-  function handleTicketBookingPolicyNavigation(event) {
-    const shortcut = event.target instanceof Element
-      ? event.target.closest('[data-open-ticket-booking-policy]')
-      : null;
-    if (!shortcut) return;
-    activateBookingPanel();
-    setSubtab('settings');
-    els.bookingAdminTicketBookingRequired.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    els.bookingAdminTicketBookingRequired.focus({ preventScroll: true });
   }
 
   function setQueueMode(mode) {
@@ -648,7 +632,6 @@
     els.bookingAdminReminderEnabled.checked = settings.reminderEnabled === true;
     els.bookingAdminSnapshotLocationRequired.checked = settings.snapshotLocationRequired === true;
     window.TicketLocationEditors?.snapshot?.set(Array.isArray(settings.snapshotLocations) ? settings.snapshotLocations : []);
-    els.bookingAdminTicketBookingRequired.checked = settings.ticketBookingRequired !== false;
     els.bookingAdminReminderTime.value = String(settings.reminderTime || '18:00');
     renderHoursPreview();
   }
@@ -765,7 +748,6 @@
         reminderEnabled: els.bookingAdminReminderEnabled.checked,
         snapshotLocationRequired: els.bookingAdminSnapshotLocationRequired.checked,
         snapshotLocations,
-        ticketBookingRequired: els.bookingAdminTicketBookingRequired.checked,
         reminderTime,
         expectedUpdatedAt: state.booking.settings?.updatedAt || '',
       }, true);

@@ -92,23 +92,16 @@ test('admin entrypoint cache-busts the shared-settings E2E controller', () => {
 });
 
 
-test('global ticket booking requirement is discoverable in both ticket management views', () => {
+test('ticket service requirements replace the global booking switch in both management views', () => {
   const html = read('admin/index.html');
   const core = read('admin/booking-panel-core.js');
   const loader = read('admin/booking-panel.js');
-  const api = read('supabase/functions/booking-admin-api/index.ts');
-  assert.equal((html.match(/data-open-ticket-booking-policy/g) || []).length, 2);
-  assert.match(html, /票券庫[\s\S]*?data-open-ticket-booking-policy/);
-  assert.match(html, /活動票券[\s\S]*?data-open-ticket-booking-policy/);
-  assert.match(core, /id="bookingAdminTicketPolicyHeading">票券使用規則/);
-  assert.match(core, /id="bookingAdminTicketBookingRequired" type="checkbox"/);
-  assert.ok(core.indexOf('id="bookingAdminTicketPolicyHeading"') < core.indexOf('id="bookingAdminSnapshotHeading"'));
-  assert.match(core, /document\.addEventListener\('click', handleTicketBookingPolicyNavigation\)/);
-  assert.match(core, /function handleTicketBookingPolicyNavigation[\s\S]*?activateBookingPanel\(\);[\s\S]*?setSubtab\('settings'\)/);
-  assert.match(core, /ticketBookingRequired: els\.bookingAdminTicketBookingRequired\.checked/);
-  assert.match(core, /els\.bookingAdminTicketBookingRequired\.checked = settings\.ticketBookingRequired !== false/);
-  assert.match(api, /typeof body\.ticketBookingRequired !== "boolean"/);
-  assert.match(api, /p_ticket_booking_required: body\.ticketBookingRequired \?\? null/);
-  assert.match(loader, /booking-panel-core\.js', '.*policy-entry-20261010-1-controls-20261010-2-snapshot-geofence-20261012-1-release-20261014-1-no-show-history-20261014-1-hide-early-hint-20261015-1'/);
-  assert.match(html, /booking-panel\.js\?v=[^"]*policy-entry-20261010-1-controls-20261010-2/);
+  assert.equal((html.match(/票券使用與預約/g) || []).length, 2);
+  assert.match(html, /指定適用服務項目的票券，使用前須有已確認、未完成且符合項目的預約/);
+  assert.doesNotMatch(html, /data-open-ticket-booking-policy/);
+  assert.doesNotMatch(core, /bookingAdminTicketBookingRequired|bookingAdminTicketPolicyHeading/);
+  assert.doesNotMatch(core, /handleTicketBookingPolicyNavigation|ticketBookingRequired:/);
+  assert.match(core, /snapshotLocationRequired: els\.bookingAdminSnapshotLocationRequired\.checked/);
+  assert.match(loader, /booking-panel-core\.js', '.*service-ticket-rule-20261015-1'/);
+  assert.match(html, /booking-panel\.js\?v=[^"']*service-ticket-rule-20261015-1/);
 });
