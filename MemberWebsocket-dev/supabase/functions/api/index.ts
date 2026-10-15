@@ -654,7 +654,7 @@ async function memberPresenceForLineUserIds(supabase: SupabaseClient, lineUserId
 }
 
 
-async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string): Promise<Json> {
+async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string, testRunCodes: string[] = []): Promise<Json> {
   const memberResult = await supabase.from("members")
     .select("id,line_user_id,display_name,member_code,is_test_account")
     .eq("line_user_id",lineUserId)
@@ -663,6 +663,21 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
   if (!memberResult.data) throw new ApiError(404,"MEMBER_NOT_FOUND","找不到指定會員。");
   const member = memberResult.data;
 
+  // The ordinary member usage UI keeps its 100-case page size. The paired
+  // E2E verifier may request the exact per-surface run codes, so older
+  // verified cases are not silently truncated by newer client surfaces.
+  const selectedRunCodes = [...new Set(testRunCodes.filter((code) =>
+    /^QA-[A-Za-z0-9-]{4,90}$/.test(code)))].slice(0,10);
+  const selectedRunsRes = selectedRunCodes.length
+    ? await supabase.from("automation_test_runs").select("id").in("run_code",selectedRunCodes).limit(10)
+    : { data:[], error:null };
+  if (selectedRunsRes.error) throw mapDatabaseError(selectedRunsRes.error);
+  const selectedRunIds = (selectedRunsRes.data || []).map((row:any) => row.id);
+  const caseQuery = supabase.from("automation_test_cases")
+    .select("id,run_id,case_order,case_key,name,domain,status,failure_code,failure_message,started_at,completed_at,duration_ms,created_at,updated_at")
+    .eq("member_id",member.id).order("created_at",{ ascending:false })
+    .limit(selectedRunCodes.length ? 500 : 100);
+
   const [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes,presenceRes,automationCasesRes] = await Promise.all([
     supabase.from("point_entries").select("id,entry_id,point_card_id,amount,note,entry_type,reference_type,reference_id,created_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
     supabase.from("point_tickets").select("id,ticket_id,point_card_id,ticket_type,ticket_title,status,earned_at,used_at,result,points_spent,created_at,updated_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
@@ -670,7 +685,9 @@ async function adminMemberRecords(supabase: SupabaseClient, lineUserId: string):
     supabase.from("bookings").select("id,request_id,service_id,technician_id,booking_date,start_time,end_time,start_at,end_at,status,member_note,total_duration_minutes,party_size,confirmed_at,rejected_at,cancelled_at,completed_at,cancellation_requested_at,cancellation_reviewed_at,cancellation_decision,created_at,updated_at").eq("member_id",member.id).order("booking_date",{ ascending:false }).order("start_time",{ ascending:false }),
     supabase.from("booking_completion_settlements").select("booking_id,service_minutes,reward_details,created_at").eq("member_id",member.id).order("created_at",{ ascending:false }),
     supabase.from("audit_logs").select("id,audit_id,action,detail,created_at").eq("target_type","member").eq("target_id",member.line_user_id).in("action",[...PRESENCE_ACTIONS]).order("created_at",{ ascending:false }),
-    supabase.from("automation_test_cases").select("id,run_id,case_order,case_key,name,domain,status,failure_code,failure_message,started_at,completed_at,duration_ms,created_at,updated_at").eq("member_id",member.id).order("created_at",{ ascending:false }).limit(100),
+    selectedRunCodes.length
+      ? (selectedRunIds.length ? caseQuery.in("run_id",selectedRunIds) : Promise.resolve({data:[],error:null}))
+      : caseQuery,
   ]);
   for (const result of [pointEntriesRes,pointTicketsRes,eventClaimsRes,bookingsRes,settlementsRes,presenceRes,automationCasesRes]) {
     if (result.error) throw mapDatabaseError(result.error);
@@ -2517,7 +2534,10 @@ async function handleAction(supabase: SupabaseClient, identity: { lineUserId: st
     return await memberPresenceForLineUserIds(supabase,lineUserIds);
   }
   if (action === "admin.member-records.list") {
-    return await adminMemberRecords(supabase,requireText(body.lineUserId,"會員識別",120));
+    const testRunCodes = Array.isArray(body.testRunCodes)
+      ? body.testRunCodes.filter((value: unknown) => typeof value === "string").map((value: string) => asText(value,100)).slice(0,10)
+      : [];
+    return await adminMemberRecords(supabase,requireText(body.lineUserId,"會員識別",120),testRunCodes);
   }
   if (action === "admin.member.remove") {
     await authorizeAdmin(supabase, identity);
