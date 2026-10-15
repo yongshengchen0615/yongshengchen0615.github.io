@@ -10,11 +10,12 @@
     POINTS_HUMAN_REDEEM: {
       type: 'point_ticket_redeemed',
       verify: records => array(records.pointCards).some(row =>
-        row.recordType === 'point_ticket' && Boolean(row.usedAt))
+        row.recordType === 'point_ticket' && row.title === 'QA 真人操作票券' && Boolean(row.usedAt))
     },
     EVENT_HUMAN_LIFECYCLE: {
       type: 'event_tickets_redeemed',
-      verify: records => array(records.eventTickets).filter(row => Boolean(row.usedAt)).length >= 2
+      verify: records => ['QA 真人操作活動優惠券', 'QA 真人操作活動抽獎券']
+        .every(title => array(records.eventTickets).some(row => row.title === title && Boolean(row.usedAt)))
     },
     BOOKING_HUMAN_LIFECYCLE: {
       type: 'booking_created_and_updated',
