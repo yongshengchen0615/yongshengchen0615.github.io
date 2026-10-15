@@ -200,3 +200,17 @@ for(const [width,theme] of [[320,'light'],[390,'dark'],[1280,'light']])test('mem
   await page.locator('#closeMemberReferral').click();
   await info.attach('member-pass-actions-'+width+'-'+theme,{body:await page.locator('#memberPass').screenshot(),contentType:'image/png'});
 });
+
+
+test('selected-scope friends node reads the list and rejects self without issuing an invitation', async ({page}) => {
+  await page.goto(base+'/member/');
+  if(await page.locator('#memberTourDismiss').isVisible()) await page.locator('#memberTourDismiss').click();
+  await expect(page.locator('#openMemberFriends')).toBeVisible();
+  await page.evaluate(() => history.replaceState(null,'','/MemberWebsocket-dev/member/'));
+  await page.evaluate(fs.readFileSync(path.join(root,'user-test-control.js'),'utf8').replace(
+    '  window.MemberUserTestControl =','  window.scopeProbe={memberFriendControlsCase,state};\n  window.MemberUserTestControl ='));
+  await page.evaluate(() => scopeProbe.state.bootstrap={profile:{memberCode:'AAAA'}});
+  const result=await page.evaluate(() => scopeProbe.memberFriendControlsCase());
+  expect(result.status,JSON.stringify(result)).toBe('passed');
+  expect(await page.evaluate(() => p2Calls.filter(row => /request|accept|block|remove/.test(row.action)))).toHaveLength(0);
+});

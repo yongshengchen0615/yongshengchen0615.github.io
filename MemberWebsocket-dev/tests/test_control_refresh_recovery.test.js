@@ -112,3 +112,20 @@ test('malformed feature counts are rejected and incomplete results remain incomp
   assert.equal(normalize({ total: 33, counts: { passed: 2, 'not-run': 31 }, complete: true }).complete, false);
   assert.equal(normalize({ total: 33, counts: { passed: 33 }, complete: false }).complete, true);
 });
+
+test('persisting a paired run with passing admin rows cannot hide missing selected client pages', async () => {
+  const server = await api();
+  const result = await server.request('admin.test-control.record-browser-run', {
+    runnerKind:'paired-browser', suite:'full', selectedModules:['member','points'], participantCount:2,
+    expectedAdminKeys:['ADMIN_A'], featureCoverage:{total:1,counts:{passed:1}}, clientCoverage:[],
+    cases:[{key:'ADMIN_A',name:'admin passed',status:'passed'}],
+  });
+  assert.equal(result.status,201,JSON.stringify(result.body));
+  const run = server.inserts.find(item => item.table === 'automation_test_runs').value;
+  assert.equal(run.status,'failed');
+  assert.equal(run.summary.verificationStatus,'incomplete');
+  assert.equal(run.summary.coverageComplete,false);
+  assert.equal(run.summary.scopeCoverage.complete,false);
+  assert.equal(run.summary.scopeCoverage.expectedClientSurfaces,4);
+  assert.equal(run.summary.scopeCoverage.clients.filter(item => !item.complete).length,4);
+});

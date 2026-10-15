@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-10-09.2';
+  const VERSION = '2026-10-15.1';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -67,6 +67,9 @@
     COMMON_MEMBERSHIP_MILESTONE: { module: 'shared', phase: 3 },
     COMMON_FEATURE_CONTRACT_COVERAGE: { module: 'shared', phase: 6 },
 
+    MEMBER_FRIEND_CONTROLS: {module:'member',phase:4,dependencies:['MEMBER_PROFILE_DATA']},
+    BOOKING_HISTORY_TABS: {module:'booking',phase:5,dependencies:['BOOKING_HUMAN_LIFECYCLE']},
+    BOOKING_SNAPSHOT_HISTORY_TABS: {module:'booking',phase:5,dependencies:['BOOKING_ACCESSIBLE_SCREENSHOT_RECEIPT']},
     MEMBER_PHONE_COUNTRY_VALIDATION: { module: 'member', phase: 4, dependencies: ['MEMBER_PROFILE_DATA'] },
     MEMBER_PROFILE_DATA: { module: 'member', phase: 3, required: true, dependencies: ['COMMON_BOOTSTRAP'] },
     MEMBER_TERMS_CONSENT: { module: 'member', phase: 3, required: true, dependencies: ['MEMBER_PROFILE_DATA'] },
@@ -924,14 +927,14 @@
     if (state.currentSuite === 'full') {
       const catalog = window.MemberE2EFeatureCoverage;
       state.featureCoverage = catalog?.report?.({ side:'user', modules:[surface], registeredKeys:state.caseCatalogKeys,
-        plannedKeys:state.scenarioPlan?.keys || [], results:state.results });
+        plannedKeys:state.executionKeys || state.scenarioPlan?.keys || [], results:state.results });
       const coverage = state.featureCoverage;
       const gaps = coverage?.features.filter(item => item.status !== 'passed').map(item => ({id:item.id,level:item.level,status:item.status,keys:item.keys})) || [];
       state.results.push({ key:'QA_FEATURE_COVERAGE_SUMMARY', name:'功能節點執行覆蓋摘要', domain:'Coverage', durationMs:0,
-        ...(coverage?.complete ? pass('本頁登記的功能節點均通過；契約與裝置驗收限制仍分開保留。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps})
+        ...(coverage?.complete ? pass('本頁登記的功能節點均通過；契約與裝置驗收限制仍分開保留。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps,execution:coverage.execution})
           : !coverage || coverage.counts.unregistered || coverage.counts.unplanned
-            ? fail('功能節點缺少登記或未納入本輪路徑。', {complete:true}, {total:coverage?.total || 0,counts:coverage?.counts || {},gaps})
-            : skip('功能節點有失敗、環境阻擋或未執行，不能宣稱完整驗證。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps})) });
+            ? fail('功能節點缺少登記或未納入本輪路徑。', {complete:true}, {total:coverage?.total || 0,counts:coverage?.counts || {},gaps,execution:coverage?.execution || null})
+            : fail('功能節點有失敗、環境阻擋或未執行，本輪覆蓋未完成。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps,execution:coverage.execution})) });
       renderResults();
     }
     // A node deadline is a failed run, not a user cancellation: persist its trace.
@@ -1061,6 +1064,7 @@
 
     const surfaceCases = {
       member: [
+        caseDef('好友中心：名單更新／自邀拒絕／關閉', 'Human E2E', memberFriendControlsCase, 'MEMBER_FRIEND_CONTROLS'),
         caseDef('電話：國碼、重複數字與後端拒絕', 'Validation', memberPhoneCountryValidationCase, 'MEMBER_PHONE_COUNTRY_VALIDATION'),
         caseDef('會員資料完整性', 'Member', memberProfileCase, 'MEMBER_PROFILE_DATA'),
         caseDef('會員條款：有效版本與拒絕邊界', 'Member / Legal', membershipTermsConsentCase, 'MEMBER_TERMS_CONSENT'),
@@ -1101,6 +1105,8 @@
         caseDef('日曆寫入權限邊界', 'Mutation QA', () => mutationQaCase('CALENDAR_READ_ONLY'), 'CALENDAR_SERVER_BOUNDARY')
       ],
       booking: [
+        caseDef('我的預約：全部分類、筆數與切換', 'Human E2E', bookingHistoryTabsCase, 'BOOKING_HISTORY_TABS'),
+        caseDef('快照明細：全部分類、筆數與切換', 'Human E2E', bookingSnapshotHistoryTabsCase, 'BOOKING_SNAPSHOT_HISTORY_TABS'),
         caseDef('快照模式切換、票券與狀態同步', 'Human E2E', bookingAccessibleModeCase, 'BOOKING_ACCESSIBLE_MODE'),
         caseDef('快照收據：錯誤格式與大小拒絕', 'Security', bookingAccessibleReceiptBoundaryCase, 'BOOKING_ACCESSIBLE_RECEIPT_BOUNDARY'),
         caseDef('快照收據：螢幕快照上傳與待審核', 'Human E2E', bookingAccessibleScreenshotReceiptCase, 'BOOKING_ACCESSIBLE_SCREENSHOT_RECEIPT'),
@@ -1187,7 +1193,10 @@
       state.randomState = state.replayConfig.randomStateAfterBuild >>> 0;
       state.randomStateAfterBuild = state.randomState;
     }
-    return [scenarioCase].concat(planned.nodes, adaptiveReplays);
+    const execution = [scenarioCase].concat(planned.nodes, adaptiveReplays);
+    state.caseCatalogKeys = execution.map(item => item.key);
+    state.executionKeys = state.caseCatalogKeys.slice();
+    return execution;
   }
 
   function caseDef(name, domain, run, key) {
@@ -2033,6 +2042,9 @@
     const payload = {
       cases,
       runnerVersion: VERSION,
+      suite: state.currentSuite,
+      featureCoverage: state.featureCoverage,
+      expectedCaseKeys: state.currentSuite === 'full' ? state.caseCatalogKeys : [],
       startedAt: state.runStartedAt || undefined,
       completedAt: new Date().toISOString()
     };
@@ -3031,6 +3043,81 @@
     return toggled && restored
       ? pass(label + '可真人展開並還原。', { toggled: true, restored: true }, { toggled, restored })
       : fail(label + '展開／收合互動異常。', { toggled: true, restored: true }, { toggled, restored });
+  }
+
+  async function memberFriendControlsCase() {
+    const trigger = await waitFor(() => document.getElementById('openMemberFriends'), 4000);
+    const input = document.getElementById('friendLookupCode');
+    const code = String(state.bootstrap?.profile?.memberCode || state.session?.account?.memberCode || '');
+    if (!trigger || !input || !code) return fail('好友中心或本輪會員編號不存在。', {ready:true}, {ready:false});
+    const previous = input.value;
+    try {
+      trigger.click();
+      const refresh = document.getElementById('refreshFriends');
+      await waitFor(() => refresh && !refresh.disabled, 6000);
+      refresh?.click();
+      const loaded = Boolean(await waitFor(() => refresh && !refresh.disabled
+        && !/正在載入|失敗|無法/.test(document.getElementById('friendListStatus')?.textContent || ''), 8000));
+      input.value = code; input.dispatchEvent(new Event('input', {bubbles:true}));
+      document.getElementById('friendAddForm')?.dispatchEvent(new Event('submit', {bubbles:true,cancelable:true}));
+      const selfRejected = Boolean(await waitFor(() => /不可使用自己/.test(document.getElementById('friendStatus')?.textContent || ''), 2000));
+      const requestHidden = document.getElementById('confirmFriendRequest')?.hidden === true;
+      document.getElementById('closeMemberFriends')?.click();
+      const closed = document.getElementById('memberFriendsModal')?.classList.contains('hidden') === true;
+      const actual = {loaded,selfRejected,requestHidden,closed};
+      return Object.values(actual).every(Boolean)
+        ? pass('好友名單更新、自邀拒絕與關閉皆完成，未送出好友邀請。', {loaded:true,selfRejected:true,requestHidden:true,closed:true}, actual)
+        : fail('好友名單或自邀邊界異常。', {loaded:true,selfRejected:true,requestHidden:true,closed:true}, actual);
+    } finally { input.value = previous; input.dispatchEvent(new Event('input', {bubbles:true})); document.getElementById('closeMemberFriends')?.click(); }
+  }
+
+  async function historyTabsCase({rootId,attribute,keys,prefix,rowSelector}) {
+    const root = await waitFor(() => {
+      const node = document.getElementById(rootId);
+      return node && node.querySelector('[' + attribute + ']') ? node : null;
+    }, 5000);
+    if (!root) return skip('本輪沒有歷程資料，分類操作未執行。', {historyReady:true}, {historyReady:false});
+    const original = root.querySelector('[' + attribute + '][aria-selected="true"]')?.getAttribute(attribute) || keys[0];
+    const checks = [];
+    try {
+      for (const key of keys) {
+        const tab = root.querySelector('[' + attribute + '="' + key + '"]');
+        tab?.click();
+        const panel = root.querySelector('#' + prefix + key);
+        const count = panel?.querySelectorAll(rowSelector).length || 0;
+        const badge = tab?.querySelector('.booking-history-tab-count');
+        const countMatches = String(badge?.textContent || '').trim() === count + ' 筆';
+        const selected = tab?.getAttribute('aria-selected') === 'true' && panel?.hidden === false
+          && root.querySelectorAll('[' + attribute + '][aria-selected="true"]').length === 1;
+        const row = panel?.querySelector(rowSelector);
+        let disclosureMatches = true;
+        const summary = row?.querySelector('summary');
+        const heading = row?.querySelector('.booking-item-top');
+        if (summary) {
+          const before = row.open; summary.click();
+          disclosureMatches = row.open !== before; summary.click();
+          disclosureMatches = disclosureMatches && row.open === before;
+        } else if (heading) {
+          const before = row.classList.contains('is-expanded'); heading.click();
+          disclosureMatches = row.classList.contains('is-expanded') !== before; heading.click();
+          disclosureMatches = disclosureMatches && row.classList.contains('is-expanded') === before;
+        }
+        checks.push({key,count,countMatches,selected,disclosureMatches});
+      }
+      return checks.every(item => item.countMatches && item.selected && item.disclosureMatches)
+        ? pass('全部歷程分類已逐一點擊，筆數與資料一致。', {allTabs:true,countMatches:true}, {checks})
+        : fail('歷程分類、選取狀態或筆數不一致。', {allTabs:true,countMatches:true}, {checks});
+    } finally { root.querySelector('[' + attribute + '="' + original + '"]')?.click(); }
+  }
+
+  async function bookingHistoryTabsCase() {
+    return historyTabsCase({rootId:'bookingList',attribute:'data-booking-tab',
+      keys:['reserved','completed','cancelled','no_show'],prefix:'bookingHistoryPanel-',rowSelector:'.booking-item'});
+  }
+
+  async function bookingSnapshotHistoryTabsCase() {
+    return historyTabsCase({rootId:'bookingSnapshotHistory',attribute:'data-snapshot-history-tab',
+      keys:['pending','registered','attention','withdrawn'],prefix:'snapshotHistoryPanel-',rowSelector:'details[data-receipt-id]'});
   }
 
   async function pointsHistoryDisclosureCase() {
