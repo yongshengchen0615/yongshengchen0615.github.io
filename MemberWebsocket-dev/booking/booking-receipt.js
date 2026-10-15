@@ -454,7 +454,7 @@
         const indicator = document.createElement('span');
         indicator.className = 'snapshot-ticket-choice-status';
         indicator.textContent = blocked
-          ? (item.kind === 'event' && item.claimRequired === true ? '需先領取' : '不可使用')
+          ? (item.kind === 'event' && item.claimRequired === true ? '需先領取' : item.kind === 'event' && (item.reservedInSnapshot || item.reservedForBooking) ? '不可重複登記' : '不可使用')
           : check.checked ? '已選擇' : '點選使用';
         label.append(copy, check, indicator);
         option.append(label);
@@ -548,7 +548,7 @@
           option?.classList.toggle('is-unavailable', input.disabled);
           label?.classList.toggle('is-unavailable', input.disabled);
           const status = label?.querySelector('.snapshot-ticket-choice-status');
-          if (status) status.textContent = selected ? '已選擇' : fixedBlocked ? '不可使用' : reason ? '不可再選' : '點選使用';
+          if (status) status.textContent = selected ? '已選擇' : fixedBlocked ? (ticket.kind === 'event' && (ticket.reservedInSnapshot || ticket.reservedForBooking) ? '不可重複登記' : '不可使用') : reason ? '不可再選' : '點選使用';
           // The last reason belongs to the dynamic quantity/budget guard.
           const messages = label?.querySelectorAll('.snapshot-ticket-disabled-reason') || [];
           const dynamic = messages[messages.length - 1];

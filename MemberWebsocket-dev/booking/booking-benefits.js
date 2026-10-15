@@ -374,6 +374,8 @@
                   ? '點數不足'
                   : pointLimitBlocked
                     ? '已達單次上限'
+                    : item.kind === 'event' && (item.reservedInSnapshot || (item.reservedForBooking && !item.reservedForCurrentBooking))
+                      ? '已登記，不能重複登記'
                     : serviceBlocked
                       ? `需先預約：${requiredServiceTitles(item).join('、')}`
                       : selectable ? '本次預約使用' : '目前不可勾選';
