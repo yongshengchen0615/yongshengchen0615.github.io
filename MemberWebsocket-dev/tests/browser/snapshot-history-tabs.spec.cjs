@@ -160,6 +160,7 @@ test('a receipt deep link respects manual collapse after subsequent updates', as
 test('selected-scope runner executes every snapshot history tab and rejects a wrong badge', async ({page}) => {
   await page.goto(baseUrl + '/booking/');
   await expect(page.locator('#snapshotHistoryTab-pending')).toBeVisible();
+  await page.evaluate(() => history.replaceState(null,'','/MemberWebsocket-dev/booking/'));
   await page.evaluate(fs.readFileSync(path.join(root,'user-test-control.js'),'utf8').replace(
     '  window.MemberUserTestControl =','  window.scopeProbe={bookingSnapshotHistoryTabsCase};\n  window.MemberUserTestControl ='));
   expect((await page.evaluate(() => scopeProbe.bookingSnapshotHistoryTabsCase())).status).toBe('passed');

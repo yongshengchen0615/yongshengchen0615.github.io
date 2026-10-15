@@ -206,6 +206,7 @@ test('selected-scope friends node reads the list and rejects self without issuin
   await page.goto(base+'/member/');
   if(await page.locator('#memberTourDismiss').isVisible()) await page.locator('#memberTourDismiss').click();
   await expect(page.locator('#openMemberFriends')).toBeVisible();
+  await page.evaluate(() => history.replaceState(null,'','/MemberWebsocket-dev/member/'));
   await page.evaluate(fs.readFileSync(path.join(root,'user-test-control.js'),'utf8').replace(
     '  window.MemberUserTestControl =','  window.scopeProbe={memberFriendControlsCase,state};\n  window.MemberUserTestControl ='));
   await page.evaluate(() => scopeProbe.state.bootstrap={profile:{memberCode:'AAAA'}});

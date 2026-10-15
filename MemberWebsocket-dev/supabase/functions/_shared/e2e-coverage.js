@@ -22,7 +22,8 @@ export function normalizeFeatureCoverage(value) {
   const execution = value.execution;
   const executionComplete = execution == null || (Number.isInteger(execution.total) && execution.total > 0
     && execution.passed === execution.total && execution.complete === true
-    && ['unregistered','unplanned','missing','failed','blocked','pending'].every(key => Array.isArray(execution[key]) && execution[key].length === 0));
+    && ['unregistered','unplanned','missing','failed','blocked','pending'].every(key =>
+      execution[key] === undefined || (Array.isArray(execution[key]) && execution[key].length === 0)));
   return { version: 1, total, counts, complete: counts.passed === total && executionComplete,
     ...(execution ? { execution: {total:Number(execution.total) || 0,passed:Number(execution.passed) || 0,complete:executionComplete} } : {}) };
 }
@@ -38,7 +39,8 @@ export function evaluateSelectedScope({ selectedModules, participantCount, admin
   const rows = Array.isArray(cases) ? cases : [];
   const passed = key => rows.some(row => row.key === key && row.status === 'passed')
     && !rows.some(row => row.key === key && row.status !== 'passed');
-  const keys = Array.isArray(adminKeys) ? adminKeys : [];
+  const rawKeys = Array.isArray(adminKeys) ? adminKeys : [];
+  const keys = rawKeys.slice(0, 200).filter(key => typeof key === 'string' && /^[A-Z0-9_]{1,100}$/.test(key));
   const missingAdmin = keys.filter(key => !passed(key));
   const requiredPaired = ['UNIFIED_SERVER_FULL_E2E','PAIRED_COMPLEX_FIXTURE_PREPARE','PAIRED_HUMAN_INTERACTION_COVERAGE',
     ...(modules.includes('member') ? ['PAIRED_MEMBER_REFERRAL_REWARD'] : []),
@@ -63,16 +65,18 @@ export function evaluateSelectedScope({ selectedModules, participantCount, admin
   }
   return { version:1, selectedModules:modules.filter(key => allowed.includes(key)), participantCount,
     expectedClientSurfaces:clients.length, clients, missingAdmin, missingPaired,
-    complete:validScope && keys.length > 0 && new Set(keys).size === keys.length
+    complete:validScope && keys.length > 0 && keys.length === rawKeys.length && new Set(keys).size === keys.length
       && featureCoverage?.complete === true && missingAdmin.length === 0 && missingPaired.length === 0
       && clients.every(item => item.complete) };
 }
 
 export function normalizeClientFeatureCoverage(items) {
   const surfaces = ['member', 'points', 'event', 'calendar', 'booking'];
-  return (Array.isArray(items) ? items : []).slice(0, 50).map(item => ({
-    participant: Math.max(1, Math.min(10, Number(item?.participant) || 1)),
-    surface: surfaces.includes(item?.surface) ? item.surface : 'member',
+  if (!Array.isArray(items) || items.length > 50) return [];
+  return items.filter(item => Number.isInteger(item?.participant) && item.participant >= 1 && item.participant <= 10
+    && surfaces.includes(item?.surface)).map(item => ({
+    participant: item.participant,
+    surface: item.surface,
     coverage: normalizeFeatureCoverage(item?.coverage)
   }));
 }

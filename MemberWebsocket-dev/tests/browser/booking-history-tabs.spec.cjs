@@ -123,6 +123,7 @@ test('booking-specific links open the matching status tab', async ({ page }) => 
 test('selected-scope runner executes every booking history tab and rejects a wrong badge', async ({page}) => {
   await page.goto(baseUrl + '/booking/');
   await expect(page.locator('#bookingHistoryTab-reserved')).toBeVisible();
+  await page.evaluate(() => history.replaceState(null,'','/MemberWebsocket-dev/booking/'));
   await page.evaluate(fs.readFileSync(path.join(root,'user-test-control.js'),'utf8').replace(
     '  window.MemberUserTestControl =','  window.scopeProbe={bookingHistoryTabsCase};\n  window.MemberUserTestControl ='));
   expect((await page.evaluate(() => scopeProbe.bookingHistoryTabsCase())).status).toBe('passed');

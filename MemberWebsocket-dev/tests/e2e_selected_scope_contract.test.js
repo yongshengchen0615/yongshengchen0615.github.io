@@ -82,3 +82,14 @@ test('record normalization preserves execution incompleteness despite passing fe
   assert.equal(normalizeFeatureCoverage(report).complete,false);
   assert.equal(normalizeFeatureCoverage(report).execution.complete,false);
 });
+
+test('invalid participant/surface evidence is discarded instead of being assigned to another cell', async () => {
+  const {normalizeClientFeatureCoverage,normalizeFeatureCoverage} = await backend;
+  assert.deepEqual(normalizeClientFeatureCoverage([{participant:0,surface:'member',coverage:{total:1,counts:{passed:1}}}]),[]);
+  assert.deepEqual(normalizeClientFeatureCoverage([{participant:1,surface:'unknown',coverage:{total:1,counts:{passed:1}}}]),[]);
+  assert.deepEqual(normalizeClientFeatureCoverage(Array(51).fill({participant:1,surface:'member'})),[]);
+  const input = {total:1,counts:{passed:1},execution:{total:2,passed:2,complete:true}};
+  const normalized = normalizeFeatureCoverage(input);
+  assert.equal(normalized.complete,true);
+  assert.deepEqual(normalizeFeatureCoverage(normalized),normalized);
+});

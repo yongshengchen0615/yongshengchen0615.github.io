@@ -6191,6 +6191,8 @@
         const panel = document.getElementById('memberUsagePanel');
         return panel && !panel.classList.contains('hidden') ? panel : null;
       }, 7000);
+      await waitFor(() => !document.querySelector('#memberRecordsList .member-records-loading')
+        && document.getElementById('memberRecordsSummary')?.children.length > 0, 8000);
       for (const filter of ['all','presence','pointCards','eventTickets','calendar','bookings','testAutomation']) {
         const tab = usage?.querySelector('[data-record-filter="' + filter + '"]');
         tab?.click();
@@ -6230,6 +6232,8 @@
     if (option) setField('memberUsageSelect', option.value);
     const selected = Boolean(option && await waitFor(() =>
       String(document.getElementById('memberUsageSelectedLabel')?.textContent || '').includes(code), 8000));
+    await waitFor(() => !document.querySelector('#memberRecordsList .member-records-loading')
+      && document.getElementById('memberRecordsSummary')?.children.length > 0, 8000);
     const filters = {};
     for (const key of ['all','presence','pointCards','eventTickets','calendar','bookings','testAutomation']) {
       const tab = document.querySelector('#memberUsagePanel [data-record-filter="' + key + '"]');
@@ -6269,6 +6273,7 @@
   async function adminOperationAuditCase() {
     const tab = await waitFor(() => document.getElementById('operationAuditTab'), 4000);
     tab?.click();
+    await waitFor(() => document.getElementById('operationAuditPanel')?.getAttribute('aria-busy') !== 'true', 12000);
     const form = document.getElementById('operationAuditForm');
     const code = String(state.adminTestAccount?.memberCode || '');
     if (!tab || !form || !code) return fail('操作稽核或本輪測試會員不存在。', {ready:true}, {ready:false});
