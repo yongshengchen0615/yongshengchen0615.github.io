@@ -1051,10 +1051,9 @@ function pointTicketClient(row: any, cardId = "", reservedForBooking = false): J
 }
 
 async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Json> {
-  const [profile,{ cards: adminCardRows },bookingOptions,bookingSelections,snapshotReceipts] = await Promise.all([
+  const [profile,{ cards: adminCardRows },bookingSelections,snapshotReceipts] = await Promise.all([
     profileFor(supabase,member),
     adminCards(supabase),
-    supabase.rpc("member_ticket_booking_options", { p_member_id: member.id }),
     loadMemberBookingSelections(supabase, String(member.id)),
     supabase.from("booking_receipts")
       .select("receipt_id,created_at,updated_at,requested_benefits")
@@ -1073,7 +1072,6 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
       snapshotByPointTicket.set(ref,snapshots);
     }
   }
-  if (bookingOptions.error) throw mapDatabaseError(bookingOptions.error);
   const activeCards = adminCardRows.filter((card:any) => card.status === "active");
   const rawCards = activeCards.length
     ? await supabase.from("point_cards").select("id,card_id").in("card_id",activeCards.map((card:any) => card.cardId))
@@ -1088,6 +1086,9 @@ async function pointBootstrap(supabase: SupabaseClient, member: any): Promise<Js
     });
     if (issued.error) throw mapDatabaseError(issued.error);
   }
+  // Resolve booking/direct-use eligibility only after newly earned tickets exist.
+  const bookingOptions = await supabase.rpc("member_ticket_booking_options", { p_member_id: member.id });
+  if (bookingOptions.error) throw mapDatabaseError(bookingOptions.error);
   const [balancesRes,ticketsRes,pendingSelectionsRes] = pointCardIds.length
     ? await Promise.all([
       supabase.from("point_balances").select("*").eq("member_id",member.id).in("point_card_id",pointCardIds),
