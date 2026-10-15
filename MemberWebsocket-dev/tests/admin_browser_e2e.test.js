@@ -64,7 +64,7 @@ test('paired runner covers every member-facing surface and verifies admin record
   assert.match(runner, /waitForPairedBookingHandoff/);
   assert.doesNotMatch(runner, /Promise\.all\(\[adminTask, \.\.\.clientTasks\]\)/);
   assert.match(runner, /_ADMIN_RECORD_SYNC/);
-  assert.match(runner, /data-record-filter="testAutomation"/);
+  assert.match(runner, /MemberE2EActivityEvidence/);\n  assert.match(runner, /admin\\.member-records\\.list/);
   assert.match(runner, /member-test-session-v1/);
   assert.match(runner, /MAX_PAIRED_PARTICIPANTS = 10/);
   assert.match(runner, /function openClientWindows\(/);
