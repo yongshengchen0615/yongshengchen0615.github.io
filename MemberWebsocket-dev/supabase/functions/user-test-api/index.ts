@@ -692,7 +692,7 @@ async function persistUserQaRun(
   const failedCount = cases.filter((item) => item.status === "failed").length;
   const skippedCount = cases.filter((item) => item.status === "skipped").length;
   const runCode = "UQA-" + Date.now().toString(36).toUpperCase() + "-" + suffix().slice(0, 8);
-  const finalStatus = failedCount > 0 ? "failed" : "passed";
+  const finalStatus = cases.length > 0 && passedCount === cases.length && failedCount === 0 && skippedCount === 0 ? "passed" : "failed";
 
   const runInsert = await s.from("automation_test_runs").insert({
     run_code: runCode,
