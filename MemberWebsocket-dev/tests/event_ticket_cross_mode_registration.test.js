@@ -20,13 +20,13 @@ test('a single physical activity claim is serialized across snapshot and general
 test('one pending snapshot cannot reserve a ticket held by another snapshot', () => {
   assert.match(migration, /r\.id<>new\.id/);
   assert.match(migration, /requested_benefits @> jsonb_build_array/);
-  assert.match(migration, /group by item->>'id' having count\(\*\) > 1/);
+  assert.match(migration, /group by item\.value->>'id' having count\(\*\) > 1/);
   assert.match(migration, /EXISTING_EVENT_TICKET_RESERVATION_CONFLICT/);
 });
 
 test('snapshot approval may transfer its own claim into the finalized booking atomically', () => {
   assert.match(migration, /r\.receipt_id is distinct from nullif\(current_setting\('app\.snapshot_receipt_id',true\),''\)/);
-  assert.match(read('supabase/migrations/20261015143000_snapshot_pending_future_booking_reservations.sql'), /app\.snapshot_receipt_id/);
+  assert.match(read('supabase/migrations/20261015143000_snapshot_pending_future_booking_reservations.sql'), /register_snapshot_receipt_v2/);
 });
 
 test('both booking and snapshot catalogs disable already-registered activity claims', () => {
@@ -51,5 +51,5 @@ test('booking, group booking and snapshot APIs map duplicate registration to 409
 test('point ticket rebooking allowance remains isolated from event tickets', () => {
   assert.match(read('supabase/functions/booking-receipt-api/index.ts'), /if\(item\.kind!=="points" \|\| item\.reservedForBooking!==true\) return item/);
   assert.match(migration, /new\.benefit_kind='event'/);
-  assert.match(migration, /entry->>'kind'='event'/);
+  assert.match(migration, /entry\.value->>'kind'='event'/);
 });
