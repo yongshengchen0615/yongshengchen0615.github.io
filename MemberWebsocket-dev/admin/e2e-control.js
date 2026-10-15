@@ -7904,7 +7904,7 @@
     // is returned. Retry only for a short propagation delay, never synthesize evidence.
     for (let attempt = 0; attempt < 3; attempt++) {
       const history = await window.MemberSystem.request(session.config, 'admin', session.idToken,
-        'admin.member-records.list', { lineUserId: account.lineUserId });
+        'admin.member-records.list', { lineUserId: account.lineUserId, testRunCodes: requested });
       report = inspector(history, requested);
       if (!report.missingRunCodes.length) break;
       if (attempt < 2) await sleep(350);
