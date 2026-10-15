@@ -1972,6 +1972,40 @@ function safeDiagnosticSnapshot(value: unknown, maxChars = 7000): Json {
   return compacted;
 }
 
+function normalizeE2EGpsFixture(raw: unknown, startedAt: string, completedAt: string): Json {
+  // Browser GPS evidence is untrusted test-only data. Never use it for eligibility,
+  // authorization, ticket redemption, geofencing, or a production member session.
+  const unavailable = (status: string, reason: string): Json =>
+    ({ source: "browser-geolocation", testOnly: true, status, reason });
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return unavailable("unavailable", "GPS_NOT_RECORDED");
+  const input = raw as Record<string, unknown>;
+  if (input.source !== "browser-geolocation" || input.testOnly !== true) return unavailable("invalid", "GPS_SOURCE_INVALID");
+  const status = String(input.status || "");
+  const failures = ["denied", "timeout", "unavailable", "invalid"];
+  if (failures.includes(status)) {
+    const reason = String(input.reason || "").slice(0, 80);
+    return unavailable(status, /^[A-Z_]{3,80}$/.test(reason) ? reason : "GPS_UNAVAILABLE");
+  }
+  if (status !== "ready" && status !== "imprecise") return unavailable("invalid", "GPS_STATUS_INVALID");
+  const latitude = Number(input.latitude), longitude = Number(input.longitude);
+  const accuracyMeters = Number(input.accuracyMeters);
+  const capturedMs = Date.parse(String(input.capturedAt || ""));
+  const startMs = Date.parse(startedAt), endMs = Date.parse(completedAt);
+  if (!Number.isFinite(latitude) || Math.abs(latitude) > 90 || !Number.isFinite(longitude)
+    || Math.abs(longitude) > 180 || !Number.isFinite(accuracyMeters) || accuracyMeters <= 0
+    || accuracyMeters > 10000 || !Number.isFinite(capturedMs)
+    || capturedMs < startMs - 120000 || capturedMs > endMs + 30000) {
+    return unavailable("invalid", "GPS_COORDINATES_OR_TIME_INVALID");
+  }
+  if (status === "ready" && accuracyMeters > 100) return unavailable("invalid", "GPS_ACCURACY_INVALID");
+  return {
+    source: "browser-geolocation", testOnly: true, status,
+    latitude: Number(latitude.toFixed(6)), longitude: Number(longitude.toFixed(6)),
+    accuracyMeters: Math.round(accuracyMeters), capturedAt: new Date(capturedMs).toISOString(),
+    expiresAt: new Date(capturedMs + 120000).toISOString()
+  };
+}
+
 async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawCases: unknown, timing: Json = {}): Promise<Json> {
   const cases = Array.isArray(rawCases) ? rawCases : [];
   if (cases.length > 60) throw new ApiError(400,"INVALID_BROWSER_CASES","會員 E2E 案例不可超過 60 個，拒絕截斷測試證據。");
@@ -2001,12 +2035,15 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
   const skippedCount = normalized.filter((item) => item.status === "skipped").length;
   const featureCoverage = normalizeFeatureCoverage(timing.featureCoverage);
   const suite = timing.suite === "quick" ? "quick" : "full";
+  const gpsTestFixture = normalizeE2EGpsFixture(timing.gpsTestFixture, startedAt, completedAt);
+  const gpsRequired = suite === "full" && ["booking","points","event"].includes(surface);
+  const gpsIncomplete = gpsRequired && gpsTestFixture.status !== "ready";
   const rawExpectedKeys = Array.isArray(timing.expectedCaseKeys) ? timing.expectedCaseKeys : [];
   const expectedKeys = rawExpectedKeys.slice(0,60).filter((key: unknown) => typeof key === "string" && /^[A-Z0-9_]{1,100}$/.test(key));
   const missingKeys = expectedKeys.filter((key: string) => !normalized.some(row => row.key === key && row.status === "passed")
     || normalized.some(row => row.key === key && row.status !== "passed"));
-  const executionIncomplete = suite === "full" && (!featureCoverage?.complete || expectedKeys.length === 0
-    || expectedKeys.length !== rawExpectedKeys.length || new Set(expectedKeys).size !== expectedKeys.length || missingKeys.length > 0);
+  const executionIncomplete = gpsIncomplete || (suite === "full" && (!featureCoverage?.complete || expectedKeys.length === 0
+    || expectedKeys.length !== rawExpectedKeys.length || new Set(expectedKeys).size !== expectedKeys.length || missingKeys.length > 0));
   const runCode = "UE2E-" + Date.now().toString(36).toUpperCase() + "-" + suffix().slice(0, 8);
   const run = await s.from("automation_test_runs").insert({
     run_code: runCode,
@@ -2024,6 +2061,7 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
       surface,
       ...summarizeE2EExecution(normalized),
       featureCoverage,
+      gpsTestFixture,
       missingCaseKeys: missingKeys,
       ...(executionIncomplete ? {coverageComplete:false,verificationStatus:failedCount ? "failed" : "incomplete"} : {}),
       skippedCases: skippedCount,
