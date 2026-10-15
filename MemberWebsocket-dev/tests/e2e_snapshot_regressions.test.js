@@ -207,11 +207,11 @@ test('browser run artifact metrics count persisted screenshots instead of failed
 });
 
 
-test('skipped backend cases complete the unified server phase without becoming a browser regression', () => {
+test('skipped backend cases keep selected-scope verification incomplete', () => {
   const runner = read('admin/e2e-control.js');
-  assert.match(runner, /const completedCases = Number\(run\.passedCases \|\| 0\) \+ skippedCases/);
-  assert.match(runner, /completedCases === Number\(run\.totalCases \|\| 0\)/);
-  assert.doesNotMatch(runner, /Number\(run\.passedCases \|\| 0\) === Number\(run\.totalCases \|\| 0\)[\s\S]{0,120}skippedCases \|\| 0\) === 0/);
+  assert.match(runner, /const completedCases = Number\(run\.passedCases \|\| 0\);/);
+  assert.match(runner, /failedCases === 0 && skippedCases === 0/);
+  assert.match(runner, /run\.summary\?\.coverageComplete !== false/);
 });
 
 test('event daily-limit E2E waits for the current server snapshot to reach the badge', () => {

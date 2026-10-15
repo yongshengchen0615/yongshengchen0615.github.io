@@ -1193,9 +1193,9 @@
     const gaps = coverage?.features.filter(item => item.status !== 'passed').map(item => ({id:item.id,level:item.level,status:item.status,keys:item.keys})) || [];
     state.results.push({key:'ADMIN_FEATURE_COVERAGE_SUMMARY',name:'管理端功能節點執行覆蓋摘要',domain:'Coverage',durationMs:0,
       ...(!coverage || coverage.counts.unregistered || coverage.counts.unplanned
-        ? fail('功能節點缺少登記或本輪路徑不完整。', {complete:true}, {total:coverage?.total || 0,counts:coverage?.counts || {},gaps})
-        : coverage.complete ? pass('所選模組的管理端登記節點均通過。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps})
-        : fail('管理端仍有失敗、略過或未執行功能，本輪覆蓋未完成。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps}))});
+        ? fail('功能節點缺少登記或本輪路徑不完整。', {complete:true}, {total:coverage?.total || 0,counts:coverage?.counts || {},gaps,execution:coverage?.execution || null})
+        : coverage.complete ? pass('所選模組的管理端登記節點均通過。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps,execution:coverage.execution})
+        : fail('管理端仍有失敗、略過或未執行功能，本輪覆蓋未完成。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps,execution:coverage.execution}))});
     render();
   }
 
@@ -2043,16 +2043,15 @@
       };
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       const skippedCases = Number(run.skippedCases || 0);
-      const completedCases = Number(run.passedCases || 0) + skippedCases;
+      const completedCases = Number(run.passedCases || 0);
       const completeBackendRun = Number(run.totalCases || 0) > 0 &&
         completedCases === Number(run.totalCases || 0) &&
-        failedCases === 0 &&
+        failedCases === 0 && skippedCases === 0 &&
+        run.summary?.coverageComplete !== false &&
         String(run.status || '') === 'passed';
       Object.assign(row, completeBackendRun
         ? pass(
-            skippedCases > 0
-              ? '後端共用安全與所選模組 QA 已完成；' + skippedCases + ' 個環境條件略過，其餘案例通過。'
-              : '後端共用安全與所選模組 QA 已完成；繼續執行 Browser 協同 E2E。',
+            '後端共用安全與所選模組 QA 已完成；繼續執行 Browser 協同 E2E。',
             row.expected,
             row.actual
           )
@@ -2543,15 +2542,12 @@
           Object.assign(row, skip(label + ' E2E 已依停止要求中止。', { stoppedSafely: true }, row.actual));
         } else {
           const sameMember = childMemberId === participant.account?.memberId;
-          const blocked = false; // A selected feature that did not run is a failed coverage contract.
           const ok = child?.ok === true && Number(summary.failed || 0) === 0 && Number(summary.skipped || 0) === 0
             && child.coverage?.complete === true && sameMember && humanInteractionVerified;
-          Object.assign(row, blocked
-            ? skip(label + '有略過或未驗證節點，查看功能覆蓋摘要。', row.expected, row.actual)
-            : ok
+          Object.assign(row, ok
             ? pass(label + '隨機真人 E2E 通過，且使用的是該用戶端專屬測試 Session。', row.expected, row.actual)
             : fail(label + '真人 E2E、Session surface 或測試用戶一致性驗證失敗。', row.expected, row.actual));
-          if (!ok && !blocked) {
+          if (!ok) {
             const childFailures = Array.isArray(child?.results)
               ? child.results.filter((item) => item?.status === 'failed').slice(0, 8).map((item) => ({
                   key: item.key,

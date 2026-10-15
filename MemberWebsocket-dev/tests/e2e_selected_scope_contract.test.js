@@ -93,3 +93,15 @@ test('invalid participant/surface evidence is discarded instead of being assigne
   assert.equal(normalized.complete,true);
   assert.deepEqual(normalizeFeatureCoverage(normalized),normalized);
 });
+
+test('the real coordinator fails an otherwise passed backend run containing skipped evidence', async () => {
+  const vm = require('node:vm');
+  const source = fs.readFileSync(path.join(__dirname,'../admin/e2e-control.js'),'utf8').replace(
+    '  window.MemberAdminE2EControl =', '  window.probe={state,runUnifiedServerFullPhase};\n  window.MemberAdminE2EControl =');
+  for (const [passedCases,skippedCases,expected] of [[2,0,'passed'],[1,1,'failed']]) {
+    const window = {addEventListener(){},MemberAdminTestControl:{runFull:async()=>({run:{status:'passed',totalCases:2,passedCases,skippedCases}})}};
+    vm.runInNewContext(source,{window,document:{},performance,console});
+    await window.probe.runUnifiedServerFullPhase(['member']);
+    assert.equal(window.probe.state.results[0].status,expected);
+  }
+});

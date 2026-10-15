@@ -2000,14 +2000,17 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
   const passedCount = normalized.filter((item) => item.status === "passed").length;
   const skippedCount = normalized.filter((item) => item.status === "skipped").length;
   const featureCoverage = normalizeFeatureCoverage(timing.featureCoverage);
-  const expectedKeys = Array.isArray(timing.expectedCaseKeys) ? timing.expectedCaseKeys : [];
+  const suite = timing.suite === "quick" ? "quick" : "full";
+  const rawExpectedKeys = Array.isArray(timing.expectedCaseKeys) ? timing.expectedCaseKeys : [];
+  const expectedKeys = rawExpectedKeys.slice(0,60).filter((key: unknown) => typeof key === "string" && /^[A-Z0-9_]{1,100}$/.test(key));
   const missingKeys = expectedKeys.filter((key: string) => !normalized.some(row => row.key === key && row.status === "passed")
     || normalized.some(row => row.key === key && row.status !== "passed"));
-  const executionIncomplete = !featureCoverage?.complete || expectedKeys.length === 0 || missingKeys.length > 0;
+  const executionIncomplete = suite === "full" && (!featureCoverage?.complete || expectedKeys.length === 0
+    || expectedKeys.length !== rawExpectedKeys.length || new Set(expectedKeys).size !== expectedKeys.length || missingKeys.length > 0);
   const runCode = "UE2E-" + Date.now().toString(36).toUpperCase() + "-" + suffix().slice(0, 8);
   const run = await s.from("automation_test_runs").insert({
     run_code: runCode,
-    suite: "full",
+    suite,
     environment: "MemberWebsocket-dev",
     status: failedCount || executionIncomplete ? "failed" : "passed",
     triggered_by: identity.lineUserId,

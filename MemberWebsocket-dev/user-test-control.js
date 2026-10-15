@@ -931,10 +931,10 @@
       const coverage = state.featureCoverage;
       const gaps = coverage?.features.filter(item => item.status !== 'passed').map(item => ({id:item.id,level:item.level,status:item.status,keys:item.keys})) || [];
       state.results.push({ key:'QA_FEATURE_COVERAGE_SUMMARY', name:'功能節點執行覆蓋摘要', domain:'Coverage', durationMs:0,
-        ...(coverage?.complete ? pass('本頁登記的功能節點均通過；契約與裝置驗收限制仍分開保留。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps})
+        ...(coverage?.complete ? pass('本頁登記的功能節點均通過；契約與裝置驗收限制仍分開保留。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps,execution:coverage.execution})
           : !coverage || coverage.counts.unregistered || coverage.counts.unplanned
-            ? fail('功能節點缺少登記或未納入本輪路徑。', {complete:true}, {total:coverage?.total || 0,counts:coverage?.counts || {},gaps})
-            : fail('功能節點有失敗、環境阻擋或未執行，本輪覆蓋未完成。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps})) });
+            ? fail('功能節點缺少登記或未納入本輪路徑。', {complete:true}, {total:coverage?.total || 0,counts:coverage?.counts || {},gaps,execution:coverage?.execution || null})
+            : fail('功能節點有失敗、環境阻擋或未執行，本輪覆蓋未完成。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps,execution:coverage.execution})) });
       renderResults();
     }
     // A node deadline is a failed run, not a user cancellation: persist its trace.
@@ -2042,8 +2042,9 @@
     const payload = {
       cases,
       runnerVersion: VERSION,
+      suite: state.currentSuite,
       featureCoverage: state.featureCoverage,
-      expectedCaseKeys: state.caseCatalogKeys,
+      expectedCaseKeys: state.currentSuite === 'full' ? state.caseCatalogKeys : [],
       startedAt: state.runStartedAt || undefined,
       completedAt: new Date().toISOString()
     };
