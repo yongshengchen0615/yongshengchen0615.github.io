@@ -6,7 +6,7 @@
   const FAILURE_SCREENSHOT_BUDGET = 1;
   let html2canvasLoader = null;
 
-  const VERSION = '2026-10-15.1';
+  const VERSION = '2026-10-15.2';
   const USER_NODE_TIMEOUT_MS = 75000;
   const USER_BOOKING_NODE_TIMEOUT_MS = 4 * 60 * 1000;
   const HISTORY_KEY = 'member-user-qa-history-v1';
@@ -750,7 +750,7 @@
           source: 'browser-geolocation', testOnly: true,
           status: accuracyMeters <= 100 ? 'ready' : 'imprecise',
           latitude: Number(latitude.toFixed(6)), longitude: Number(longitude.toFixed(6)),
-          accuracyMeters: Math.round(accuracyMeters), capturedAt: new Date(timestamp).toISOString(),
+          accuracyMeters: Math.max(1, Math.round(accuracyMeters)), capturedAt: new Date(timestamp).toISOString(),
           expiresAt: new Date(timestamp + 120000).toISOString()
         });
       }, (error) => resolve(unavailable(error?.code === 1 ? 'denied' : error?.code === 3 ? 'timeout' : 'unavailable',
