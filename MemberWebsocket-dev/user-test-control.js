@@ -54,6 +54,7 @@
     COMMON_TOUR_AUTOSTART: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TEST_SESSION'] },
     COMMON_TOUR_JOURNEY: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TOUR_AUTOSTART'] },
     COMMON_CONFIG: { module: 'shared', phase: 0, required: true, dependencies: ['COMMON_TOUR_JOURNEY'] },
+    COMMON_E2E_GPS_CAPTURE: { module: 'shared', phase: 0, required: true, risk: 'location', dependencies: ['COMMON_TEST_SESSION'] },
     COMMON_SURFACE_READY: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_CONFIG'] },
     COMMON_BOOTSTRAP: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_SURFACE_READY'] },
     COMMON_ESSENTIAL_DOM: { module: 'shared', phase: 1, required: true, dependencies: ['COMMON_SURFACE_READY'] },
@@ -149,6 +150,7 @@
     browserRun: null,
     usageState: null,
     usageStateError: null,
+    gpsFixture: null,
     bookingBaseline: null,
     bookingHandoff: null,
     availabilitySync: null,
@@ -726,6 +728,45 @@
     pending.then(settled, settled);
   }
 
+  async function captureE2EGpsFixture() {
+    const unavailable = (status, reason) => ({ status, reason, source: 'browser-geolocation', testOnly: true });
+    if (window.isSecureContext === false || typeof navigator?.geolocation?.getCurrentPosition !== 'function') {
+      return unavailable('unavailable', 'GEOLOCATION_UNAVAILABLE');
+    }
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition((position) => {
+        const coordinates = position?.coords;
+        const latitude = Number(coordinates?.latitude);
+        const longitude = Number(coordinates?.longitude);
+        const accuracyMeters = Number(coordinates?.accuracy);
+        const timestamp = Number(position?.timestamp);
+        if (!Number.isFinite(latitude) || Math.abs(latitude) > 90 || !Number.isFinite(longitude) || Math.abs(longitude) > 180
+          || !Number.isFinite(accuracyMeters) || accuracyMeters <= 0 || accuracyMeters > 10000
+          || !Number.isFinite(timestamp) || timestamp < Date.now() - 120000 || timestamp > Date.now() + 30000) {
+          resolve(unavailable('invalid', 'GPS_FIX_INVALID_OR_STALE'));
+          return;
+        }
+        resolve({
+          source: 'browser-geolocation', testOnly: true,
+          status: accuracyMeters <= 100 ? 'ready' : 'imprecise',
+          latitude: Number(latitude.toFixed(6)), longitude: Number(longitude.toFixed(6)),
+          accuracyMeters: Math.round(accuracyMeters), capturedAt: new Date(timestamp).toISOString(),
+          expiresAt: new Date(timestamp + 120000).toISOString()
+        });
+      }, (error) => resolve(unavailable(error?.code === 1 ? 'denied' : error?.code === 3 ? 'timeout' : 'unavailable',
+        error?.code === 1 ? 'GEOLOCATION_DENIED' : error?.code === 3 ? 'GEOLOCATION_TIMEOUT' : 'GEOLOCATION_ERROR')),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
+    });
+  }
+
+  function gpsFixtureCase() {
+    const fixture = state.gpsFixture;
+    if (fixture?.status === 'ready') return pass('本輪 E2E 啟動時已取得瀏覽器 GPS，僅供測試診斷與驗證，正式核銷仍需最新定位。',
+      { status: 'ready', source: 'browser-geolocation' }, fixture);
+    return skip('本輪 E2E 未取得可用的 GPS 測試基準；不得使用模擬座標或略過正式定位限制。',
+      { status: 'ready', source: 'browser-geolocation' }, fixture || { status: 'unavailable' });
+  }
+
   async function runSuite(suite) {
     const requestedSuite = suite === 'full' ? 'full' : 'quick';
     if (state.pendingTimedOutNode) {
@@ -766,6 +807,7 @@
     state.browserRun = null;
     state.usageState = null;
     state.usageStateError = null;
+    state.gpsFixture = null;
     state.bookingBaseline = null;
     state.bookingHandoff = null;
     state.scenarioPlan = null;
@@ -781,6 +823,13 @@
       ? '正在以可重現 seed=' + state.randomSeed + '、難度 L' + state.complexityLevel + ' 執行隨機案例與自適應壓力重播…'
       : '正在執行快速健康檢查…');
     renderResults();
+
+    // Per-session acquisition before fixtures. This is diagnostic data, NOT an auth bypass.
+    if (state.currentSuite === 'full') {
+      setMessage('正在取得本輪 E2E 的瀏覽器 GPS 定位；結果會記入測試紀錄。');
+      try { state.gpsFixture = await captureE2EGpsFixture(); }
+      catch (_) { state.gpsFixture = { status: 'unavailable', reason: 'GEOLOCATION_ERROR', source: 'browser-geolocation', testOnly: true }; }
+    }
 
     let bookingBaselineFailed = false;
     let timedOutCase = false;
@@ -1051,6 +1100,9 @@
     }
 
     const fullCommon = [
+      ...(['booking','points','event'].includes(surface)
+        ? [caseDef('E2E 啟動 GPS 定位取證', 'GPS / Test Fixture', gpsFixtureCase, 'COMMON_E2E_GPS_CAPTURE')]
+        : []),
       caseDef('高複雜度使用狀態前置', 'Usage State', usageStateComplexityCase, 'COMMON_USAGE_STATE_COMPLEXITY'),
       caseDef('無測試 Session 必須被拒絕', 'Security', negativeSessionCase, 'SECURITY_MISSING_SESSION'),
       caseDef('竄改測試 Session 必須被拒絕', 'Security', tamperedSessionCase, 'SECURITY_TAMPERED_SESSION'),
@@ -1918,6 +1970,9 @@
     return { blob, width: canvas.width, height: canvas.height };
   }
 
+  // Use the real sanitized UI screenshot for either failure evidence or QA-only snapshot receipt.
+  const captureE2ESnapshotBlob = captureFailureScreenshotBlob;
+
   async function uploadFailureScreenshot(row) {
     const config = await loadConfig();
     const token = window.TestModeClient?.getSessionToken?.();
@@ -2044,6 +2099,7 @@
       runnerVersion: VERSION,
       suite: state.currentSuite,
       featureCoverage: state.featureCoverage,
+      gpsTestFixture: state.gpsFixture,
       expectedCaseKeys: state.currentSuite === 'full' ? state.caseCatalogKeys : [],
       startedAt: state.runStartedAt || undefined,
       completedAt: new Date().toISOString()
@@ -3866,6 +3922,8 @@
     const existingIds = new Set((Array.isArray(before?.submissions) ? before.submissions : []).map((item) => String(item?.receiptId || '')));
     const actual = {
       screenshotCaptured: false,
+      screenshotSource: '',
+      screenshotCapturedAt: '',
       previewReady: false,
       submitted: false,
       awaitingReview: false,
@@ -3875,7 +3933,9 @@
     };
     let modal = null;
     try {
-      const captured = await captureFailureScreenshotBlob();
+      const captured = await captureE2ESnapshotBlob();
+      actual.screenshotSource = 'screen-capture';
+      actual.screenshotCapturedAt = new Date().toISOString();
       actual.screenshotCaptured = Boolean(captured?.blob && captured.blob.size > 0);
       const injected = await window.BookingReceipts.openAccessibleE2ESnapshot(captured.blob);
       actual.mimeType = String(injected?.mimeType || '');
