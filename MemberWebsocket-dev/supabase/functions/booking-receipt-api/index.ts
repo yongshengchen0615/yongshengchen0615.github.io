@@ -628,7 +628,7 @@ async function accessibleBenefitCatalog(supabase:SupabaseClient,member:any,curre
     .map((item:any)=>item?.kind==="event"&&item?.claimRequired===true
       ? {...item,selectable:false,disabledReason:"會員尚未領取此活動票券；管理員不可代替會員領取。"}
       : item);
-  // Snapshot is retrospective: a later confirmed booking must keep its own
+  // Snapshot is retrospective: a later pending or confirmed booking must keep its own
   // reserved points and ticket, but surplus points may independently fund now.
   // This exception is snapshot-only; general booking remains one ticket / ID.
   const pendingPointIds=items.filter((item:any)=>item.kind==="points"
@@ -648,7 +648,7 @@ async function accessibleBenefitCatalog(supabase:SupabaseClient,member:any,curre
         .in("id",bookingIds);
       if(bookings.error) throw dbError(bookings.error);
       const futureIds=new Set((bookings.data||[]).filter((row:any)=>
-        row.status==="confirmed" && !row.completed_at &&
+        (row.status==="pending" || row.status==="confirmed") && !row.completed_at &&
         Date.parse(String(row.start_at||"").replace(" ","T").replace(/Z$/,"")+"+08:00")>Date.now()
       ).map((row:any)=>String(row.id)));
       for(const row of reserved.data||[]){
