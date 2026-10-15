@@ -6166,9 +6166,15 @@
     }, 7000);
     actual.recordModalOpened = Boolean(modal);
     if (modal) {
+      await waitFor(() => !document.getElementById('memberRecordsList')?.querySelector('.member-records-loading'), 7000);
+      document.getElementById('memberRecordsOpenUsage')?.click();
+      const usage = await waitFor(() => {
+        const panel = document.getElementById('memberUsagePanel');
+        return panel && !panel.classList.contains('hidden') ? panel : null;
+      }, 3000);
       const filters = ['all', 'presence', 'pointCards', 'eventTickets', 'calendar', 'bookings', 'testAutomation'];
       for (const filter of filters) {
-        const tab = modal.querySelector('[data-record-filter="' + filter + '"]');
+        const tab = usage?.querySelector('[data-record-filter="' + filter + '"]');
         if (!tab) {
           actual.recordFilters[filter] = false;
           continue;
@@ -6176,7 +6182,6 @@
         tab.click();
         actual.recordFilters[filter] = Boolean(await waitFor(() => tab.classList.contains('active'), 1200));
       }
-      document.getElementById('closeMemberRecordsModal')?.click();
     }
 
     search.value = '';
@@ -7883,31 +7888,37 @@
     return safe(result);
   }
   async function verifyUserRunsVisibleInAdmin(account, runCodes) {
-    const latestRunCode = String(runCodes.filter(Boolean).slice(-1)[0] || '');
-    if (!account?.memberCode || !latestRunCode) {
-      return fail('沒有足夠資料驗證用戶端測試紀錄同步。', { memberCode: true, runCode: true }, { memberCode: account?.memberCode || null, runCode: latestRunCode || null });
+    const requested = Array.isArray(runCodes) ? runCodes.filter(Boolean) : [];
+    if (!account?.lineUserId || !requested.length) {
+      return fail('沒有足夠資料核對用戶端測試行為。', { accountAndRunCodes: true },
+        { accountAndRunCodes: false, runCount: requested.length });
     }
-    await ensureTestRoster(account);
-    const rows = Array.from(document.querySelectorAll('#memberTableBody tr'));
-    const row = rows.find((item) => item.textContent?.includes(String(account.memberCode)));
-    if (!row) return fail('管理端名冊找不到協同測試會員。', { memberCode: account.memberCode }, { found: false });
-    const button = row.querySelector('button[data-action="view-records"]');
-    if (!button) return fail('協同測試會員缺少紀錄按鈕。', { recordsButton: true }, { recordsButton: false });
-    button.click();
-    const modal = await waitFor(() => {
-      const node = document.getElementById('memberRecordsModal');
-      return node && !node.classList.contains('hidden') ? node : null;
-    }, 8000);
-    if (!modal) return fail('會員紀錄視窗未開啟。', { modalOpen: true }, { modalOpen: false });
-    const tab = modal.querySelector('[data-record-filter="testAutomation"]');
-    tab?.click();
-    const visible = Boolean(await waitFor(() => modal.querySelector('#memberRecordsList')?.textContent?.includes(latestRunCode), 10000, 120));
-    document.getElementById('closeMemberRecordsModal')?.click();
-    return visible
-      ? pass('用戶端真人 E2E 的 run code 已同步出現在同一位測試會員的管理端紀錄。', { runCodeVisible: true }, { runCodeVisible: true, runCode: latestRunCode })
-      : fail('用戶端 E2E 已完成，但管理端會員紀錄尚未看見該 run code。', { runCodeVisible: true }, { runCodeVisible: false, runCode: latestRunCode });
+    const inspector = window.MemberE2EActivityEvidence?.inspect;
+    if (typeof inspector !== 'function') {
+      return fail('會員活動證據檢查器未載入，禁止將測試自述視為執行成功。',
+        { inspectorReady: true }, { inspectorReady: false });
+    }
+    const session = await adminSession();
+    let report = null;
+    // The user-run record is committed by the test-control API before its run code
+    // is returned. Retry only for a short propagation delay, never synthesize evidence.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const history = await window.MemberSystem.request(session.config, 'admin', session.idToken,
+        'admin.member-records.list', { lineUserId: account.lineUserId });
+      report = inspector(history, requested);
+      if (!report.missingRunCodes.length) break;
+      if (attempt < 2) await sleep(350);
+    }
+    // The member activity API currently caps automation cases at 100. A missing
+    // run code is incomplete evidence, not proof that the user never acted.
+    return report.ok
+      ? pass(report.evidenceLevel === 'business-record-verified'
+        ? '用戶端 E2E 紀錄與會員實際票券／預約活動已交叉比對。'
+        : '用戶端 E2E 紀錄已綁定會員；本輪未包含可比對的業務寫入案例。',
+        { memberLinkedRunCodes: true, businessEvidenceForMutationCases: true }, report)
+      : fail('用戶端 E2E 紀錄或實際會員活動證據不完整，不能認定測試行為成功。',
+        { memberLinkedRunCodes: true, businessEvidenceForMutationCases: true }, report);
   }
-
 
   async function createEphemeralTestAccount() {
     const before = await postAdminTestMode('admin.test-mode.bootstrap');
@@ -8814,20 +8825,13 @@
   }
 
   async function verifyPointRecordInAdmin(account, expectedText) {
-    await ensureTestRoster(account);
-    const row = Array.from(document.querySelectorAll('#memberTableBody tr')).find((item) => item.textContent?.includes(String(account.memberCode || '')));
-    const button = row?.querySelector('button[data-action="view-records"]');
-    if (!button) return false;
-    button.click();
-    const modal = await waitFor(() => {
-      const node = document.getElementById('memberRecordsModal');
-      return node && !node.classList.contains('hidden') ? node : null;
-    }, 7000);
-    if (!modal) return false;
-    modal.querySelector('[data-record-filter="pointCards"]')?.click();
-    const visible = Boolean(await waitFor(() => String(modal.querySelector('#memberRecordsList')?.textContent || '').includes(expectedText), 10000, 120));
-    document.getElementById('closeMemberRecordsModal')?.click();
-    return visible;
+    if (!account?.lineUserId || !expectedText) return false;
+    const session = await adminSession();
+    const history = await window.MemberSystem.request(session.config, 'admin', session.idToken,
+      'admin.member-records.list', { lineUserId: account.lineUserId });
+    return Array.isArray(history?.records?.pointCards) && history.records.pointCards.some((row) =>
+      (String(row.title || '').includes(expectedText) || String(row.cardTitle || '').includes(expectedText))
+      && (row.recordType === 'point_entry' || row.recordType === 'point_ticket'));
   }
 
   async function deleteDeepPointCard(ctx) {
