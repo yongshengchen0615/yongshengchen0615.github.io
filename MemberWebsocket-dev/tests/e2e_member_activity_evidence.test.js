@@ -65,6 +65,7 @@ test('paired browser runner reads member usage history from authorized API, not 
   const fn = source.slice(start,end);
   assert.match(fn,/admin\.member-records\.list/);
   assert.match(fn,/MemberE2EActivityEvidence/);
+  assert.match(fn,/testRunCodes: requested/);
   assert.doesNotMatch(fn,/modal\.querySelector/);
   const html = fs.readFileSync(path.join(root,'admin/index.html'),'utf8');
   assert.ok(html.indexOf('../e2e-member-activity-evidence.js')>=0);
