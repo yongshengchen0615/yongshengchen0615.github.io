@@ -42,6 +42,9 @@ begin
       where r.member_id=new.member_id
         and r.submission_mode='accessible'
         and r.status in ('pending_upload','awaiting_review')
+        -- Admin snapshot settlement transfers its OWN receipt selection into
+        -- the generated booking before the receipt transitions to bound.
+        and r.receipt_id is distinct from nullif(current_setting('app.snapshot_receipt_id',true),'')
         and r.requested_benefits @> jsonb_build_array(
           jsonb_build_object('kind','event','id',new.benefit_ref)
         )
