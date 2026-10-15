@@ -36,6 +36,7 @@ async function preview({ status = 'pending', startAt = '2099-10-16 09:00:00', co
     loadBookingBenefits: async () => ({ items: [{ kind: 'points', selectionId: id, reservedForBooking: true, pointCost: 5, pointBalance: points, conditionLabel: 'existing rules' }] }),
     snapshotGeoTicketPreview: async (_db, _id, items) => items,
     dbError: error => error,
+    selectionLimit: value => Math.max(0, Number(value || 0)),
     String, Date, Number, Boolean, Set, Map, Promise, Array, Math, Intl,
   });
   vm.runInContext(catalogSource, context);
