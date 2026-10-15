@@ -71,3 +71,11 @@ test('paired browser runner reads member usage history from authorized API, not 
   assert.ok(html.indexOf('../e2e-member-activity-evidence.js')>=0);
   assert.ok(html.indexOf('../e2e-member-activity-evidence.js') < html.indexOf('./e2e-control-loader.js'));
 });
+
+test('booking settings preflight recognizes the current admin success message and reports version errors', () => {
+  const admin = fs.readFileSync(path.join(root,'admin/e2e-control.js'),'utf8');
+  const view = fs.readFileSync(path.join(root,'admin/booking-panel-core.js'),'utf8');
+  assert.match(view,/預約與票券共用設定已儲存/);
+  assert.match(admin,/預約\(\?:與票券\)\?共用設定已儲存/);
+  assert.match(admin,/staleVersionErrorCode/);
+});
