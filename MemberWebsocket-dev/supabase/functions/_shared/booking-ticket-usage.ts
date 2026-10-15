@@ -4,6 +4,7 @@ export function bookingTicketUsageError(error: unknown, createError: (status: nu
     ["BOOKING_NOT_OWNED", 404, "找不到可供本人使用的預約。"],
     ["BOOKING_TICKET_CONFIRMATION_REQUIRED", 409, "請選擇管理員已確認、尚未完成的預約。"],
     ["BOOKING_CANCELLATION_PENDING", 409, "預約正在申請取消，目前不能使用票券。"],
+    ["EVENT_TICKET_ALREADY_REGISTERED", 409, "這張活動票券已在一般預約或快照模式登記，不能重複登記。"],
     ["BOOKING_BENEFIT_RESERVED", 409, "票券已預約使用，將於該次服務完成時自動核銷。"],
     ["BOOKING_BENEFIT_SERVICE_REQUIRED", 409, "票券不符合所選預約的服務項目，請更新後重新選擇。"],
     ["BOOKING_REDEEMED_BENEFIT_SERVICE_REQUIRED", 409, "已核銷票券所需的服務項目不能移除。"],
