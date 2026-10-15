@@ -5,7 +5,12 @@
   const node = (tag, value, className = '') => { const n = document.createElement(tag); n.textContent = value; n.className = className; return n; };
   const newId = () => 'BSEL-' + crypto.randomUUID();
   const times = b => {
-    const slots = Array.isArray(b.serviceSlots) && b.serviceSlots.length ? b.serviceSlots : [b];
+    // A ticket is reserved against the whole booking. Participant service slots can end
+    // earlier (e.g. before the 10-minute in-store service included in the booking).
+    // Fall back to participant slots only for legacy records missing the booking range.
+    const slots = b.startTime && b.endTime
+      ? [b]
+      : Array.isArray(b.serviceSlots) && b.serviceSlots.length ? b.serviceSlots : [b];
     return slots.map((s, i) => `${slots.length > 1 ? `時段 ${i + 1} · ` : ''}${String(s.startAt || s.bookingDate || b.bookingDate).slice(0, 10)} ${s.startTime}–${String(s.endAt || '').slice(0, 10) !== String(s.startAt || '').slice(0, 10) ? '翌日 ' : ''}${s.endTime}`).join('；');
   };
   const label = context => `已選於 ${times(context)}${context.status === 'redeemed' ? ' · 已核銷' : ''}`;
