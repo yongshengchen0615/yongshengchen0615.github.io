@@ -4325,7 +4325,7 @@
       setSettingsFields(mutation);
       controls.bookingAdminSaveSettingsButton.click();
       actual.validMutationSaved = Boolean(await waitFor(() =>
-        /預約共用設定已儲存/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        /預約(?:與票券)?共用設定已儲存/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
         15000,
         100
       ));
@@ -4365,7 +4365,8 @@
             expectedUpdatedAt: snapshot.updatedAt
           });
         } catch (error) {
-          actual.staleVersionRejected = String(error?.code || '') === 'BOOKING_SETTINGS_CONFLICT';
+          actual.staleVersionErrorCode = String(error?.code || '').slice(0, 100);
+          actual.staleVersionRejected = actual.staleVersionErrorCode === 'BOOKING_SETTINGS_CONFLICT';
         }
       }
 
