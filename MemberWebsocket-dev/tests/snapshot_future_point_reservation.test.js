@@ -13,7 +13,7 @@ test('future reserved point ticket can only be reused by snapshot with a second 
   assert.match(edge, /const enough=cost>0 && Number\(item\.pointBalance\)>=cost/);
   assert.match(edge, /const selectable=future && enough/);
   assert.match(edge, /\.eq\("benefit_kind","points"\)\.eq\("status","pending"\)/);
-  assert.match(edge, /row\.status==="confirmed" && !row\.completed_at/);
+  assert.match(edge, /\(row\.status==="pending" \|\| row\.status==="confirmed"\) && !row\.completed_at/);
   assert.match(edge, /Date\.parse\(String\(row\.start_at/);
   assert.match(migration, /future\.status<>'confirmed'/);
   assert.match(migration, /future\.start_at<=\(clock_timestamp\(\) at time zone 'Asia\/Taipei'\)/);
