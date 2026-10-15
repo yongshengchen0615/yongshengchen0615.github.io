@@ -1842,7 +1842,7 @@ async function executeRun(supabase: any, runId: string): Promise<Json> {
 
   const counters = await refreshCounters(supabase, runId);
   const completedAt = new Date().toISOString();
-  const finalStatus = counters.failed === 0 ? "passed" : "failed";
+  const finalStatus = counters.total > 0 && counters.passed === counters.total && counters.failed === 0 && counters.skipped === 0 ? "passed" : "failed";
   const finalUpdate = await supabase
     .from("automation_test_runs")
     .update({

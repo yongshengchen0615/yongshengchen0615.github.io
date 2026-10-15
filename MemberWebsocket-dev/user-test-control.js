@@ -3233,8 +3233,8 @@
     const navigationIds = new Set(['retryButton','logoutButton','joinMemberButton','refreshProfileButton','refreshTicketButton']);
     const patterns = {
       member: /^(copyMemberCodeButton|showMemberIdentityQr|openMemberFriends|friendQrScanImage|scanMemberReferralQr|stopMemberReferralQr|uploadMemberReferralQr|refreshFriends|confirmFriendRequest|lookupFriend|scanFriendQr|uploadFriendQr|stopFriendQr|edit|close|cancel|save|profileBirthdayPicker|confirmProfileBirthdayPicker|openMemberReferral|closeMemberReferral|bindMemberReferral|renewTermsButton)/,
-      points: /^(retryButton|joinMemberButton|logoutButton|pointTransferButton|pointTransferClose|pointTransferCopyOwnCode|pointTransferLookup|pointTransferSubmit|pointTransferChooseFriend|pointTransferUseFriend|pointTransferScanQr|pointTransferQrImageButton|pointTransferQrClose|pointTransferShowOwnQr|pointTransferFriendCancel)$|qr-scan-dialog-close|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)/,
-      event: /^(retryButton|joinMemberButton|logoutButton|closeTicketModal|ticketModalAction|refreshTicketButton)$|ticket-button|event-history-button/,
+      points: /^(retryButton|joinMemberButton|logoutButton|pointTransferButton|pointTransferClose|pointTransferCopyOwnCode|pointTransferLookup|pointTransferSubmit|pointTransferChooseFriend|pointTransferUseFriend|pointTransferScanQr|pointTransferQrImageButton|pointTransferQrClose|pointTransferShowOwnQr|pointTransferFriendCancel)$|qr-scan-dialog-close|card-tab|ticket-overview-use|ticket-batch-(cancel|confirm)|ticket-live-location-confirm/, 
+      event: /^(retryButton|joinMemberButton|logoutButton|closeTicketModal|ticketModalAction|refreshTicketButton)$|ticket-button|event-history-button|ticketModalLocationButton/,
       calendar: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|todayButton|nextMonthButton|closeCalendarDetailButton)$|calendar-day/,
       booking: /^(retryButton|joinMemberButton|logoutButton|previousMonthButton|nextMonthButton|closeAppointmentButton|cancelEditBookingButton|submitBookingButton|confirmBookingNoticeButton|closeBookingConfirmButton|cancelBookingConfirmButton|confirmBookingButton|closeBookingHolidayButton|bookingBenefitsRetry|bookingReceiptClose|bookingReceiptCapture|bookingReceiptRetake|bookingReceiptDiscard|bookingReceiptCancel|bookingReceiptSubmit|bookingAccessibleToggle|bookingAccessibleUpload|bookingAccessibleRefresh)$|calendar-day|service-add-button|selected-service-remove|slot-button|text-danger-button|button-light|拍攝收據送出審核|收據上傳未完成/
     };
@@ -3687,7 +3687,8 @@
     const cards = Array.isArray(options?.cards) ? options.cards : [];
     const modal = await waitFor(() => document.getElementById('pointTransferModal'), 2500);
     const ownCode = String(document.getElementById('pointTransferOwnMemberCode')?.textContent || '').trim();
-    const copy = document.getElementById('pointTransferCopyOwnCode');
+    const ownQr = document.getElementById('pointTransferShowOwnQr');
+    const removedCopy = document.getElementById('pointTransferCopyOwnCode');
     const lookup = document.getElementById('pointTransferLookup');
     const amount = document.getElementById('pointTransferAmount');
     const submit = document.getElementById('pointTransferSubmit');
@@ -3709,22 +3710,23 @@
       optionsArray: Array.isArray(options?.cards),
       modal: Boolean(modal),
       ownMemberCode: Boolean(ownCode) && !/尚未|讀取|同步/.test(ownCode),
-      copyControl: Boolean(copy),
+      ownQrControl: Boolean(ownQr),
+      deprecatedCopyRemoved: !removedCopy,
       lookupControl: Boolean(lookup),
       amountControl: Boolean(amount),
       submitControl: Boolean(submit),
       invalidAmountRejected: invalidAmount.httpStatus === 400 && invalidAmount.errorCode === 'INVALID_TRANSFER_AMOUNT',
       optionCount: cards.length
     };
-    const ok = actual.optionsArray && actual.modal && actual.ownMemberCode && actual.copyControl &&
+    const ok = actual.optionsArray && actual.modal && actual.ownMemberCode && actual.ownQrControl && actual.deprecatedCopyRemoved &&
       actual.lookupControl && actual.amountControl && actual.submitControl && actual.invalidAmountRejected;
     return ok
       ? pass('點數轉贈已驗證本人會員編號、Modal 控制、Server options 與 0 點寫入拒絕；成功原子轉贈由管理端協同節點覆蓋。', {
-          optionsArray: true, modal: true, ownMemberCode: true, copyControl: true,
+          optionsArray: true, modal: true, ownMemberCode: true, ownQrControl: true, deprecatedCopyRemoved: true,
           lookupControl: true, amountControl: true, submitControl: true, invalidAmountRejected: true
         }, actual)
       : fail('點數轉贈 Browser／Server 邊界至少一項不符合預期。', {
-          optionsArray: true, modal: true, ownMemberCode: true, copyControl: true,
+          optionsArray: true, modal: true, ownMemberCode: true, ownQrControl: true, deprecatedCopyRemoved: true,
           lookupControl: true, amountControl: true, submitControl: true, invalidAmountRejected: true
         }, actual);
   }
