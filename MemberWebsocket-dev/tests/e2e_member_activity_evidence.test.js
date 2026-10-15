@@ -19,8 +19,8 @@ test('member activity verifies actual point redemption, event redemption, and bo
   const cases = ['POINTS_HUMAN_REDEEM','EVENT_HUMAN_LIFECYCLE','BOOKING_HUMAN_LIFECYCLE',
     'BOOKING_HUMAN_GROUP','BOOKING_BENEFIT_REDEMPTION_LIFECYCLE'].map(key => run(key));
   const observed = history(cases,{
-    pointCards:[{recordType:'point_ticket',usedAt:'2026-10-15T08:00:00Z'}],
-    eventTickets:[{usedAt:'2026-10-15T08:00:00Z'},{usedAt:'2026-10-15T08:01:00Z'}],
+    pointCards:[{recordType:'point_ticket',title:'QA 真人操作票券',usedAt:'2026-10-15T08:00:00Z'}],
+    eventTickets:[{title:'QA 真人操作活動優惠券',usedAt:'2026-10-15T08:00:00Z'},{title:'QA 真人操作活動抽獎券',usedAt:'2026-10-15T08:01:00Z'}],
     bookings:[
       {bookingId:'book-1',memberNote:'QA HUMAN E2E abc updated',partySize:1},
       {bookingId:'book-2',memberNote:'QA HUMAN E2E GROUP abc',partySize:2},
@@ -78,4 +78,14 @@ test('booking settings preflight recognizes the current admin success message an
   assert.match(view,/預約與票券共用設定已儲存/);
   assert.match(admin,/預約\(\?:與票券\)\?共用設定已儲存/);
   assert.match(admin,/staleVersionErrorCode/);
+});
+
+test('unrelated redeemed tickets cannot falsely certify a QA human-action node', () => {
+  const report = inspect(history([run('POINTS_HUMAN_REDEEM'),run('EVENT_HUMAN_LIFECYCLE')],{
+    pointCards:[{recordType:'point_ticket',title:'Old used ticket',usedAt:'2026-10-15T08:00:00Z'}],
+    eventTickets:[{title:'Old event A',usedAt:'2026-10-15T08:00:00Z'},{title:'Old event B',usedAt:'2026-10-15T08:01:00Z'}]
+  }),['QA-CLIENT-1']);
+  assert.equal(report.ok,false);
+  assert.deepEqual(report.missingActions.map(row => row.caseKey),
+    ['POINTS_HUMAN_REDEEM','EVENT_HUMAN_LIFECYCLE']);
 });
