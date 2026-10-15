@@ -1,4 +1,4 @@
-import { summarizeE2EExecution } from "../_shared/e2e-coverage.js";
+import { summarizeE2EExecution, normalizeFeatureCoverage } from "../_shared/e2e-coverage.js";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } from "../_shared/e2e-diagnostics.js";
 import { readJsonObject } from "../_shared/request-body.ts";
@@ -1999,12 +1999,17 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
   const failedCount = normalized.filter((item) => item.status === "failed").length;
   const passedCount = normalized.filter((item) => item.status === "passed").length;
   const skippedCount = normalized.filter((item) => item.status === "skipped").length;
+  const featureCoverage = normalizeFeatureCoverage(timing.featureCoverage);
+  const expectedKeys = Array.isArray(timing.expectedCaseKeys) ? timing.expectedCaseKeys : [];
+  const missingKeys = expectedKeys.filter((key: string) => !normalized.some(row => row.key === key && row.status === "passed")
+    || normalized.some(row => row.key === key && row.status !== "passed"));
+  const executionIncomplete = !featureCoverage?.complete || expectedKeys.length === 0 || missingKeys.length > 0;
   const runCode = "UE2E-" + Date.now().toString(36).toUpperCase() + "-" + suffix().slice(0, 8);
   const run = await s.from("automation_test_runs").insert({
     run_code: runCode,
     suite: "full",
     environment: "MemberWebsocket-dev",
-    status: failedCount ? "failed" : "passed",
+    status: failedCount || executionIncomplete ? "failed" : "passed",
     triggered_by: identity.lineUserId,
     total_cases: normalized.length,
     passed_cases: passedCount,
@@ -2015,6 +2020,9 @@ async function persistBrowserQaRun(s: any, identity: any, surface: Surface, rawC
       source: "member-client-browser",
       surface,
       ...summarizeE2EExecution(normalized),
+      featureCoverage,
+      missingCaseKeys: missingKeys,
+      ...(executionIncomplete ? {coverageComplete:false,verificationStatus:failedCount ? "failed" : "incomplete"} : {}),
       skippedCases: skippedCount,
       memberId: identity.memberId,
       diagnosticsVersion: 3,

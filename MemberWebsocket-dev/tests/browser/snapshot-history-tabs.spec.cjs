@@ -155,3 +155,14 @@ test('a receipt deep link respects manual collapse after subsequent updates', as
   await page.evaluate(() => window.__renderSnapshotRows(window.__snapshotRows));
   await expect(row).not.toHaveAttribute('open', '');
 });
+
+
+test('selected-scope runner executes every snapshot history tab and rejects a wrong badge', async ({page}) => {
+  await page.goto(baseUrl + '/booking/');
+  await expect(page.locator('#snapshotHistoryTab-pending')).toBeVisible();
+  await page.evaluate(fs.readFileSync(path.join(root,'user-test-control.js'),'utf8').replace(
+    '  window.MemberUserTestControl =','  window.scopeProbe={bookingSnapshotHistoryTabsCase};\n  window.MemberUserTestControl ='));
+  expect((await page.evaluate(() => scopeProbe.bookingSnapshotHistoryTabsCase())).status).toBe('passed');
+  await page.locator('#snapshotHistoryTab-registered .booking-history-tab-count').evaluate(node => node.textContent='99 筆');
+  expect((await page.evaluate(() => scopeProbe.bookingSnapshotHistoryTabsCase())).status).toBe('failed');
+});

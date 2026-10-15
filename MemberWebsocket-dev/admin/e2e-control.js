@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-09.1';
+  const VERSION = '2026-10-15.1';
   const COVERAGE_STORAGE_KEY = 'member-admin-e2e-coverage-v1';
   const COVERAGE_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
@@ -39,6 +39,9 @@
   ]);
   const E2E_MODULES = Object.freeze([...PAIRED_SURFACES.slice(0, 4), ['integration', '整合中心'], PAIRED_SURFACES[4]]);
   const ADMIN_CASE_MODULES = Object.freeze({
+    ADMIN_MEMBER_USAGE_LOGS: ['member'],
+    ADMIN_BOOKING_NO_SHOW_CONTROLS: ['booking'],
+    ADMIN_OPERATION_AUDIT: ['integration'],
     ADMIN_SERVICE_GRANT_JOURNEY: ['member'],
     ADMIN_SETTINGS_COPY_CONTROLS: ['points','event'],
     ADMIN_TIER_EDITOR_JOURNEY: ['member'],
@@ -91,6 +94,9 @@
     booking: 'ADMIN_BOOKING_CONTROLS'
   });
   const ADMIN_NODE_META = Object.freeze({
+    ADMIN_MEMBER_USAGE_LOGS: {module:'member',phase:5,dependencies:['ADMIN_TEST_MEMBER_ROSTER']},
+    ADMIN_BOOKING_NO_SHOW_CONTROLS: {module:'booking',phase:5,dependencies:['ADMIN_BOOKING_CONTROLS']},
+    ADMIN_OPERATION_AUDIT: {module:'integration',phase:5,dependencies:['ADMIN_AUTH_READY']},
     ADMIN_SERVICE_GRANT_JOURNEY: {module:'member',phase:4,risk:'mutation',dependencies:['ADMIN_TEST_MEMBER_ROSTER']},
     ADMIN_SETTINGS_COPY_CONTROLS: {module:'ticket',phase:4,dependencies:['ADMIN_RESOURCE_EDITORS']},
     ADMIN_TIER_EDITOR_JOURNEY: {module:'member',phase:4,dependencies:['ADMIN_PRIMARY_NAVIGATION']},
@@ -247,7 +253,7 @@
           <div class="admin-e2e-module-grid">
             ${E2E_MODULES.map(([key, label]) => `<label><input type="checkbox" data-e2e-module="${key}" checked><span>${label}</span></label>`).join('')}
           </div>
-          <small id="adminE2EModuleHint">至少勾選一項。後端共用安全 QA 加上所選模組檢查；測試資料準備仍會建立跨模組共用資料。整合中心為管理端案例，不開啟額外用戶端。</small>
+          <small id="adminE2EModuleHint">至少勾選一項。每輪必跑全部勾選功能與每位用戶的所有勾選頁面；略過、漏跑或缺少證據均不通過。後端共用安全 QA 加上所選模組檢查；測試資料準備仍會建立跨模組共用資料。整合中心為管理端案例，不開啟額外用戶端。</small>
         </fieldset>
         <label for="pairedE2EAccountCount"><strong>協同測試人數</strong><input id="pairedE2EAccountCount" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"></label>
         <label class="admin-e2e-mobile-option" for="pairedE2EMobileViewport">
@@ -309,7 +315,8 @@
       if (count) counts[key] = count;
     }
     if (Object.values(counts).reduce((sum, n) => sum + n, 0) !== total) return null;
-    return { version: 1, total, counts, complete: counts.passed === total };
+    return { version: 1, total, counts, complete: counts.passed === total && value.execution?.complete !== false,
+      ...(value.execution ? {execution:safe(value.execution)} : {}) };
   }
 
   function compactClientCoverage(items) {
@@ -1188,7 +1195,7 @@
       ...(!coverage || coverage.counts.unregistered || coverage.counts.unplanned
         ? fail('功能節點缺少登記或本輪路徑不完整。', {complete:true}, {total:coverage?.total || 0,counts:coverage?.counts || {},gaps})
         : coverage.complete ? pass('所選模組的管理端登記節點均通過。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps})
-        : skip('管理端仍有失敗、略過或未執行功能，未宣稱完整驗證。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps}))});
+        : fail('管理端仍有失敗、略過或未執行功能，本輪覆蓋未完成。', {complete:true}, {total:coverage.total,counts:coverage.counts,gaps}))});
     render();
   }
 
@@ -1221,6 +1228,7 @@
         const progress = document.createElement('progress');progress.max=report.total || 1;progress.value=report.counts.passed || 0;progress.setAttribute('aria-label',label + ' 功能群組通過數');card.append(progress);
         const status = document.createElement('small');
         status.textContent = report.complete ? '登記節點均通過；裝置／外部服務限制另列' : `失敗 ${report.counts.failed || 0} · 阻擋 ${report.counts.blocked || 0} · 未執行 ${report.counts['not-run'] || 0} · 未納入 ${(report.counts.unplanned || 0) + (report.counts.unregistered || 0)}`;
+        if (report.execution) status.textContent += ` · ${report.execution.passed || 0} / ${report.execution.total || 0} 節點通過`;
         card.append(status);
       }
       host.append(card);
@@ -1796,8 +1804,11 @@
       clientConcurrency: Number(recordMeta?.clientConcurrency || state.clientConcurrency || 1),
       replayManifest: recordMeta?.replayManifest || undefined,
       replayOfRunId: String(recordMeta?.replayOfRunId || '') || undefined,
-      featureCoverage: recordMeta?.rootRun === true ? compactFeatureReport(state.featureCoverage) : undefined,
-      clientCoverage: recordMeta?.rootRun === true ? compactClientCoverage(state.clientCoverage) : undefined
+      featureCoverage: recordMeta?.rootRun === true || runnerKind === 'paired-browser' ? compactFeatureReport(state.featureCoverage) : undefined,
+      clientCoverage: runnerKind === 'paired-browser' ? compactClientCoverage(state.clientCoverage) : undefined,
+      selectedModules: runnerKind === 'paired-browser' ? state.selectedModules.slice() : undefined,
+      participantCount: runnerKind === 'paired-browser' ? state.participantCount : undefined,
+      expectedAdminKeys: runnerKind === 'paired-browser' ? adminDefinitions('full').map(item => item.key) : undefined
     };
     const fitted = window.MemberE2EFeatureCoverage?.compactRecordPayload?.(payload) || payload;
     if (new TextEncoder().encode(JSON.stringify(fitted)).byteLength > 320000) {
@@ -1830,6 +1841,9 @@
     if (suite !== 'full') return common;
     const allSelected = modules.length === E2E_MODULES.length;
     return common.concat([
+      caseDef('ADMIN_MEMBER_USAGE_LOGS', '使用紀錄：測試會員選取與七類歷程', 'Human E2E', adminMemberUsageLogsCase),
+      caseDef('ADMIN_BOOKING_NO_SHOW_CONTROLS', '無故未到：分類與未到期按鈕邊界', 'Human E2E', adminBookingNoShowControlsCase),
+      caseDef('ADMIN_OPERATION_AUDIT', '操作稽核：日期驗證、測試會員查詢與詳情', 'Human E2E', adminOperationAuditCase),
       caseDef('ADMIN_SERVICE_GRANT_JOURNEY', '依服務項目發放：預覽／雙擊／會員回讀／清理', 'Human E2E', adminServiceGrantJourneyCase),
       caseDef('ADMIN_SETTINGS_COPY_CONTROLS', '設定複製：未儲存拒絕與取消', 'Human E2E', adminSettingsCopyControlsCase),
       caseDef('ADMIN_TIER_EDITOR_JOURNEY', '會員卡：全部樣式與預覽', 'Human E2E', adminTierEditorJourneyCase),
@@ -2121,6 +2135,7 @@
     }
 
     state.results = [];
+    state.adminScenarioPlan = null;
     state.featureCoverage = null;
     state.clientCoverage = [];
     state.participants = [];
@@ -2419,6 +2434,7 @@
       if (!stoppedByUser) {
         // Partial paths cannot pass replay-manifest validation. Persist the failure
         // as a diagnostic browser run without claiming it is exactly replayable.
+        finalizeFeatureCoverage();
         try { await recordResultRows(state.results, 'paired-browser', 'full', '', state.runStartedAt, { rootRun: false }); } catch {}
         closeClientWindows();
       }
@@ -2527,8 +2543,9 @@
           Object.assign(row, skip(label + ' E2E 已依停止要求中止。', { stoppedSafely: true }, row.actual));
         } else {
           const sameMember = childMemberId === participant.account?.memberId;
-          const blocked = Number(summary.failed || 0) === 0 && child.coverage?.complete === false && sameMember && humanInteractionVerified;
-          const ok = child?.ok === true && Number(summary.failed || 0) === 0 && sameMember && humanInteractionVerified;
+          const blocked = false; // A selected feature that did not run is a failed coverage contract.
+          const ok = child?.ok === true && Number(summary.failed || 0) === 0 && Number(summary.skipped || 0) === 0
+            && child.coverage?.complete === true && sameMember && humanInteractionVerified;
           Object.assign(row, blocked
             ? skip(label + '有略過或未驗證節點，查看功能覆蓋摘要。', row.expected, row.actual)
             : ok
@@ -4016,6 +4033,7 @@
       ['cancellationRequest', () => document.getElementById('bookingCancellationRequestFilter'), true],
       ['cancelled', () => document.getElementById('bookingCancelledFilter'), true],
       ['completed', () => document.querySelector('[data-booking-filter="completed"]'), false],
+      ['no_show', () => document.querySelector('[data-booking-filter="no_show"]'), false],
       ['all', () => document.querySelector('[data-booking-filter="all"]'), false]
     ];
     for (const [key, getButton, cancellationMode] of statusTabs) {
@@ -4038,7 +4056,7 @@
 
     const ok = Object.values(actual).every(Boolean);
     return ok
-      ? pass('預約管理四個子分頁、新增視窗與待確認／已確認／取消申請／已取消／已完成／全部六個狀態分頁皆可真人操作。', {
+      ? pass('預約管理四個子分頁、新增視窗與待確認／已確認／取消申請／已取消／已完成／無故未到／全部七個狀態分頁皆可真人操作。', {
           allBookingControls: true,
           allBookingStatusTabs: true
         }, actual)
@@ -4325,7 +4343,7 @@
       setSettingsFields(mutation);
       controls.bookingAdminSaveSettingsButton.click();
       actual.validMutationSaved = Boolean(await waitFor(() =>
-        /預約共用設定已儲存/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
+        /預約(?:與票券)?共用設定已儲存/.test(String(controls.bookingAdminSettingsMessage.textContent || '')),
         15000,
         100
       ));
@@ -4362,6 +4380,8 @@
             reminderEnabled: mutation.reminderEnabled,
             reminderTime: mutation.reminderTime,
             bookingNotice: mutation.bookingNotice,
+            snapshotLocations: before?.settings?.snapshotLocations || [],
+            snapshotLocationRequired: before?.settings?.snapshotLocationRequired === true,
             expectedUpdatedAt: snapshot.updatedAt
           });
         } catch (error) {
@@ -6166,17 +6186,17 @@
     }, 7000);
     actual.recordModalOpened = Boolean(modal);
     if (modal) {
-      const filters = ['all', 'presence', 'pointCards', 'eventTickets', 'calendar', 'bookings', 'testAutomation'];
-      for (const filter of filters) {
-        const tab = modal.querySelector('[data-record-filter="' + filter + '"]');
-        if (!tab) {
-          actual.recordFilters[filter] = false;
-          continue;
-        }
-        tab.click();
-        actual.recordFilters[filter] = Boolean(await waitFor(() => tab.classList.contains('active'), 1200));
+      document.getElementById('memberRecordsOpenUsage')?.click();
+      const usage = await waitFor(() => {
+        const panel = document.getElementById('memberUsagePanel');
+        return panel && !panel.classList.contains('hidden') ? panel : null;
+      }, 7000);
+      for (const filter of ['all','presence','pointCards','eventTickets','calendar','bookings','testAutomation']) {
+        const tab = usage?.querySelector('[data-record-filter="' + filter + '"]');
+        tab?.click();
+        actual.recordFilters[filter] = Boolean(tab && tab.getAttribute('aria-selected') === 'true');
       }
-      document.getElementById('closeMemberRecordsModal')?.click();
+      document.getElementById('memberDirectoryTab')?.click();
     }
 
     search.value = '';
@@ -6191,6 +6211,91 @@
       : fail('會員名冊搜尋、分頁或紀錄篩選至少一項異常。', {
           searchMatched: true, paginationControls: true, allRecordFilters: true, restoredSearch: true
         }, actual);
+  }
+
+  async function adminMemberUsageLogsCase() {
+    await ensureTestRoster();
+    const account = state.adminTestAccount;
+    const code = String(account?.memberCode || '');
+    if (!code) return fail('沒有本輪測試會員，禁止查詢正式會員歷程。', {testMember:true}, {testMember:false});
+    document.getElementById('memberUsageTab')?.click();
+    setField('memberUsageKind', 'test');
+    setField('memberUsageSearch', code);
+    const select = await waitFor(() => {
+      const node = document.getElementById('memberUsageSelect');
+      return node && !node.disabled && Array.from(node.options).some(option =>
+        option.value && String(option.textContent).includes(code)) ? node : null;
+    }, 10000);
+    const option = Array.from(select?.options || []).find(option => option.value && String(option.textContent).includes(code));
+    if (option) setField('memberUsageSelect', option.value);
+    const selected = Boolean(option && await waitFor(() =>
+      String(document.getElementById('memberUsageSelectedLabel')?.textContent || '').includes(code), 8000));
+    const filters = {};
+    for (const key of ['all','presence','pointCards','eventTickets','calendar','bookings','testAutomation']) {
+      const tab = document.querySelector('#memberUsagePanel [data-record-filter="' + key + '"]');
+      tab?.click();
+      filters[key] = tab?.getAttribute('aria-selected') === 'true';
+    }
+    const message = document.getElementById('memberRecordsMessage');
+    const loaded = selected && Boolean(await waitFor(() => !/正在載入/.test(message?.textContent || ''), 8000))
+      && (message?.classList.contains('hidden') || !String(message?.textContent || '').trim());
+    document.querySelector('#memberUsagePanel [data-record-filter="all"]')?.click();
+    document.getElementById('memberDirectoryTab')?.click();
+    const actual = {selected,loaded,filters,testOnly:document.getElementById('memberUsageKind')?.value === 'test'};
+    return selected && loaded && actual.testOnly && Object.values(filters).every(Boolean)
+      ? pass('已選取本輪測試會員並操作使用紀錄七類歷程。', {allFilters:true,testOnly:true}, actual)
+      : fail('使用紀錄選取、載入或分類失敗。', {allFilters:true,testOnly:true}, actual);
+  }
+
+  async function adminBookingNoShowControlsCase() {
+    document.getElementById('bookingTab')?.click();
+    await waitBookingAdminReady(15000);
+    document.getElementById('bookingAdminQueueSubtab')?.click();
+    const tab = document.querySelector('[data-booking-filter="no_show"]');
+    tab?.click();
+    const selected = Boolean(tab && await waitFor(() => tab.classList.contains('active'), 3000));
+    const wrongStatuses = Array.from(document.querySelectorAll('#bookingAdminQueue .booking-admin-booking'))
+      .filter(card => !String(card.textContent || '').includes('無故未到')).length;
+    document.querySelector('[data-booking-filter="pending"]')?.click();
+    const invalid = Array.from(document.querySelectorAll('[data-no-show-id]')).filter(button =>
+      button.disabled && (button.title === '服務結束後才能標記無故未到。'
+        || button.getAttribute('aria-label')?.includes('服務結束後才能'))).length;
+    const actual = {selected,wrongStatuses,invalidEarlyLabels:invalid};
+    return selected && wrongStatuses === 0 && invalid === 0
+      ? pass('無故未到分類可切換，未到期按鈕不顯示過期提示。', {selected:true,wrongStatuses:0,invalidEarlyLabels:0}, actual)
+      : fail('無故未到分類或按鈕狀態異常。', {selected:true,wrongStatuses:0,invalidEarlyLabels:0}, actual);
+  }
+
+  async function adminOperationAuditCase() {
+    const tab = await waitFor(() => document.getElementById('operationAuditTab'), 4000);
+    tab?.click();
+    const form = document.getElementById('operationAuditForm');
+    const code = String(state.adminTestAccount?.memberCode || '');
+    if (!tab || !form || !code) return fail('操作稽核或本輪測試會員不存在。', {ready:true}, {ready:false});
+    const ids = ['auditFrom','auditTo','auditMemberCode','auditAction','auditResult'];
+    const before = Object.fromEntries(ids.map(id => [id,document.getElementById(id)?.value || '']));
+    try {
+      setField('auditFrom','2099-01-02'); setField('auditTo','2099-01-01');
+      form.dispatchEvent(new Event('submit', {bubbles:true,cancelable:true}));
+      const invalidRejected = /有效的日期範圍/.test(document.getElementById('operationAuditStatus')?.textContent || '');
+      setField('auditFrom',before.auditFrom); setField('auditTo',before.auditTo);
+      setField('auditMemberCode',code); setField('auditAction',''); setField('auditResult','');
+      document.getElementById('auditSearch')?.click();
+      const loaded = Boolean(await waitFor(() => {
+        const panel = document.getElementById('operationAuditPanel');
+        const status = document.getElementById('operationAuditStatus')?.textContent || '';
+        return panel?.getAttribute('aria-busy') === 'false' && /本頁.*筆|此條件下沒有紀錄/.test(status);
+      }, 12000));
+      const details = Array.from(document.querySelectorAll('#operationAuditList details'));
+      for (const detail of details.slice(0, 3)) {
+        detail.querySelector('summary')?.click();
+        if (!detail.open) return fail('稽核詳情無法展開。', {expandable:true}, {expandable:false});
+        detail.querySelector('summary')?.click();
+      }
+      return invalidRejected && loaded
+        ? pass('日期錯誤被拒絕，測試會員查詢成功且詳情可展開。', {invalidRejected:true,loaded:true}, {invalidRejected,loaded,detailCount:details.length})
+        : fail('操作稽核驗證或查詢失敗。', {invalidRejected:true,loaded:true}, {invalidRejected,loaded});
+    } finally { for (const id of ids) setField(id,before[id]); }
   }
 
   async function adminTestAccountLifecycleCase() {

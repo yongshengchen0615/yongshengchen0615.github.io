@@ -14,6 +14,8 @@
     ['shared.tour', '首次教學與操作恢復', 'shared', 'user', 'interaction', [], ['COMMON_TOUR_AUTOSTART','COMMON_TOUR_JOURNEY']],
     ['shared.realtime', '跨端即時更新', 'shared', 'user', 'contract', [], ['COMMON_REALTIME']],
     ['member.directory', '會員名冊、搜尋、分頁與紀錄', 'member', 'admin', 'interaction', ['ADMIN_TEST_MEMBER_ROSTER','ADMIN_MEMBER_DIRECTORY_CONTROLS','ADMIN_MEMBER_MODALS'], []],
+    ['member.usage', '使用紀錄：測試會員選取、活動歷程與七類篩選', 'member', 'admin', 'interaction', ['ADMIN_MEMBER_USAGE_LOGS'], []],
+    ['member.friends', '好友中心：名單、自邀拒絕與關閉還原', 'member', 'user', 'interaction', [], ['MEMBER_FRIEND_CONTROLS'], '好友接受、封鎖、解除及 QR 相機另由隔離 Chromium 驗證'],
     ['member.profile', '稱呼、生日、電話修改與還原', 'member', 'both', 'lifecycle', ['ADMIN_TEST_MEMBER_PROFILE_EDIT'], ['MEMBER_HUMAN_PROFILE_EDIT','MEMBER_INVALID_WRITE']],
     ['member.phone', '電話國碼與重複數字拒絕', 'member', 'user', 'boundary', [], ['MEMBER_PHONE_COUNTRY_VALIDATION']],
     ['member.terms', '條款版本、會員申請同意與拒絕', 'member', 'both', 'contract', ['ADMIN_MEMBERSHIP_TERMS','ADMIN_TERMS_EDITOR_JOURNEY'], ['MEMBER_TERMS_CONSENT','MEMBER_JOIN_TERMS_FLOW'], '加入會員完整成功送出另由隔離 Chromium 真人流程驗證', {}, {admin:'interaction',user:'lifecycle'}],
@@ -55,6 +57,9 @@
     ['booking.resources', '服務類型、項目、價格與技師', 'booking', 'admin', 'interaction', ['ADMIN_BOOKING_CRUD','ADMIN_BOOKING_RESOURCE_CONTROLS','ADMIN_BOOKING_BATCH_EDITOR'], []],
     ['booking.form', '日期、項目、時段與確認步驟', 'booking', 'user', 'interaction', [], ['BOOKING_FORM_INITIAL','BOOKING_FLOW_STEPPER','BOOKING_HUMAN_CONTROLS']],
     ['booking.lifecycle', '新增、修改與取消預約', 'booking', 'user', 'lifecycle', [], ['BOOKING_HUMAN_LIFECYCLE','BOOKING_INVALID_WRITE']],
+    ['booking.history-tabs', '我的預約：四類筆數、切換與收合', 'booking', 'user', 'interaction', [], ['BOOKING_HISTORY_TABS']],
+    ['booking.snapshot-tabs', '快照明細：四類筆數、切換與收合', 'booking', 'user', 'interaction', [], ['BOOKING_SNAPSHOT_HISTORY_TABS']],
+    ['booking.no-show', '管理端無故未到分類與未到期操作邊界', 'booking', 'admin', 'boundary', ['ADMIN_BOOKING_NO_SHOW_CONTROLS'], [], '待確認／已確認預約的確認送出、取消、零扣點與回讀另由隔離 Chromium／SQL 驗證'],
     ['booking.group', '多人預約與參與者服務', 'booking', 'user', 'lifecycle', [], ['BOOKING_GROUP_DATA','BOOKING_HUMAN_GROUP']],
     ['booking.benefits', '推薦、勾選、點數預留與核銷交接', 'booking', 'user', 'lifecycle', [], ['BOOKING_BENEFITS_RECOMMENDATIONS','BOOKING_BENEFIT_REDEMPTION_LIFECYCLE','BOOKING_TICKET_RULES']],
     ['booking.receipt', '收據相機入口與管理端安全檢視', 'booking', 'both', 'contract', ['ADMIN_BOOKING_RECEIPT_VIEWER'], ['BOOKING_RECEIPT_REVIEW_CONTRACT'], '快照 E2E 已覆蓋 Storage 上傳；一般預約實體相機與裝置權限仍需裝置驗收'],
@@ -63,6 +68,7 @@
     ['booking.accessible-admin', '快照待確認、真人審核、服務／票券／點數結算與冪等重送', 'booking', 'admin', 'lifecycle', ['ADMIN_BOOKING_ACCESSIBLE_QUEUE','ADMIN_BOOKING_ACCESSIBLE_REVIEW','ADMIN_BOOKING_ACCESSIBLE_IDEMPOTENCY'], [], 'E2E 使用測試會員的去識別化螢幕快照；實體相機權限仍需裝置驗收'],
     ['booking.sources', '預約紀錄的集點卡／活動票券來源卡片', 'booking', 'both', 'contract', ['ADMIN_BOOKING_HISTORY_TICKET_SOURCES'], ['BOOKING_HISTORY_TICKET_SOURCES']],
     ['integration.overview', '整合總覽、權益、通知與 Audit', 'integration', 'admin', 'interaction', ['ADMIN_INTEGRATION_CENTER','ADMIN_INTEGRATION_NAVIGATION'], []],
+    ['integration.audit', '操作稽核：日期驗證、測試會員查詢與詳情', 'integration', 'admin', 'interaction', ['ADMIN_OPERATION_AUDIT'], []],
     ['testing.accounts', '測試帳號新增、選取與移除', 'testing', 'admin', 'lifecycle', ['ADMIN_TEST_MODE_CONTROLS','ADMIN_TEST_ACCOUNT_LIFECYCLE'], []],
   ].map(([id, name, module, side, level, admin, user, limitation = '', scopes = {}, levels = {}]) => Object.freeze({id,name,module,side,level,admin:Object.freeze(admin),user:Object.freeze(user),limitation,scopes,levels}));
 
@@ -94,8 +100,20 @@
       });
     const counts = {};
     for (const feature of features) counts[feature.status] = (counts[feature.status] || 0) + 1;
-    return { version:1, side, modules:modules.slice(), total:features.length, counts,
-      complete:features.length > 0 && features.every(item => item.status === 'passed'), features };
+    // The feature inventory is explanatory; the complete execution catalog is
+    // authoritative. A node omitted from the inventory must still be run.
+    const keys = [...new Set([...registered, ...planned])];
+    const execution = { total:keys.length, passed:keys.filter(key => statuses.get(key) === 'passed').length,
+      unregistered:keys.filter(key => !registered.has(key)),
+      unplanned:keys.filter(key => !planned.has(key)),
+      missing:keys.filter(key => !statuses.has(key)),
+      failed:keys.filter(key => statuses.get(key) === 'failed'),
+      blocked:keys.filter(key => ['skipped','blocked'].includes(statuses.get(key))),
+      pending:keys.filter(key => statuses.has(key) && !['passed','failed','skipped','blocked'].includes(statuses.get(key))) };
+    execution.complete = keys.length > 0 && execution.passed === keys.length
+      && execution.unregistered.length === 0 && execution.unplanned.length === 0;
+    return { version:1, side, modules:modules.slice(), total:features.length, counts, execution,
+      complete:execution.complete && features.length > 0 && features.every(item => item.status === 'passed'), features };
   }
   function compactRecordPayload(payload, maxBytes = 320000) {
     const size = value => new TextEncoder().encode(JSON.stringify(value)).byteLength;

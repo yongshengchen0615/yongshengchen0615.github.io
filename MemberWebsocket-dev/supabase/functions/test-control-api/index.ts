@@ -1,4 +1,4 @@
-import { summarizeE2EExecution, prepareE2EServiceRuleFixtures, normalizeFeatureCoverage, normalizeClientFeatureCoverage } from "../_shared/e2e-coverage.js";
+import { summarizeE2EExecution, prepareE2EServiceRuleFixtures, normalizeFeatureCoverage, normalizeClientFeatureCoverage, evaluateSelectedScope } from "../_shared/e2e-coverage.js";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { verifyLineIdTokenContract, requireActiveAdminContract } from "../_shared/auth-contract.ts";
 import { attachE2EDiagnosis, diagnoseE2EFailure, summarizeE2EFailureDiagnoses } from "../_shared/e2e-diagnostics.js";
@@ -1264,7 +1264,7 @@ async function evaluateBookingConfirmationLine(supabase: any): Promise<CaseResul
     contractSource: "live-preview | synthetic-contract",
     flexType: "flex",
     altTextPresent: true,
-    emptyEntitlementSections: 3,
+    emptyEntitlementSections: 0,
     emptyEntitlementsPassed: true,
     expiredExclusionPassed: true,
     retryFirstRetryable: true,
@@ -1278,7 +1278,7 @@ async function evaluateBookingConfirmationLine(supabase: any): Promise<CaseResul
     && ["live-preview", "synthetic-contract"].includes(actual.contractSource)
     && actual.flexType === "flex"
     && actual.altTextPresent
-    && actual.emptyEntitlementSections === 3
+    && actual.emptyEntitlementSections === 0
     && actual.emptyEntitlementsPassed
     && actual.expiredExclusionPassed
     && actual.retryFirstRetryable
@@ -1620,9 +1620,13 @@ async function recordBrowserRun(
     item.status === "failed" && (item.trace as any)?.screenshotCapture?.status === "skipped"
   ).length;
   const failureDiagnostics = summarizeE2EFailureDiagnoses(normalized.map((item)=>item.diagnosis).filter(Boolean));
-  const featureCoverage = body.rootRun === true ? normalizeFeatureCoverage(body.featureCoverage) : null;
-  const clientCoverage = body.rootRun === true ? normalizeClientFeatureCoverage(body.clientCoverage) : [];
-  const featureIncomplete = (featureCoverage && !featureCoverage.complete) ||
+  const featureCoverage = body.rootRun === true || runnerKind === "paired-browser" ? normalizeFeatureCoverage(body.featureCoverage) : null;
+  const clientCoverage = body.rootRun === true || runnerKind === "paired-browser" ? normalizeClientFeatureCoverage(body.clientCoverage) : [];
+  const scopeCoverage = runnerKind === "paired-browser" && suite === "full" ? evaluateSelectedScope({
+    selectedModules: selectedE2EModules(body.selectedModules), participantCount: Number(body.participantCount),
+    adminKeys: body.expectedAdminKeys, cases: normalized, featureCoverage, clientCoverage,
+  }) : null;
+  const featureIncomplete = (scopeCoverage && !scopeCoverage.complete) || (featureCoverage && !featureCoverage.complete) ||
     clientCoverage.some((item: any) => item.coverage && !item.coverage.complete);
   const shouldPersistReplayManifest = body.rootRun === true && runnerKind === "paired-browser" && suite === "full";
   const replayManifest = shouldPersistReplayManifest ? normalizeReplayManifest(body.replayManifest) : null;
@@ -1639,7 +1643,7 @@ async function recordBrowserRun(
     run_code: runCode(),
     suite,
     environment: "MemberWebsocket-dev",
-    status: failed ? "failed" : "passed",
+    status: failed || featureIncomplete ? "failed" : "passed",
     triggered_by: identity.lineUserId,
     total_cases: normalized.length,
     passed_cases: passed,
@@ -1649,6 +1653,7 @@ async function recordBrowserRun(
       runnerKind,
       featureCoverage,
       clientCoverage,
+      scopeCoverage,
       ...summarizeE2EExecution(normalized),
       ...(featureIncomplete ? { coverageComplete: false, verificationStatus: failed ? "failed" : "incomplete" } : {}),
       skippedCases: skipped,

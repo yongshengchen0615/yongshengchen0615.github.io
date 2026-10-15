@@ -118,3 +118,14 @@ test('booking-specific links open the matching status tab', async ({ page }) => 
   await expect(page.locator('[data-booking-tab="no_show"]')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#bookingHistoryPanel-no_show .booking-detail-target')).toHaveCount(1);
 });
+
+
+test('selected-scope runner executes every booking history tab and rejects a wrong badge', async ({page}) => {
+  await page.goto(baseUrl + '/booking/');
+  await expect(page.locator('#bookingHistoryTab-reserved')).toBeVisible();
+  await page.evaluate(fs.readFileSync(path.join(root,'user-test-control.js'),'utf8').replace(
+    '  window.MemberUserTestControl =','  window.scopeProbe={bookingHistoryTabsCase};\n  window.MemberUserTestControl ='));
+  expect((await page.evaluate(() => scopeProbe.bookingHistoryTabsCase())).status).toBe('passed');
+  await page.locator('#bookingHistoryTab-completed .booking-history-tab-count').evaluate(node => node.textContent='99 筆');
+  expect((await page.evaluate(() => scopeProbe.bookingHistoryTabsCase())).status).toBe('failed');
+});
