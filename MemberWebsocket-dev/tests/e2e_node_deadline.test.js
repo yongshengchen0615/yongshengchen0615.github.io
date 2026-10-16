@@ -27,7 +27,7 @@ test('both browser runners use a deadline around every case and retain timeout f
   const user = fs.readFileSync(path.join(root, 'user-test-control.js'), 'utf8');
   assert.match(admin, /runWithDeadline\(async \(\) => \{[\s\S]*?def\.run\(\)/);
   assert.match(user, /runWithDeadline\(async \(\) => \{[\s\S]*?testCase\.run\(\)/);
-  assert.match(admin, /if \(timedOut\) \{[\s\S]*?throw error/);
+  assert.match(admin, /if \(timedOut\) \{[\s\S]*?await drainTimedOutAdminNode\(\)/);
   assert.match(user, /if \(timedOutCase\) break/);
   assert.match(user, /state\.cancelled && !timedOutCase/);
 });

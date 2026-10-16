@@ -207,18 +207,22 @@ async function emitRealtimeEvent(supabase: any, eventType: string): Promise<void
   }
 }
 
+// Background browser timers can be throttled beyond a minute. Keep renewal at
+// 15 seconds while allowing a bounded grace period; expired leases never revive.
+const E2E_EXECUTION_LEASE_TTL_MINUTES = 5;
+
 async function acquireE2EExecutionLease(
   supabase: any,
   identity: { lineUserId: string },
 ): Promise<Json> {
   const result = await supabase.rpc("admin_acquire_test_execution_lease", {
     p_actor: identity.lineUserId,
-    p_ttl_minutes: 1,
+    p_ttl_minutes: E2E_EXECUTION_LEASE_TTL_MINUTES,
   });
   if (result.error || !UUID_RE.test(String(result.data || ""))) {
     throw new ApiError(503, "E2E_LEASE_ACQUIRE_FAILED", "目前無法鎖定完整 E2E 執行期間。", result.error?.message || null);
   }
-  return { leaseId: String(result.data), expiresInMinutes: 1 };
+  return { leaseId: String(result.data), expiresInMinutes: E2E_EXECUTION_LEASE_TTL_MINUTES };
 }
 
 async function releaseE2EExecutionLease(
@@ -252,12 +256,12 @@ async function heartbeatE2EExecutionLease(
   const result = await supabase.rpc("admin_heartbeat_test_execution_lease", {
     p_lease_id: leaseId,
     p_actor: identity.lineUserId,
-    p_ttl_minutes: 1,
+    p_ttl_minutes: E2E_EXECUTION_LEASE_TTL_MINUTES,
   });
   if (result.error) {
     throw new ApiError(503, "E2E_LEASE_HEARTBEAT_FAILED", "目前無法續租完整 E2E 執行鎖。", result.error.message || null);
   }
-  return { renewed: result.data === true, expiresInMinutes: 1 };
+  return { renewed: result.data === true, expiresInMinutes: E2E_EXECUTION_LEASE_TTL_MINUTES };
 }
 
 async function prepareTestAccountConsents(
