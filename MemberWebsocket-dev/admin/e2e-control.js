@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '2026-10-15.1';
+  const VERSION = '2026-10-16.1';
   const COVERAGE_STORAGE_KEY = 'member-admin-e2e-coverage-v1';
   const COVERAGE_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
   const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
@@ -11,6 +11,7 @@
   const E2E_LEASE_HEARTBEAT_FAILURE_LIMIT = 2;
   const ADMIN_NODE_TIMEOUT_MS = 90000;
   const ADMIN_BOOKING_NODE_TIMEOUT_MS = 7 * 60 * 1000;
+  const ADMIN_NODE_DRAIN_TIMEOUT_MS = 5000;
   let html2canvasLoader = null;
   const TEST_SESSION_STORAGE_KEY = 'member-test-session-v1';
   const REPLAY_STORAGE_KEY = 'member-e2e-replay-v1';
@@ -603,11 +604,11 @@
     return copy;
   }
 
-  async function waitFor(predicate, timeoutMs = 7000, intervalMs = 60) {
+  async function waitFor(predicate, timeoutMs = 7000, intervalMs = 60, independentClient = false) {
     const deadline = performance.now() + timeoutMs;
     let lastError = null;
     while (performance.now() < deadline) {
-      if (state.pendingTimedOutNode) {
+      if (state.pendingTimedOutNode && !independentClient) {
         throw Object.assign(new Error('逾時案例已停止等待。'), { code: 'E2E_NODE_CANCELLED' });
       }
       try {
@@ -1357,9 +1358,31 @@
     pending.then(settled, settled);
   }
 
+  async function drainTimedOutAdminNode() {
+    const pending = state.pendingTimedOutNode;
+    if (!pending) return;
+    let timer;
+    try {
+      await Promise.race([
+        pending.catch(() => {}),
+        new Promise(resolve => { timer = window.setTimeout(resolve, ADMIN_NODE_DRAIN_TIMEOUT_MS); })
+      ]);
+    } finally { window.clearTimeout(timer); }
+  }
+
   async function executeCases(defs, phaseLabel) {
     for (const def of defs) {
       if (state.cancelled) break;
+      // An unrelated member window may continue, but never overlap management
+      // mutations with an original admin action that has not finished cleanup.
+      if (state.pendingTimedOutNode) {
+        state.results.push({ key: def.key, name: def.name, domain: def.domain,
+          humanRequired: def.humanRequired === true, durationMs: 0,
+          ...fail('前一個管理端逾時操作尚未完成清理，本項未執行。',
+            { executed: true }, { executed: false, code: 'E2E_ADMIN_NODE_DRAINING' }) });
+        render();
+        continue;
+      }
       const row = {
         key: def.key,
         name: def.name,
@@ -1405,7 +1428,6 @@
           return result;
         }, /^ADMIN_BOOKING_|^PAIRED_.*BOOKING/.test(def.key) ? ADMIN_BOOKING_NODE_TIMEOUT_MS : ADMIN_NODE_TIMEOUT_MS,
         def.key, (pending) => {
-          state.cancelled = true;
           retainTimedOutNode(pending);
           state.activeHumanCaptureCleanup?.();
           state.activeHumanCaptureCleanup = null;
@@ -1424,10 +1446,9 @@
       row.durationMs = Math.max(0, Math.round(performance.now() - started));
       render();
       if (timedOut) {
-        // The original action might still be active; do not start another DOM mutation.
-        const error = new Error(def.key + ' 逾時；已停止此輪 E2E 並保留失敗快照。');
-        error.code = 'E2E_NODE_TIMEOUT';
-        throw error;
+        // Let cooperative waits reject and finally blocks restore their state.
+        // A stuck admin action blocks later admin actions, not independent clients.
+        await drainTimedOutAdminNode();
       }
       if (state.cancelled) break;
       await sleep(50);
@@ -2078,6 +2099,7 @@
     if (state.pendingTimedOutNode) return { error: { code: 'E2E_NODE_DRAINING', message: '前一個逾時案例尚未結束，暫時無法開始新一輪。' }, results: safe(state.results) };
     if (state.running) return { error: { code: 'E2E_ALREADY_RUNNING', message: '完整 E2E 已在執行中。' }, results: safe(state.results) };
     state.cancelled = false;
+    state.stopReason = null;
     state.failureScreenshotsCaptured = 0;
     state.backgroundExecution = options?.backgroundExecution === true || isBackgroundRunnerWindow();
     state.runSequence += 1;
@@ -2107,6 +2129,7 @@
         error.code = 'INVALID_PAIRED_PARTICIPANT_COUNT';
         throw error;
       }
+      state.participantCount = participantCount;
 
       const needsClientWindows = selectedClientSurfaces(selectedModules).length > 0;
       const providedWindows = Array.isArray(options?.clientWindows)
@@ -2175,6 +2198,7 @@
         } catch (error) {
           cleanupLeaseHeartbeatFailures += 1;
           if (cleanupLeaseHeartbeatFailures >= E2E_LEASE_HEARTBEAT_FAILURE_LIMIT && !state.cancelled) {
+            state.stopReason = { code: 'E2E_LEASE_LOST', message: '完整 E2E 執行鎖續租失敗。' };
             requestStop();
             setMessage('完整 E2E 執行鎖續租失敗，已自動停止以避免測試資料與清除流程互相干擾。', true);
           }
@@ -2184,7 +2208,7 @@
       };
       cleanupLeaseHeartbeatTimer = window.setInterval(() => { renewCleanupLease().catch(() => {}); }, E2E_LEASE_HEARTBEAT_MS);
       backendRun = await runUnifiedServerFullPhase(selectedModules);
-      if (state.cancelled) return { cancelled: true, backendRun: safe(backendRun?.run || {}), results: safe(state.results) };
+      if (state.cancelled) throw Object.assign(new Error('本輪 E2E 已停止。'), { code: 'E2E_STOPPED' });
 
       const profile = state.replayContext
         ? (() => {
@@ -2212,7 +2236,7 @@
 
       setMessage('後端完整 QA 階段已完成；正在建立 Browser 協同 E2E 的高複雜度測試資料。');
       const fixture = await prepareComplexE2EFixtures(profile, cleanupLeaseId);
-      if (state.cancelled) return { cancelled: true, results: safe(state.results) };
+      if (state.cancelled) throw Object.assign(new Error('本輪 E2E 已停止。'), { code: 'E2E_STOPPED' });
 
       const preferredMemberIds = state.replayContext ? state.replayContext.manifest.participants.map((item)=>String(item.preferredMemberId||'')).filter(Boolean) : [];
       const accounts = await prepareTestAccounts(participantCount, preferredMemberIds);
@@ -2255,8 +2279,10 @@
         }
         const preflightDefinitions = allAdminDefinitions.filter((def) => preflightKeys.has(def.key));
         await executeCases(preflightDefinitions, selectedModules.includes('booking') ? '管理端 · 預約接手前置' : '管理端 · 授權前置');
-        if (state.cancelled) return { cancelled: true, results: safe(state.results) };
-        const incompletePreflight = preflightDefinitions.filter((def) =>
+        if (state.cancelled) throw Object.assign(new Error('本輪 E2E 已停止。'), { code: 'E2E_STOPPED' });
+        // Only a missing authenticated administrator is a global admission
+        // failure. Booking assertions must not suppress the other checked modules.
+        const incompletePreflight = preflightDefinitions.filter((def) => def.key === 'ADMIN_AUTH_READY' &&
           !state.results.some((row) => row.key === def.key && row.status === 'passed')
         );
         if (incompletePreflight.length) {
@@ -2343,7 +2369,15 @@
       if (!state.cancelled && state.participants[0] && (selectedModules.includes('member') || selectedModules.includes('points'))) {
         const requestedDeepIndex=Number(state.replayContext?.manifest?.deepParticipantIndex||0);
         const deepParticipant=requestedDeepIndex?state.participants.find((item)=>Number(item.index)===requestedDeepIndex):state.participants[randomInt(0,state.participants.length-1)];
-        if(deepParticipant){state.deepParticipantIndex=Number(deepParticipant.index);await runDeepPairedSuite(deepParticipant);}
+        if (deepParticipant) {
+          state.deepParticipantIndex = Number(deepParticipant.index);
+          if (state.pendingTimedOutNode) state.results.push({
+            key: 'PAIRED_DEEP_ADMIN_BLOCKED', name: '深度協同管理操作', domain: 'Paired E2E', durationMs: 0,
+            ...fail('管理端逾時操作尚未完成清理，深度管理操作未執行。',
+              { executed: true }, { executed: false, code: 'E2E_ADMIN_NODE_DRAINING' })
+          });
+          else await runDeepPairedSuite(deepParticipant);
+        }
       }
 
       if (!state.cancelled) {
@@ -2357,11 +2391,14 @@
         ], '真人互動覆蓋驗證');
       }
 
-      finalizeFeatureCoverage();
       const cancelled = state.cancelled;
+      if (cancelled) appendUnexecutedScopeResults(state.stopReason);
+      finalizeFeatureCoverage();
       state.replayManifest = !cancelled ? buildReplayManifest() : null;
-      const recorded = !cancelled && state.results.length
-        ? await recordRun('paired-browser','full','',{replayManifest:state.replayManifest,replayOfRunId:state.replayContext?.sourceRunId||''})
+      const recorded = state.results.length
+        ? cancelled
+          ? await recordResultRows(state.results, 'paired-browser', 'full', '', state.runStartedAt, { rootRun: false })
+          : await recordRun('paired-browser','full','',{replayManifest:state.replayManifest,replayOfRunId:state.replayContext?.sourceRunId||''})
         : null;
       const failed = state.results.filter((item) => item.status === 'failed').length;
       if (cancelled) {
@@ -2404,7 +2441,7 @@
         results: safe(state.results)
       };
     } catch (error) {
-      const stoppedByUser = state.cancelled && error?.code !== 'E2E_NODE_TIMEOUT';
+      const stoppedByUser = state.cancelled && !state.stopReason && error?.code !== 'E2E_NODE_TIMEOUT';
       state.cancelled = true; // Ask any concurrent client or booking waiter to stop.
       if (!stoppedByUser) {
         for (const row of state.results.filter((item) => item.status === 'running')) {
@@ -2430,27 +2467,58 @@
       }
       setMessage(stoppedByUser ? '協同 E2E 已停止。' : (error?.message || '協同 E2E 無法啟動。請確認系統維護、目前裝置測試登入與彈出式視窗權限。'), !stoppedByUser);
       render();
-      if (!stoppedByUser) {
-        // Partial paths cannot pass replay-manifest validation. Persist the failure
-        // as a diagnostic browser run without claiming it is exactly replayable.
-        finalizeFeatureCoverage();
-        try { await recordResultRows(state.results, 'paired-browser', 'full', '', state.runStartedAt, { rootRun: false }); } catch {}
-        closeClientWindows();
-      }
-      return { cancelled: stoppedByUser, error: stoppedByUser ? null : plainError(error), results: safe(state.results) };
+      // Persist partial and cancelled paths too. Missing checked modules must be
+      // reviewable even when the execution lease or browser run was interrupted.
+      appendUnexecutedScopeResults(state.stopReason || plainError(error));
+      finalizeFeatureCoverage();
+      let recorded = null;
+      try { recorded = await recordResultRows(state.results, 'paired-browser', 'full', '', state.runStartedAt, { rootRun: false }); } catch {}
+      if (!stoppedByUser) closeClientWindows();
+      return { cancelled: stoppedByUser, error: stoppedByUser ? null : plainError(error),
+        recorded, coverage: safe(state.featureCoverage), clientCoverage: safe(state.clientCoverage),
+        results: safe(state.results) };
     } finally {
       if (cleanupLeaseHeartbeatTimer) {
         window.clearInterval(cleanupLeaseHeartbeatTimer);
         cleanupLeaseHeartbeatTimer = 0;
       }
       if (cleanupLeaseId) {
-        await releaseE2ECleanupLease(cleanupLeaseId);
+        const leaseToRelease = cleanupLeaseId;
+        const pendingAdmin = state.pendingTimedOutNode;
+        if (pendingAdmin) {
+          // Preserve the purge boundary until the original action finishes.
+          const release = () => releaseE2ECleanupLease(leaseToRelease);
+          pendingAdmin.then(release, release).catch(() => {});
+        } else await releaseE2ECleanupLease(leaseToRelease);
         cleanupLeaseId = '';
       }
       state.adminTestAccount = null;
       setBusy(false);
       render();
       renderParticipants();
+    }
+  }
+
+  function appendUnexecutedScopeResults(reason = null) {
+    const cause = reason || { code: 'E2E_STOPPED', message: '本輪 E2E 已停止。' };
+    if (!state.results.some(row => row.key === 'E2E_EXECUTION_STOPPED')) state.results.push({
+      key: 'E2E_EXECUTION_STOPPED', name: '本輪 E2E 中止原因', domain: 'Paired E2E / Orchestration', durationMs: 0,
+      ...fail(cause.message, { scopeCompleted: true }, safe(cause))
+    });
+    const expected = adminDefinitions('full').map(def => ({ key: def.key, name: def.name, domain: def.domain }));
+    for (let index = 1; index <= state.participantCount; index++) {
+      for (const [surface, label] of selectedClientSurfaces()) expected.push({
+        key: 'PAIRED_' + index + '_' + surface.toUpperCase(),
+        name: '測試用戶 ' + index + '：' + label,
+        domain: 'Paired E2E / ' + surface
+      });
+    }
+    const recordedKeys = new Set(state.results.map(row => row.key));
+    for (const item of expected) {
+      if (recordedKeys.has(item.key)) continue;
+      state.results.push({ ...item, durationMs: 0,
+        ...fail('本輪中斷，此勾選項目尚未執行。', { executed: true },
+          { executed: false, code: 'E2E_SCOPE_NOT_EXECUTED', cause: safe(cause) }) });
     }
   }
 
@@ -7952,7 +8020,7 @@
         if (child.document?.readyState !== 'complete') return null;
         return child.MemberUserTestControl?.surface === surface ? child.MemberUserTestControl : null;
       } catch { return null; }
-    }, backgroundAwareTimeout(25000, 90000), 120);
+    }, backgroundAwareTimeout(25000, 90000), 120, true);
     if (control?.cancelled || state.cancelled) {
       return { ok: false, cancelled: true, surface, account: participant.account, results: [], summary: { passed: 0, failed: 0, skipped: 0, total: 0 } };
     }

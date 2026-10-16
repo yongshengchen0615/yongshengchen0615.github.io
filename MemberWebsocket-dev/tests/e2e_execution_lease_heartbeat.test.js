@@ -18,7 +18,8 @@ test('full E2E execution lease is short-lived and heartbeat-renewed', () => {
   assert.match(migration, /revoke all on function public\.admin_heartbeat_test_execution_lease/);
   assert.match(migration, /grant execute on function public\.admin_heartbeat_test_execution_lease[\s\S]*to service_role/);
 
-  assert.match(api, /p_ttl_minutes: 1/);
+  assert.match(api, /E2E_EXECUTION_LEASE_TTL_MINUTES = 5/);
+  assert.match(api, /p_ttl_minutes: E2E_EXECUTION_LEASE_TTL_MINUTES/);
   assert.match(api, /admin\.test-control\.heartbeat-e2e-lease/);
   assert.match(api, /E2E_LEASE_HEARTBEAT_FAILED/);
 
@@ -28,7 +29,7 @@ test('full E2E execution lease is short-lived and heartbeat-renewed', () => {
   assert.match(runner, /window\.setInterval\(\(\) => \{ renewCleanupLease\(\)\.catch/);
   assert.match(runner, /requestStop\(\)/);
   assert.match(runner, /window\.clearInterval\(cleanupLeaseHeartbeatTimer\)/);
-  assert.match(runner, /releaseE2ECleanupLease\(cleanupLeaseId\)/);
+  assert.match(runner, /releaseE2ECleanupLease\(leaseToRelease\)/);
 });
 
 test('purge keeps the execution safety boundary while expired and stale leases can be reclaimed', () => {
