@@ -126,6 +126,11 @@
   background: #0b0f0d;
 }
 
+/* A captured/selected receipt replaces the live camera, without a blank video box. */
+.booking-receipt-camera-video[hidden] {
+  display: none;
+}
+
 .booking-receipt-camera-actions {
   display: flex;
   gap: 10px;

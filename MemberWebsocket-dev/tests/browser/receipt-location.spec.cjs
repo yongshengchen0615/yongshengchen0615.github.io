@@ -166,6 +166,8 @@ async function capture(page,{screenSnapshot=false}={}) {
   await page.locator('#bookingReceiptCapture').click();
   await expect(page.locator('#bookingReceiptSubmit')).toBeEnabled();
   await expect(page.locator('#bookingReceiptPreview')).toHaveAttribute('src',/^data:image\/jpeg/);
+  await expect(page.locator('#bookingReceiptPreviewWrap')).toBeVisible();
+  await expect(page.locator('#bookingReceiptCamera')).toBeHidden();
   return snapshotSize;
 }
 for(const accessible of [true,false])test(`${accessible?'accessible':'booking'} camera to JPEG, signed upload, finalize and review boundary`,async({page})=>{
@@ -195,10 +197,28 @@ test('denied camera permission can retry and closing releases the real video str
 });
 test('retake replaces the image without sending the discarded capture',async({page})=>{
   await open(page,'retake');await capture(page);await page.locator('#bookingReceiptRetake').click();
+  await expect(page.locator('#bookingReceiptCamera')).toBeVisible();
   await expect(page.locator('#bookingReceiptSubmit')).toBeDisabled();await capture(page);
   await page.locator('#bookingReceiptSubmit').click();await expect(page.locator('#bookingReceiptModal')).toBeHidden();
   expect(runs.get('retake').uploads).toHaveLength(1);
   expect(await page.evaluate(()=>fixtureStreams.length)).toBe(2);
+});
+test('selecting a receipt image hides the video, and retake restores the camera',async({page})=>{
+  await open(page,'receipt-file-preview');
+  await expect(page.locator('#bookingReceiptCamera')).toBeVisible();
+  await page.locator('#bookingReceiptFile').setInputFiles({
+    name:'receipt.jpg',mimeType:'image/jpeg',buffer:Buffer.from([0xff,0xd8,0xff,0xd9]),
+  });
+  await expect(page.locator('#bookingReceiptPreview')).toHaveAttribute('src',/^data:image\/jpeg/);
+  await expect(page.locator('#bookingReceiptPreviewWrap')).toBeVisible();
+  await expect(page.locator('#bookingReceiptCamera')).toBeHidden();
+  await expect(page.locator('#bookingReceiptRetake')).toBeVisible();
+  await page.locator('#bookingReceiptRetake').click();
+  await expect(page.locator('#bookingReceiptCamera')).toBeVisible();
+  await expect(page.locator('#bookingReceiptSubmit')).toBeDisabled();
+  await capture(page);
+  await page.locator('#bookingReceiptCancel').click();
+  await expect(page.locator('#bookingReceiptModal')).toBeHidden();
 });
 test('uncertain finalize retry preserves receipt and does not repeat prepare or upload',async({page})=>{
   await open(page,'uncertain','uncertain');await capture(page);await page.locator('#bookingReceiptSubmit').click();
