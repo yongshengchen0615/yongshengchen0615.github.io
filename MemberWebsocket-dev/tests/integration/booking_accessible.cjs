@@ -191,6 +191,8 @@ test('accessible receipt camera sends a receipt without a booking and locks dupl
     const video=w.document.getElementById('bookingReceiptCamera');
     Object.defineProperty(video,'videoWidth',{value:100}); Object.defineProperty(video,'videoHeight',{value:100});
     w.document.getElementById('bookingReceiptCapture').click(); await tick();
+    assert.equal(video.hidden,true,'a captured receipt must hide the camera element');
+    assert.equal(w.document.getElementById('bookingReceiptPreviewWrap').classList.contains('hidden'),false);
     const submit=w.document.getElementById('bookingReceiptSubmit'); submit.click(); submit.dispatchEvent(new w.Event('click')); await tick();
     const prepares=calls.filter(c=>c.action.endsWith('.prepare'));
     assert.equal(prepares.length,1); assert.equal(prepares[0].payload.accessible,true); assert.equal(prepares[0].payload.bookingId,undefined);
@@ -224,6 +226,7 @@ test('accessible E2E screen snapshot hook is test-session gated and skips the ph
     assert.equal(w.document.getElementById('bookingReceiptModal').classList.contains('hidden'),false);
     assert.equal(w.document.getElementById('bookingReceiptSubmit').disabled,false);
     assert.match(w.document.getElementById('bookingReceiptPreview').getAttribute('src')||'',/^data:image\/webp/);
+    assert.equal(w.document.getElementById('bookingReceiptCamera').hidden,true,'E2E snapshot preview must hide video');
   } finally {w.dispatchEvent(new w.Event('pagehide'));w.close();}
 });
 
